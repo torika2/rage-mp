@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Server Administration</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: rgba(15, 19, 25, .96);
+    --panel: #1b222c;
+    --panel2: #222b37;
+    --line: rgba(255,255,255,.09);
+    --text: #eef3f7;
+    --muted: #96a4b3;
+    --accent: #ffb42e;
+    --green: #5fd19b;
+    --red: #ff6978;
+    font-family: "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; color: var(--text); }
+  body { background: rgba(4, 7, 11, .58); display: grid; place-items: center; }
+  .shell {
+    width: min(1160px, 94vw); height: min(790px, 90vh); display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: 0 28px 90px #000a; overflow: hidden;
+  }
+  header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px; border-bottom:1px solid var(--line); }
+  .brand { display:flex; align-items:center; gap:13px; }
+  .mark { display:grid; place-items:center; width:42px; height:42px; border-radius:13px; background:#ffb42e1c; color:var(--accent); font-size:23px; }
+  h1 { margin:0; font-size:20px; letter-spacing:.2px; }
+  .sub { margin-top:4px; color:var(--muted); font-size:12px; }
+  .header-right { display:flex; align-items:center; gap:14px; }
+  #count { color:var(--muted); font-size:13px; }
+  button, input, select { font:inherit; }
+  button { color:var(--text); border:1px solid var(--line); border-radius:9px; background:var(--panel2); padding:9px 12px; cursor:pointer; transition:.15s; }
+  button:hover { border-color:#ffb42e80; transform:translateY(-1px); }
+  button:disabled { opacity:.35; cursor:not-allowed; transform:none; }
+  .close { width:36px; height:36px; padding:0; font-size:19px; }
+  main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 310px; }
+  .players { min-width:0; display:flex; flex-direction:column; padding:18px 20px; }
+  .toolbar { display:flex; gap:10px; margin-bottom:14px; }
+  .search { flex:1; min-width:0; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px 12px; outline:none; }
+  .search:focus, .announce:focus, .duration:focus { border-color:#ffb42e99; }
+  .duration { color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px; }
+  .announce.unban-input { min-height:42px; resize:none; }
+  .list-wrap { flex:1; overflow:auto; border:1px solid var(--line); border-radius:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { position:sticky; top:0; z-index:1; text-align:left; color:var(--muted); background:#171d25; font-size:11px; text-transform:uppercase; letter-spacing:.7px; }
+  th, td { padding:12px 11px; border-bottom:1px solid var(--line); }
+  tr:last-child td { border-bottom:0; }
+  tr:hover td { background:#ffffff06; }
+  .name { font-weight:650; }
+  .muted { color:var(--muted); font-size:12px; margin-top:3px; }
+  .hp { color:var(--green); font-variant-numeric:tabular-nums; }
+  .dead { color:var(--red); }
+  .actions { display:flex; gap:5px; flex-wrap:wrap; }
+  .actions button { padding:6px 8px; font-size:11px; }
+  .actions .danger { color:var(--red); }
+  .side { border-left:1px solid var(--line); padding:20px; background:#ffffff03; overflow:auto; }
+  .section-title { margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:16px; }
+  .announce { width:100%; min-height:94px; resize:vertical; color:var(--text); background:#11171e; border:1px solid var(--line); border-radius:9px; padding:10px; outline:none; }
+  .send { width:100%; margin-top:9px; background:#ffb42e; border-color:#ffb42e; color:#211707; font-weight:750; }
+  .hint { color:var(--muted); font-size:12px; line-height:1.5; }
+  #notice { min-height:20px; color:var(--green); font-size:12px; margin-top:9px; }
+  footer { border-top:1px solid var(--line); padding:11px 20px; display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
+  kbd { padding:2px 5px; color:var(--text); border:1px solid var(--line); border-radius:4px; background:var(--panel); }
+  @media (max-width:850px) {
+    .shell { width:96vw; height:94vh; }
+    main { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; }
+    .side { border-left:0; border-top:1px solid var(--line); padding:12px 18px; }
+    .card { margin:0; }
+    .section-title, .hint, footer .right { display:none; }
+    .list-wrap { overflow:auto; }
+    .announce { min-height:55px; }
+  }
+</style>
+</head>
+<body>
+<section class="shell">
+  <header>
+    <div class="brand">
+      <div class="mark">◆</div>
+      <div><h1>Server Administration</h1><div class="sub">Authorized admin · SEPHIGR</div></div>
+    </div>
+    <div class="header-right">
+      <span id="count">Loading players…</span>
+      <button id="refresh" title="Refresh player list">↻ Refresh</button>
+      <button id="close" class="close" title="Close">×</button>
+    </div>
+  </header>
+  <main>
+    <section class="players">
+      <div class="toolbar">
+        <input id="search" class="search" placeholder="Filter by player name or ID…" autocomplete="off">
+        <select id="moderationDuration" class="duration" aria-label="Mute or ban duration">
+          <option value="300">5 minutes</option>
+          <option value="1800">30 minutes</option>
+          <option value="3600">1 hour</option>
+          <option value="21600">6 hours</option>
+          <option value="86400">1 day</option>
+          <option value="604800">7 days</option>
+          <option value="0">Permanent</option>
+        </select>
+      </div>
+      <div class="list-wrap">
+        <table>
+          <thead><tr><th>Player</th><th>Health</th><th>World</th><th>Actions</th></tr></thead>
+          <tbody id="rows"><tr><td colspan="4" class="muted">Requesting player list…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    <aside class="side">
+      <h2 class="section-title">Admin mode</h2>
+      <div class="card">
+        <button id="adminMode" class="send" aria-pressed="false">Enable Admin Mode</button>
+        <div id="adminModeStatus" class="hint" role="status">Admin actions are off.</div>
+      </div>
+      <h2 class="section-title">Admin flight</h2>
+      <div class="card">
+        <button id="fly" class="send">Enable fly mode</button>
+        <div id="flyStatus" class="hint" role="status">WASD moves, Space rises, Ctrl descends, Shift speeds up. Press B to toggle flight.</div>
+      </div>
+      <h2 class="section-title">Unban account</h2>
+      <div class="card">
+        <input id="unbanAccount" class="announce unban-input" maxlength="64" placeholder="Social Club account name" autocomplete="off">
+        <button id="unban" class="send">Remove ban</button>
+      </div>
+      <h2 class="section-title">Server announcement</h2>
+      <div class="card">
+        <textarea id="announcement" class="announce" maxlength="180" placeholder="Message to all players…"></textarea>
+        <button id="send" class="send">Send announcement</button>
+        <div id="notice" role="status"></div>
+      </div>
+      <div class="card hint">
+        Player actions are server-validated. Teleport and bring require both
+        players to be on foot. Kick is immediate. Use responsibly.
+      </div>
+    </aside>
+  </main>
+  <footer><span><kbd>Esc</kbd> closes panel</span><span class="right">Session admin tools</span></footer>
+</section>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const rows = document.getElementById('rows');
+  const search = document.getElementById('search');
+  const count = document.getElementById('count');
+  const notice = document.getElementById('notice');
+  const flyButton = document.getElementById('fly');
+  const flyStatus = document.getElementById('flyStatus');
+  const adminModeButton = document.getElementById('adminMode');
+  const adminModeStatus = document.getElementById('adminModeStatus');
+  let players = [];
+
+  function render() {
+    const query = search.value.trim().toLowerCase();
+    const visible = players.filter(player =>
+      String(player.id).includes(query) || player.name.toLowerCase().includes(query)
+    );
+    count.textContent = `${visible.length} / ${players.length} players`;
+    const self = players.find(player => player.isSelf);
+    const adminMode = Boolean(self && self.adminMode);
+    const flying = Boolean(self && self.adminFly);
+    adminModeButton.textContent = adminMode ? 'Disable Admin Mode' : 'Enable Admin Mode';
+    adminModeButton.setAttribute('aria-pressed', String(adminMode));
+    adminModeStatus.textContent = adminMode ? 'Admin actions are enabled.' : 'Admin actions are off.';
+    flyButton.textContent = flying ? 'Disable fly mode' : 'Enable fly mode';
+    flyButton.disabled = !adminMode || Boolean(self && self.inVehicle && !flying);
+    document.getElementById('moderationDuration').disabled = !adminMode;
+    document.getElementById('unbanAccount').disabled = !adminMode;
+    document.getElementById('unban').disabled = !adminMode;
+    document.getElementById('announcement').disabled = !adminMode;
+    document.getElementById('send').disabled = !adminMode;
+    flyStatus.textContent = self && self.inVehicle && !flying
+      ? 'Exit your vehicle before enabling flight.'
+      : `${flying ? 'Flight is on' : 'Flight is off'} · WASD moves, Space rises, Ctrl descends, Shift speeds up. Press B to toggle flight.`;
+    rows.replaceChildren();
+    if (!visible.length) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 4;
+      cell.className = 'muted';
+      cell.textContent = players.length ? 'No matching players.' : 'No players online.';
+      row.appendChild(cell);
+      rows.appendChild(row);
+      return;
+    }
+
+    visible.forEach(player => {
+      const row = document.createElement('tr');
+      const identity = document.createElement('td');
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = player.name;
+      const id = document.createElement('div');
+      id.className = 'muted';
+      id.textContent = `ID ${player.id}${player.inVehicle ? ' · in vehicle' : ''}`;
+      identity.append(name, id);
+
+      const health = document.createElement('td');
+      health.className = player.health <= 0 ? 'hp dead' : 'hp';
+      health.textContent = player.health <= 0 ? 'Unconscious' : `${player.health} HP`;
+
+      const world = document.createElement('td');
+      world.textContent = `Dimension ${player.dimension}`;
+
+      const actions = document.createElement('td');
+      actions.className = 'actions';
+      [
+        ['teleportTo', 'Go to', player.isSelf],
+        ['bring', 'Bring', player.isSelf],
+        ['heal', 'Heal', player.health <= 0],
+        ['revive', 'Revive', player.health > 0],
+        ['kick', 'Kick', player.isSelf || player.isAdmin],
+        [player.muted ? 'unmute' : 'mute', player.muted ? 'Unmute' : 'Mute', player.isSelf || player.isAdmin],
+        ['ban', 'Ban', player.isSelf || player.isAdmin]
+      ].forEach(([action, label, disabled]) => {
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.disabled = disabled || !adminMode;
+        button.dataset.action = action;
+        button.dataset.id = player.id;
+        if (action === 'kick' || action === 'ban' || action === 'mute') button.className = 'danger';
+        actions.appendChild(button);
+      });
+
+      row.append(identity, health, world, actions);
+      rows.appendChild(row);
+    });
+  }
+
+  window.setPlayers = value => {
+    players = Array.isArray(value) ? value : [];
+    render();
+  };
+  window.showNotice = message => {
+    notice.textContent = String(message || '');
+    setTimeout(() => { notice.textContent = ''; }, 3500);
+  };
+
+  adminModeButton.onclick = () => {
+    if (RAGE) mp.trigger('admin:panel:mode');
+  };
+  flyButton.onclick = () => {
+    if (RAGE) mp.trigger('admin:panel:fly');
+  };
+  rows.addEventListener('click', event => {
+    const button = event.target.closest('button[data-action]');
+    if (!button || button.disabled || !RAGE) return;
+    const action = button.dataset.action;
+    const id = Number(button.dataset.id);
+    const targetName = players.find(p => p.id === id)?.name || 'this player';
+    if (action === 'kick' && !confirm(`Kick ${targetName}?`)) return;
+    const duration = Number(document.getElementById('moderationDuration').value);
+    if (action === 'ban' && !confirm(`Ban ${targetName} ${duration === 0 ? 'permanently' : `for ${document.getElementById('moderationDuration').selectedOptions[0].text}`}?`)) return;
+    mp.trigger('admin:panel:action', action, id, duration);
+  });
+  search.addEventListener('input', render);
+  document.getElementById('refresh').onclick = () => {
+    if (RAGE) mp.trigger('admin:panel:refresh');
+  };
+  document.getElementById('close').onclick = () => {
+    if (RAGE) mp.trigger('admin:panel:close');
+  };
+  document.getElementById('unban').onclick = () => {
+    const account = document.getElementById('unbanAccount').value.trim();
+    if (!account) {
+      window.showNotice("Enter the banned player's Social Club account name.");
+      return;
+    }
+    if (RAGE) mp.trigger('admin:panel:unban', account);
+  };
+  document.getElementById('send').onclick = () => {
+    const message = document.getElementById('announcement').value.trim();
+    if (!message) {
+      window.showNotice('Write an announcement first.');
+      return;
+    }
+    if (RAGE) mp.trigger('admin:panel:announce', message);
+    document.getElementById('announcement').value = '';
+  };
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && RAGE) {
+      event.preventDefault();
+      event.stopPropagation();
+      mp.trigger('admin:panel:close');
+    }
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      document.getElementById('send').click();
+    }
+  });
+
+  window.onload = () => {
+    if (RAGE) mp.trigger('admin:panel:ready');
+    else window.setPlayers([
+      { id: 1, name: 'Sample Player', health: 100, dimension: 0, inVehicle: false, isSelf: true, isAdmin: true, adminMode: false },
+      { id: 2, name: 'Example Patient', health: 0, dimension: 0, inVehicle: false, isSelf: false, isAdmin: false, muted: false }
+    ]);
+  };
+</script>
+</body>
+</html>

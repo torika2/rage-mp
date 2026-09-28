@@ -203,7 +203,11 @@
   $('cancelBtn').onclick = () => { if (RAGE) mp.trigger('fuel:close'); };
   $('buyBtn').onclick = () => { if (liters > 0 && RAGE) mp.trigger('fuel:purchase', sel, liters, drainFirst); };
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && RAGE) mp.trigger('fuel:close');
+    if (e.key === 'Escape' && RAGE) {
+      e.preventDefault();
+      e.stopPropagation();
+      mp.trigger('fuel:close');
+    }
     if (e.key === 'Enter' && liters > 0 && RAGE) mp.trigger('fuel:purchase', sel, liters, drainFirst);
   });
 

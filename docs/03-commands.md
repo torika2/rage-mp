@@ -2,7 +2,7 @@
 
 ## Server-side chat commands
 
-Defined in `packages/freeroam/index.js`.
+Core freeroam commands are defined in `packages/freeroam/index.js`; police commands are in `packages/police/index.js`.
 
 | Command | Effect |
 |---------|--------|
@@ -90,3 +90,43 @@ engine off while driving, and engine state is a client native — the server can
 
 `1`–`0` = `0x31`–`0x30`, `F1`–`F12` = `0x70`–`0x7B`, `E` = `0x45`, `G` = `0x47`,
 `X` = `0x58`, `LCTRL` = `0xA2`, `LSHIFT` = `0xA0`.
+
+
+### Escape behavior
+
+Escape closes the active gas-station or admin interface, or exits the built-in
+chat input, before allowing gameplay controls through. A left mouse click also
+closes the built-in chat input. Pause/map controls are suppressed in all control groups while chat or a CEF
+interface is active and for 1.5 seconds after an interaction closes. This
+suppression is armed before the client destroys the UI, so Escape cannot fall
+through and open the map. Native chat activation and the in-game chat control
+are also disabled while a CEF menu is open, so pressing T cannot open chat over
+the admin or fuel interface.
+
+## Police job
+
+Police ranks, authority, duty, cuffs/arrests, timed jail, and management commands are documented in [07-police-system.md](07-police-system.md). Police commands are defined in `packages/police/index.js`; roster and jail configuration persist in `packages/police/police.json`.
+
+## Hospital job
+
+Hospital ranks, duty, patient treatment/revival, staff management, and the
+hospital entrance and PHMC interior test setup are documented in
+[08-hospital-system.md](08-hospital-system.md). Commands are defined in
+`packages/hospital/index.js`; ranks and staff persist in
+`packages/hospital/hospital.json`.
+
+## Admin flight
+
+`/fly` toggles flight for the allowlisted Social Club account `SEPHIGR`.
+WASD moves, Space rises, Ctrl descends, and Shift increases speed. While
+flying, the admin is invisible to other clients and invincible. These effects
+are restored when flight ends or the admin dies. Only the authorized account
+can toggle flight; use **B**, `/fly`, or the `/admin` panel. Flight ends on death
+or when toggled off.
+
+## Admin panel
+
+F8 or `/admin` toggles the server admin panel for `SEPHIGR`. The panel captures
+game input while open. Turn **Admin Mode** on in the panel to enable privileged
+actions; turning it off disables them and stops flight. See
+[09-admin-panel.md](09-admin-panel.md) for actions and safety behavior.

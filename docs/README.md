@@ -12,6 +12,9 @@ Operational docs for this RAGE:MP (GTA V multiplayer) server.
 | [04-troubleshooting.md](04-troubleshooting.md) | Common problems & fixes (esp. "spawns default car") |
 | [05-inspecting-rpf.md](05-inspecting-rpf.md) | How to read a `dlc.rpf` (spawn names, liveries, encryption) |
 | [06-testing.md](06-testing.md) | Test plan for the money/fuel/engine flow |
+| [07-police-system.md](07-police-system.md) | Police ranks, commands, jail, and configuration |
+| [08-hospital-system.md](08-hospital-system.md) | Hospital interior access, staff ranks, permissions, and patient care |
+| [09-admin-panel.md](09-admin-panel.md) | Admin panel access, actions, security checks, and usage |
 | [inventory.md](inventory.md) | What mods are installed and their spawn names |
 
 ## Golden rules (read these first)

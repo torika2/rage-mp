@@ -1,0 +1,50 @@
+{
+  "admins": [
+    "SEPHIGR"
+  ],
+  "ranks": {
+    "cadet": {
+      "label": "Cadet",
+      "level": 0,
+      "capabilities": ["duty"]
+    },
+    "officer": {
+      "label": "Police Officer",
+      "level": 1,
+      "capabilities": ["duty", "cuff"]
+    },
+    "senior_officer": {
+      "label": "Senior Officer",
+      "level": 2,
+      "capabilities": ["duty", "cuff", "arrest"]
+    },
+    "sergeant": {
+      "label": "Sergeant",
+      "level": 3,
+      "capabilities": ["duty", "cuff", "arrest", "jail", "release"]
+    },
+    "lieutenant": {
+      "label": "Lieutenant",
+      "level": 4,
+      "capabilities": ["duty", "cuff", "arrest", "jail", "release", "recruit", "promote"]
+    },
+    "captain": {
+      "label": "Captain",
+      "level": 5,
+      "capabilities": ["duty", "cuff", "arrest", "jail", "release", "recruit", "promote", "fire"]
+    },
+    "chief": {
+      "label": "Chief of Police",
+      "level": 6,
+      "capabilities": ["duty", "cuff", "arrest", "jail", "release", "recruit", "promote", "fire"]
+    }
+  },
+  "jail": {
+    "position": {"x": 459.7, "y": -994.2, "z": 24.9},
+    "dimension": 0,
+    "minMinutes": 1,
+    "maxMinutes": 120
+  },
+  "officers": {},
+  "activeJails": {}
+}

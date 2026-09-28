@@ -1,0 +1,78 @@
+{
+  "admins": [
+    "SEPHIGR"
+  ],
+  "maxHealth": 100,
+  "exterior": {
+    "dimension": 0,
+    "position": {
+      "x": 1151.3,
+      "y": -1529.6,
+      "z": 35.37
+    }
+  },
+  "interior": {
+    "enabled": true,
+    "dimension": 0,
+    "entrance": {
+      "x": 307.25,
+      "y": -595.3,
+      "z": 43.28
+    },
+    "exit": {
+      "x": 301.7,
+      "y": -584.6,
+      "z": 43.26
+    }
+  },
+  "ranks": {
+    "intern": {
+      "label": "Medical Intern",
+      "level": 0,
+      "capabilities": [
+        "duty"
+      ]
+    },
+    "emt": {
+      "label": "Emergency Medical Technician",
+      "level": 1,
+      "capabilities": [
+        "duty",
+        "treat"
+      ]
+    },
+    "paramedic": {
+      "label": "Paramedic",
+      "level": 2,
+      "capabilities": [
+        "duty",
+        "treat",
+        "revive"
+      ]
+    },
+    "surgeon": {
+      "label": "Surgeon",
+      "level": 3,
+      "capabilities": [
+        "duty",
+        "treat",
+        "revive",
+        "recruit",
+        "promote"
+      ]
+    },
+    "chief_physician": {
+      "label": "Chief Physician",
+      "level": 4,
+      "capabilities": [
+        "duty",
+        "treat",
+        "revive",
+        "recruit",
+        "promote",
+        "fire"
+      ]
+    }
+  },
+  "staff": {}
+}
