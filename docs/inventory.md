@@ -1,0 +1,35 @@
+# Installed / Pending Mods
+
+Spawn with `/veh <spawn name>`. Folder = `client_packages/game_resources/dlcpacks/<folder>/dlc.rpf`.
+
+| Car | Spawn name | Folder (must match internal name) | Liveries | Status |
+|-----|-----------|-----------------------------------|----------|--------|
+| BMW M4 (G82 Adro Kit) | `g82adro` | `g82adro` | none | ⚠️ folder currently named `bmwm5` — **rename to `g82adro`** |
+| Audi RS7 (2023) | `23rs7` | `abtrsr_rs7c8` | none | ⏳ not installed yet |
+| Audi RS7 ABT (2023) | `23rs7abt` | `abtrsr_rs7c8` (same pack) | none | ⏳ not installed yet |
+| Audi RS7 Sportback (RmodCustoms) | `rmodrs7` | `rmodrs7` | ✅ yes | ⏳ not installed yet |
+
+## Source downloads (Windows)
+
+- BMW: `C:\Users\torik\Downloads\de0382-BMW G82 M4 with Adro Kit HAMMER.rar` (use `Legacy/g82adro/dlc.rpf`)
+- Audi RS7 + ABT: `C:\Users\torik\Downloads\312534-ABTRSR-2023 Audi RS7&ABT RS7-4【ADD-ON】.zip` (folder `abtrsr_rs7c8/dlc.rpf`)
+- Audi RS7 Sportback: `C:\Users\torik\Downloads\dcdde3-RmodCustoms Audi RS7 Sportback 1.3.rar` (use `Manual Installation/dlc.rpf`)
+
+## To finish install (once folders are owned by `torik`)
+
+```bash
+DLC=/opt/ragemp-srv/client_packages/game_resources/dlcpacks
+
+# BMW: fix folder name
+mv "$DLC/bmwm5" "$DLC/g82adro"
+
+# Audi packs (extract dlc.rpf from the archives first, see 02-adding-vehicle-mods.md)
+mkdir -p "$DLC/abtrsr_rs7c8" "$DLC/rmodrs7"
+cp /tmp/audi/abt/abtrsr_rs7c8/dlc.rpf                                  "$DLC/abtrsr_rs7c8/dlc.rpf"
+cp "/tmp/audi/rmod/RmodCustoms Audi RS7 Sportback 1.3/Manual Installation/dlc.rpf" "$DLC/rmodrs7/dlc.rpf"
+
+sudo systemctl restart rageserv
+# then FULLY relaunch the GTA client and reconnect
+```
+
+_Last updated: 2026-09-28._
