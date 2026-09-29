@@ -29,6 +29,16 @@ const ITEMS = {
     medkit:   { label: 'სამედიცინო ნაკრები', price: 200, health: 100 }
 };
 
+// "+35 წყურვილი · +10 HP" — hunger/thirst values come from the inventory item definitions.
+function effects(key, item) {
+    const def = (global.invItemDefs && global.invItemDefs[key]) || {};
+    const parts = [];
+    if (def.hunger) parts.push(`+${def.hunger} საკვები`);
+    if (def.thirst) parts.push(`+${def.thirst} წყალი`);
+    parts.push(`+${item.health} HP`);
+    return parts.join(' · ');
+}
+
 function tell(player, message) {
     player.outputChatBox('!{#5bbf8e}[24/7] !{#ffffff}' + message);
 }
@@ -80,7 +90,7 @@ mp.events.addCommand('store', (player) => {
     Object.keys(ITEMS).forEach(key => {
         const item = ITEMS[key];
         const cost = priced(item.price);
-        player.outputChatBox(`!{#9aa4ad}${key} !{#ffffff}— ${item.label}: $${cost.total} (+${item.health} HP)`);
+        player.outputChatBox(`!{#9aa4ad}${key} !{#ffffff}— ${item.label}: $${cost.total} (${effects(key, item)})`);
     });
 });
 
@@ -92,7 +102,7 @@ mp.events.add('market:requestData', (player) => {
     if (!atStore(player)) { player.call('shop:setData', [JSON.stringify({ mode: 'market', title: '24/7 მაღაზია', money: 0, items: [], capacity })]); return; }
     const items = Object.keys(ITEMS).map(key => {
         const item = ITEMS[key]; const c = priced(item.price);
-        return { key, label: item.label, detail: `+${item.health} HP${c.tax ? ` · მ.შ. $${c.tax} გადასახადი` : ''}`, price: c.total };
+        return { key, label: item.label, detail: `${effects(key, item)}${c.tax ? ` · მ.შ. $${c.tax} გადასახადი` : ''}`, price: c.total };
     });
     player.call('shop:setData', [JSON.stringify({ mode: 'market', title: '24/7 მაღაზია', money: global.getMoney(player), items, capacity })]);
 });

@@ -192,10 +192,60 @@
     font-weight: 500;
     color: #d1d5db;
   }
+
+  /* Ground item pickup prompt */
+  #pickup {
+    position: absolute; left: 50%; bottom: 18%; transform: translateX(-50%); display: none;
+    background: rgba(15, 19, 25, .96); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 18px; border-radius: 10px; font-size: 15px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  #pickup b { color: var(--accent); }
+  #pickupLabel { color: var(--accent); }
+
+  /* Character stats — bottom right (moves above the speedometer in a vehicle) */
+  #stats {
+    position: absolute; right: 22px; bottom: 26px; width: 232px;
+    background: rgba(15, 19, 25, .96); border: 1px solid var(--border); border-radius: 16px;
+    padding: 12px 16px; color: var(--text); box-shadow: 0 12px 36px rgba(0,0,0,.5);
+    display: grid; gap: 9px; transition: bottom .2s;
+  }
+  .stat { display: grid; grid-template-columns: 20px 1fr 34px; align-items: center; gap: 9px; }
+  .stat .ico { font-size: 14px; text-align: center; line-height: 1; }
+  .stat .track { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .stat .fill { height: 100%; width: 100%; border-radius: 999px; transition: width .4s; }
+  .stat .val { font-size: 12px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #stHealth .fill { background: #ff5b5b; }
+  #stArmour .fill { background: #5aa9ff; }
+  #stHunger .fill { background: var(--accent); }
+  #stThirst .fill { background: #3fd0e0; }
+  .stat.low .val { color: var(--danger); }
+  .stat.low .ico { animation: stat-pulse 1s infinite; }
+  @keyframes stat-pulse { 50% { opacity: .35; } }
+
+  /* Ammo — just under the crosshair while aiming a gun */
+  #ammo {
+    position: absolute; left: 50%; top: calc(50% + 34px); transform: translate(-50%, 6px);
+    display: flex; align-items: baseline; gap: 6px;
+    color: var(--text); text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.6);
+    opacity: 0; transition: opacity .12s, transform .12s; pointer-events: none;
+  }
+  #ammo.on { opacity: 1; transform: translate(-50%, 0); }
+  #ammo .clip { font-size: 18px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+  #ammo .sep { color: var(--muted); font-size: 13px; }
+  #ammo .reserve { font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #ammo.low .clip { color: var(--danger); }
 </style>
 </head>
 <body>
+<div id="ammo"><span class="clip">0</span><span class="sep">/</span><span class="reserve">0</span></div>
   <div id="money">$0</div>
+
+  <div id="stats">
+    <div class="stat" id="stHealth" title="სიცოცხლე"><span class="ico">❤️</span><div class="track"><div class="fill"></div></div><span class="val">100</span></div>
+    <div class="stat" id="stArmour" title="ჯავშანი"><span class="ico">🛡️</span><div class="track"><div class="fill"></div></div><span class="val">0</span></div>
+    <div class="stat" id="stHunger" title="შიმშილი"><span class="ico">🍔</span><div class="track"><div class="fill"></div></div><span class="val">100</span></div>
+    <div class="stat" id="stThirst" title="წყურვილი"><span class="ico">💧</span><div class="track"><div class="fill"></div></div><span class="val">100</span></div>
+  </div>
 
   <div id="speedo">
     <div class="topline">
@@ -215,6 +265,7 @@
     </div>
   </div>
 
+  <div id="pickup">დააჭირე <b>E</b>-ს ასაღებად: <span id="pickupLabel"></span></div>
   <div id="prompt">დააჭირე <b>E</b>-ს საწვავის შესავსებად</div>
 
   <!-- Vehicle interaction indicator (when looking at a car outside) -->
@@ -252,6 +303,15 @@
   <div id="voice"></div>
 
 <script>
+  // Ammo chip: window.hudAmmo({ clip, reserve }) shows it, window.hudAmmo(null) hides it.
+  window.hudAmmo = function (a) {
+    const el = document.getElementById('ammo');
+    if (!a) { el.classList.remove('on'); return; }
+    el.querySelector('.clip').textContent = a.clip;
+    el.querySelector('.reserve').textContent = a.reserve;
+    el.classList.toggle('low', a.clip < 10);
+    el.classList.add('on');
+  };
   const $ = id => document.getElementById(id);
   window.setChatChannel = function (label, visible) {
     $('chatchName').textContent = label;
@@ -261,6 +321,8 @@
   window.hud = function (d) {
     $('money').textContent = '$' + (d.money || 0).toLocaleString();
     $('prompt').style.display = d.refuel ? 'block' : 'none';
+    $('pickup').style.display = d.pickup ? 'block' : 'none';
+    if (d.pickup) $('pickupLabel').textContent = d.pickup;
 
     // Target vehicle indicator outside
     const tv = $('targetVehBadge');
@@ -288,7 +350,16 @@
     } else {
       v.style.display = 'none';
     }
+    // Character stats (bottom right); sits above the speedometer while in a vehicle.
+    [['stHealth', d.health], ['stArmour', d.armour], ['stHunger', d.hunger], ['stThirst', d.thirst]].forEach(([id, v]) => {
+      const el = $(id); if (!el || typeof v !== 'number') return;
+      const pct = Math.max(0, Math.min(100, Math.round(v)));
+      el.querySelector('.fill').style.width = pct + '%';
+      el.querySelector('.val').textContent = pct;
+      el.classList.toggle('low', id !== 'stArmour' && pct <= 20);
+    });
     const sp = $('speedo');
+    $('stats').style.bottom = d.inVehicle ? (26 + sp.offsetHeight + 12) + 'px' : '26px';
     if (!d.inVehicle) { sp.classList.remove('on'); return; }
     sp.classList.add('on');
     $('kmh').textContent = d.kmh;

@@ -358,7 +358,7 @@ mp.events.add('shop:setData', (json) => { if (shopBrowser) shopBrowser.execute(`
 mp.events.add('shop:purchase', (key, qty) => {                        // Buy clicked in the UI
     if (!shopMode) return;
     const amount = Math.max(1, Math.min(99, parseInt(qty) || 1));
-    if (shopMode === 'weapons') mp.events.callRemote(String(key) === 'armor' ? 'shop:buyArmor' : 'shop:buyWeapon', String(key));
+    if (shopMode === 'weapons') mp.events.callRemote(String(key) === 'armor' ? 'shop:buyArmor' : 'shop:buyWeapon', String(key), amount); // amount = ammo boxes
     else mp.events.callRemote('market:buy', String(key), amount);
     setTimeout(requestShopData, 200);                                // refresh balance after purchase
 });
@@ -652,10 +652,30 @@ function blockPauseControls() {
     }
 }
 
-mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle) or open shop (on foot near a store)
+// Nearest ground drop (item dropped from an inventory) within pickup range, or null.
+const DROP_PICKUP_RANGE = 2.0;
+let nearDrop = null; // { id, label }
+function findNearDrop() {
+    const me = mp.players.local;
+    if (me.vehicle) return null;
+    const p = me.position;
+    let best = null, bestDist = DROP_PICKUP_RANGE;
+    mp.objects.forEachInStreamRange(o => {
+        const id = o.getVariable('drop:id');
+        if (typeof id !== 'number') return;
+        const q = o.position;
+        const d = Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
+        if (d <= bestDist) { bestDist = d; best = { id, label: String(o.getVariable('drop:label') || '') }; }
+    });
+    return best;
+}
+
+mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
     if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser) return;
     if (fuelUIOpen) return;
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
+    const drop = findNearDrop();
+    if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }
     if (!mp.players.local.vehicle) {
         const mode = nearestShopMode(mp.players.local.position);
         if (mode) openShopUI(mode);
@@ -681,6 +701,116 @@ mp.events.add('render', () => {
         font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
     });
 });
+// Weapons are equipped from the inventory (I), so GTA's own weapon wheel (TAB) and mouse-wheel
+// weapon cycling are disabled — on foot and in vehicles.
+const WEAPON_SWITCH_CONTROLS = [
+    12, 13, 14, 15, 16, 17, // WEAPON_WHEEL_UD/LR/NEXT/PREV, SELECT_NEXT/PREV_WEAPON
+    37,                     // SELECT_WEAPON (TAB wheel)
+    99, 100, 115, 116,      // VEH_SELECT_NEXT/PREV_WEAPON, VEH_FLY_SELECT_NEXT/PREV_WEAPON
+    261, 262                // PREV/NEXT_WEAPON (mouse scroll)
+];
+const WEAPON_UNARMED = mp.game.joaat('weapon_unarmed');
+const WEAPON_GROUP_MELEE = 0xD49321D4;
+const WEAPON_GROUP_UNARMED = 0xA00FC1E4;
+const GUN_MELEE_CONTROLS = [140, 141, 142, 263, 264]; // MELEE_ATTACK_LIGHT/HEAVY/ALTERNATE, MELEE_ATTACK1/2
+
+// Hide GTA's health/armour bars under the minimap (the bottom-right stats panel replaces them).
+// The minimap scaleform must be told every frame; SETUP_HEALTH_ARMOUR type 3 = hidden.
+const minimapScaleform = mp.game.graphics.requestScaleformMovie('minimap');
+function hideMinimapHealthArmour() {
+    const g = mp.game.graphics;
+    if (typeof g.beginScaleformMovieMethod === 'function') {
+        g.beginScaleformMovieMethod(minimapScaleform, 'SETUP_HEALTH_ARMOUR');
+        g.scaleformMovieMethodAddParamInt(3);
+        g.endScaleformMovieMethod();
+    } else {
+        g.pushScaleformMovieFunction(minimapScaleform, 'SETUP_HEALTH_ARMOUR');
+        g.pushScaleformMovieFunctionParameterInt(3);
+        g.popScaleformMovieFunctionVoid();
+    }
+}
+let lastAmmoText = '';
+let heldSwitchLocked = false; // weapon switching locked while the equipped gun is in hand
+let lastHeldRegive = 0;
+let lastAmmoReport = { model: null, rounds: -1 }; // last equipped-gun ammo sent to the server
+let lastClip = { hash: 0, clip: -1 }; // for the low-ammo warning beep
+mp.events.add('render', () => {
+    for (const control of WEAPON_SWITCH_CONTROLS) mp.game.controls.disableControlAction(0, control, true);
+    mp.game.ui.hideHudComponentThisFrame(19); // HUD_WEAPON_WHEEL
+    mp.game.ui.hideHudComponentThisFrame(20); // HUD_WEAPON_WHEEL_STATS
+    mp.game.ui.hideHudComponentThisFrame(2);  // HUD_WEAPON_ICON (top-right ammo counter)
+    try { hideMinimapHealthArmour(); } catch (e) {}
+
+    // While aiming a gun on foot: "magazine / reserve" ammo chip under the crosshair (HUD page).
+    // Only pushed to the browser when the value changes.
+    let ammoText = '';
+    const me = mp.players.local;
+
+    // The gun equipped from the quick bar stays in hand when its ammo runs out (GTA would auto-switch
+    // to fists). Server sets 'inv:held' = weapon model while equipped, null when holstered.
+    // Pistols can be re-selected when empty, but GTA auto-holsters an empty rifle and refuses to
+    // re-select it — so while the gun is in hand we also forbid weapon switching, and if it still got
+    // put away we give it back locally with 0 ammo (no free rounds) and equip it.
+    const heldModel = me.getVariable('inv:held');
+    try {
+        if (heldModel && !me.vehicle && me.getHealth() > 0) {
+            const want = mp.game.joaat(heldModel);
+            // Report the equipped gun's ammo to the server on every change (read by weapon hash, so it
+            // works even in the frame GTA holsters the empty gun). Server only accepts decreases.
+            const rounds = Number(me.getAmmoInWeapon(want)) || 0;
+            if (heldModel !== lastAmmoReport.model || rounds !== lastAmmoReport.rounds) {
+                if (heldModel === lastAmmoReport.model) mp.events.callRemote('inventory:ammoReport', rounds);
+                lastAmmoReport = { model: heldModel, rounds };
+            }
+            if ((me.getSelectedWeapon() >>> 0) === (want >>> 0)) {
+                if (!heldSwitchLocked) { mp.game.invoke('0xED7F7EFE9FABF340', me.handle, false); heldSwitchLocked = true; } // SET_PED_CAN_SWITCH_WEAPON
+            } else {
+                if (heldSwitchLocked) { mp.game.invoke('0xED7F7EFE9FABF340', me.handle, true); heldSwitchLocked = false; }
+                mp.game.invoke('0xADF692B254977C0C', me.handle, want, true); // SET_CURRENT_PED_WEAPON
+                if (Date.now() - lastHeldRegive > 500 && (me.getSelectedWeapon() >>> 0) !== (want >>> 0)) {
+                    lastHeldRegive = Date.now();
+                    mp.game.invoke('0xBF0FD6E56C964FCB', me.handle, want, 0, false, true); // GIVE_WEAPON_TO_PED, 0 ammo, equip now
+                }
+            }
+        } else if (heldSwitchLocked) {
+            mp.game.invoke('0xED7F7EFE9FABF340', me.handle, true);
+            heldSwitchLocked = false;
+        }
+    } catch (e) {}
+
+    // Holding a gun on foot: block pistol-whip melee (R near a ped; R still reloads — control 45),
+    // beep on low magazine (aiming or not), and show the ammo chip while aiming.
+    if (!me.vehicle) {
+        try {
+            const hash = me.getSelectedWeapon() >>> 0;
+            const group = hash ? mp.game.weapon.getWeapontypeGroup(hash) >>> 0 : 0;
+            if (hash && hash !== (WEAPON_UNARMED >>> 0) && group !== WEAPON_GROUP_MELEE && group !== WEAPON_GROUP_UNARMED) {
+                for (const control of GUN_MELEE_CONTROLS) mp.game.controls.disableControlAction(0, control, true);
+                const total = Number(me.getAmmoInWeapon(hash)) || 0;
+                const clip = Math.min(total, Number(me.getAmmoInClip(hash)) || 0);
+                // Warning beep on each shot that leaves fewer than 5 rounds in the magazine
+                // (not on reload, weapon switch, or first drawing an already-low gun).
+                if (lastClip.hash === hash && clip < lastClip.clip && clip < 5) {
+                    mp.game.audio.playSoundFrontend(-1, 'Beep_Red', 'DLC_HEIST_HACKING_SNAKE_SOUNDS', true);
+                }
+                lastClip = { hash, clip };
+                if (mp.game.player.isFreeAiming()) ammoText = JSON.stringify({ clip, reserve: total - clip });
+            } else lastClip = { hash: 0, clip: -1 };
+        } catch (e) {}
+    }
+    if (ammoText !== lastAmmoText) {
+        lastAmmoText = ammoText;
+        if (hudBrowser) hudBrowser.execute(`window.hudAmmo(${ammoText || 'null'})`);
+    }
+});
+
+// 1-4: use/equip the item in that inventory quick slot (on foot only — 2 is the engine key in a vehicle).
+[0x31, 0x32, 0x33, 0x34].forEach((key, index) => mp.keys.bind(key, false, () => {
+    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser) return;
+    if (mp.players.local.vehicle) return;
+    mp.events.callRemote('inventory:useQuick', index);
+}));
+
 mp.keys.bind(0x49, false, () => { // I - inventory
     if (chatting || vehicleMenuBrowser) return;
     if (inventoryBrowser) closeInventoryUI();
@@ -914,6 +1044,20 @@ mp.events.add('render', () => {
         payload = { money: getMoney(), inVehicle: true, kmh: Math.round(speed * 3.6), gear, engineOn, rpm, fuel, octane, refuel };
     }
 
+    // character stats (bottom-right panel). RAGE returns 0..100 for the local player; guard against the
+    // raw GTA ped scale (100 dead .. 200 full) just in case.
+    const me = mp.players.local;
+    const rawHealth = Number(me.getHealth()) || 0;
+    payload.health = Math.max(0, Math.min(100, rawHealth > 100 ? rawHealth - 100 : rawHealth));
+    payload.armour = Math.max(0, Math.min(100, me.getArmour()));
+    const hunger = me.getVariable('needs:hunger'), thirst = me.getVariable('needs:thirst');
+    payload.hunger = typeof hunger === 'number' ? hunger : 100;
+    payload.thirst = typeof thirst === 'number' ? thirst : 100;
+
+    // "press E to pick up" for the nearest ground drop
+    nearDrop = (chatting || adminBrowser || inventoryBrowser || shopBrowser) ? null : findNearDrop();
+    payload.pickup = nearDrop ? nearDrop.label : null;
+
     // voice state (shown regardless of vehicle)
     payload.voiceTalking = voiceTalking;
     payload.voiceBanned = voiceBanned;
@@ -1071,8 +1215,91 @@ mp.events.add('inventory:close', closeInventoryUI);
 // Inventory data flow: UI ready -> pull items; server pushes -> render; use/drop -> server.
 mp.events.add('inventory:uiReady', () => mp.events.callRemote('inventory:request'));
 mp.events.add('inventory:data', (json) => { if (inventoryBrowser) inventoryBrowser.execute(`window.setInventory(${json})`); });
-mp.events.add('inventory:use', (id) => mp.events.callRemote('inventory:use', String(id)));
-mp.events.add('inventory:drop', (id) => mp.events.callRemote('inventory:drop', String(id)));
+mp.events.add('inventory:use', (id, index) => mp.events.callRemote('inventory:use', String(id), Number(index)));
+mp.events.add('inventory:drop', (id, index, amount) => mp.events.callRemote('inventory:drop', String(id), Number(index), Number(amount) || 0));
+mp.events.add('inventory:move', (from, to) => mp.events.callRemote('inventory:move', Number(from), Number(to)));
+mp.events.add('inventory:split', (from, to, amount) => mp.events.callRemote('inventory:split', Number(from), Number(to), Number(amount)));
+mp.events.add('inventory:unequip', (slot, to) => mp.events.callRemote('inventory:unequip', String(slot), Number(to)));
+// Guns carried in the quick bar (not in hand) shown on the character, for every streamed player.
+// Server sets 'inv:back' = [{ m: model, k: 'back' | 'hip' | 'hipL' }]. Tune placements here.
+const BACK_PLACES = {
+    back: [ // SKEL_Spine3 — up to two long guns, slightly apart
+        { bone: 24818, pos: [0.075, -0.15, -0.02], rot: [0.0, 165.0, 0.0] },
+        { bone: 24818, pos: [0.075, -0.17, 0.10],  rot: [0.0, 195.0, 0.0] }
+    ],
+    // Thigh bones: z is sideways and mirrored — on BOTH thighs, z toward the body centre is the inside
+    // (R thigh: -z = inside, L thigh: +z = inside). Outer hip = L thigh -z / R thigh +z.
+    // x along the thigh bone: more negative = higher, toward the waist.
+    // Pistol on SKEL_Pelvis (moves with the body, not the leg): x up, y front, +z = left -> right hip is -z.
+    hip:  [{ bone: 11816, pos: [0.0, 0.0, -0.24], rot: [90.0, 180.0, 0.0] }], // SKEL_Pelvis, outer right hip, barrel down (pistol)
+    hipL: [{ bone: 51826, pos: [-0.04, 0.03, 0.13],  rot: [-90.0, 0.0, 0.0] }], // SKEL_R_Thigh, outer right waist (unused)
+    // SKEL_Pelvis: x = up the spine, y = front(+)/back(-), z = sideways. The knife model's length runs
+    // along its own Z, so no rotation keeps it horizontal across the lower back (rot y=90 stood it upright).
+    belt: [{ bone: 11816, pos: [-0.05, -0.16, 0.11], rot: [180.0, 0.0, 0.0] }] // on the waistband, against the back (+z = left) // x up the back, z sideways (+z = character's left, if not: flip)
+};
+const backProps = new Map(); // player remoteId -> [objects]
+function clearBackWeapons(ped) {
+    (backProps.get(ped.remoteId) || []).forEach(o => { if (mp.objects.exists(o)) o.destroy(); });
+    backProps.delete(ped.remoteId);
+}
+function buildBackWeapons(ped) {
+    if (!ped || !mp.players.exists(ped)) return;
+    clearBackWeapons(ped);
+    let list = [];
+    try { list = JSON.parse(ped.getVariable('inv:back') || '[]'); } catch (e) {}
+    if (!list.length || !ped.handle) return;
+    const used = { back: 0, hip: 0, hipL: 0, belt: 0 };
+    const objs = [];
+    list.forEach(w => {
+        const places = BACK_PLACES[w.k] || BACK_PLACES.back;
+        const place = places[used[w.k] || 0];
+        if (!place) return; // no room left on that spot
+        used[w.k] = (used[w.k] || 0) + 1;
+        const obj = mp.objects.new(mp.game.joaat(w.m), ped.position, { dimension: ped.dimension });
+        objs.push(obj);
+        const attach = (tries) => {
+            if (!mp.objects.exists(obj) || !mp.players.exists(ped)) return;
+            if (!obj.handle || !ped.handle) { if (tries > 0) setTimeout(() => attach(tries - 1), 100); return; }
+            obj.attachTo(ped.handle, ped.getBoneIndex(place.bone), ...place.pos, ...place.rot, false, false, false, true, 1, true); // rigid (no soft pinning = no wobble)
+        };
+        attach(30);
+    });
+    backProps.set(ped.remoteId, objs);
+}
+mp.events.addDataHandler('inv:back', (entity) => { if (entity.type === 'player') buildBackWeapons(entity); });
+mp.events.add('entityStreamIn', (entity) => { if (entity.type === 'player') buildBackWeapons(entity); });
+mp.events.add('entityStreamOut', (entity) => { if (entity.type === 'player') clearBackWeapons(entity); });
+mp.events.add('playerQuit', (player) => clearBackWeapons(player));
+mp.events.add('playerSpawn', () => setTimeout(() => buildBackWeapons(mp.players.local), 1500)); // respawn resets attachments
+
+// Ctrl held/released while the inventory is open -> tell the UI (Ctrl+drag = split / drop some).
+mp.keys.bind(0x11, true, () => { if (inventoryBrowser) inventoryBrowser.execute('window.setCtrl && window.setCtrl(true)'); });
+mp.keys.bind(0x11, false, () => { if (inventoryBrowser) inventoryBrowser.execute('window.setCtrl && window.setCtrl(false)'); });
+
+// Eat/drink prop in the player's hand while the server-synced animation plays (runs for every nearby client).
+// Per-model hand placement (bone id, offset, rotation) matched to the animation each item uses.
+const CONSUME_PROPS = {
+    prop_ld_flow_bottle: { bone: 18905, pos: [0.12, 0.008, 0.03], rot: [240.0, -60.0, 0.0] }, // SKEL_L_Hand, loop_bottle
+    prop_ecola_can:      { bone: 28422, pos: [0.0, 0.0, 0.0],     rot: [0.0, 0.0, 130.0] },   // PH_R_Hand, coffee/can drink
+    prop_energy_drink:   { bone: 28422, pos: [0.0, 0.0, 0.0],     rot: [0.0, 0.0, 130.0] },
+    prop_cs_burger_01:   { bone: 18905, pos: [0.13, 0.05, 0.02],  rot: [-50.0, 16.0, 60.0] }, // SKEL_L_Hand, eat_burger
+    prop_sandwich_01:    { bone: 18905, pos: [0.13, 0.05, 0.02],  rot: [-50.0, 16.0, 60.0] },
+    prop_ld_snack_01:    { bone: 60309, pos: [0.0, 0.0, 0.0],     rot: [0.0, 0.0, 0.0] }      // PH_L_Hand, snack bar
+};
+mp.events.add('inventory:consumeProp', (remoteId, model, kind, ms) => {
+    const ped = mp.players.atRemoteId(remoteId);
+    const place = CONSUME_PROPS[model];
+    if (!ped || !mp.players.exists(ped) || !ped.handle || !place) return;
+    const obj = mp.objects.new(mp.game.joaat(model), ped.position, { dimension: ped.dimension });
+    const tryAttach = (tries) => {
+        if (!mp.objects.exists(obj)) return;
+        if (!obj.handle) { if (tries > 0) setTimeout(() => tryAttach(tries - 1), 50); return; } // wait for model stream-in
+        // p9, softPinning, collision=false, isPed=true (ped rotation order), vertexIndex=1, fixedRot
+        obj.attachTo(ped.handle, ped.getBoneIndex(place.bone), ...place.pos, ...place.rot, true, true, false, true, 1, true);
+    };
+    tryAttach(20);
+    setTimeout(() => { if (mp.objects.exists(obj)) obj.destroy(); }, Number(ms) || 3500);
+});
 
 mp.events.add('admin:panel:data', json => {
     if (!adminBrowser) return;

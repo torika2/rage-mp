@@ -7,6 +7,10 @@
   - Restart: `sudo systemctl restart rageserv`
   - Live logs: `journalctl -u rageserv -f`
   - Started/uptime: `systemctl show rageserv -p ActiveEnterTimestamp --value`
+  - **Auto-restart on code changes** (optional, one-time `sudo bash tools/install-autorestart.sh`):
+    the `rageserv-autorestart` service (`tools/autorestart.py`) restarts `rageserv` ~2 s after
+    files in `packages/`, `client_packages/` or `conf.json` change. Server-written data
+    (`packages/*/*.json`, `.listcache`) is ignored. Logs: `journalctl -u rageserv-autorestart -f`.
 - **Config:** `/opt/ragemp-srv/conf.json` — gamemode `freeroam`, port `22005`, maxplayers `100`
 - **Host OS:** Ubuntu on WSL2 (mirrored networking)
 

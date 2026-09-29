@@ -6,9 +6,9 @@
 <title>მაღაზია</title>
 <style>
   :root {
-    --bg: rgba(18, 20, 24, 0.94);
-    --panel: rgba(32, 36, 43, 0.92);
-    --panel2: rgba(24, 27, 32, 0.9);
+    --bg: rgba(18, 20, 24, 0.96);
+    --panel: rgba(32, 36, 43, 0.96);
+    --panel2: rgba(24, 27, 32, 0.96);
     --accent: #c0894b;
     --text: #eef2f4;
     --muted: #9aa4ad;
@@ -16,19 +16,20 @@
     --danger: #ff5b5b;
     --border: rgba(255, 255, 255, 0.09);
   }
+  :root { --gap: 12px; --gap-in: 8px; } /* one spacing scale for the whole shop */
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Segoe UI", "Noto Sans Georgian", Roboto, system-ui, sans-serif; }
   html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; }
   /* wrap is click-through so the inventory behind stays interactive; only the card catches the mouse */
   #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 3vw; pointer-events: none; }
   #card {
     pointer-events: auto; position: fixed; top: 7vh; right: 3vw;
-    width: 460px; max-width: 40vw; max-height: 86vh; display: flex; flex-direction: column;
+    width: 460px; max-width: 40vw; max-height: 86vh; display: flex; flex-direction: column; gap: var(--gap);
     background: var(--bg); border: 1px solid var(--border); border-radius: 20px;
     padding: 20px 22px; color: var(--text); box-shadow: 0 30px 80px rgba(0,0,0,0.6);
     animation: pop .18s ease-out;
   }
   @keyframes pop { from { transform: translateY(12px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
-  #head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; cursor: move; user-select: none; }
+  #head { display: flex; align-items: center; justify-content: space-between; cursor: move; user-select: none; }
   #head.dragging, #head.dragging * { cursor: grabbing !important; }
   .head-left { display: flex; align-items: center; gap: 10px; }
   .move-grip { color: var(--muted); font-size: 17px; line-height: 1; opacity: .8; }
@@ -38,18 +39,18 @@
   #money { font-size: 16px; color: var(--good); font-weight: 700; }
   #search {
     width: 100%; background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
-    padding: 11px 14px; color: var(--text); font-size: 14px; margin-bottom: 14px; outline: none;
+    padding: 11px 14px; color: var(--text); font-size: 14px; outline: none;
   }
   #search:focus { border-color: var(--accent); }
   #grid {
     overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px; padding-right: 4px;
+    gap: var(--gap); padding-right: 4px; align-items: stretch;
   }
   #grid::-webkit-scrollbar { width: 8px; }
   #grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 8px; }
   .card {
     background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
-    padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center;
+    padding: var(--gap); display: flex; flex-direction: column; align-items: center; gap: var(--gap-in); text-align: center;
   }
   .card .icon { font-size: 34px; line-height: 1; height: 42px; display: grid; place-items: center; }
   .card .icon .wicon { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
@@ -64,13 +65,22 @@
   .qty .step:hover { border-color: var(--accent); }
   .qty .q { min-width: 22px; font-size: 14px; font-weight: 700; }
   .card .buy {
-    width: 100%; margin-top: 2px; background: var(--accent); color: #14110c; border: none; border-radius: 10px;
+    width: 100%; margin-top: auto; background: var(--accent); color: #14110c; border: none; border-radius: 10px;
     padding: 9px 0; font-size: 14px; font-weight: 800; cursor: pointer;
   }
   .card .buy:hover { filter: brightness(1.1); }
   .card .buy:disabled { opacity: .38; cursor: not-allowed; }
   .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 30px 0; }
-  #foot { margin-top: 14px; display: flex; justify-content: flex-end; }
+  #foot { display: flex; justify-content: flex-end; }
+  /* Gun shop tabs: weapons | bullets */
+  #tabs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-in); }
+  #tabs[hidden] { display: none; }
+  .tab {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; color: var(--muted);
+    padding: 9px 0; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: #14110c; background: var(--accent); border-color: var(--accent); }
   #closeBtn { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 8px 18px; font-size: 13px; cursor: pointer; }
   #closeBtn:hover { color: var(--text); }
 </style>
@@ -81,6 +91,10 @@
       <div class="head-left"><span class="move-grip" title="გადასაადგილებლად ჩავიჭიდე">✥</span><span id="title">მაღაზია</span></div>
       <div class="head-right"><span id="cap" class="chip" style="display:none"></span><span id="money">$0</span></div>
     </div>
+    <div id="tabs" hidden>
+      <button class="tab active" data-tab="weapons">🔫 იარაღი</button>
+      <button class="tab" data-tab="ammo">🔹 ტყვია</button>
+    </div>
     <input id="search" type="text" placeholder="ძებნა..." autocomplete="off" />
     <div id="grid"></div>
     <div id="foot"><button id="closeBtn">დახურვა (Esc)</button></div>
@@ -90,6 +104,12 @@
   const $ = (id) => document.getElementById(id);
   let data = { title: 'მაღაზია', mode: 'weapons', money: 0, items: [], capacity: null };
   let search = '';
+  let tab = 'weapons'; // gun shop: 'weapons' (guns + armour) | 'ammo'
+  document.querySelectorAll('#tabs .tab').forEach(b => b.onclick = () => {
+    tab = b.dataset.tab;
+    document.querySelectorAll('#tabs .tab').forEach(x => x.classList.toggle('active', x === b));
+    render();
+  });
   const qtys = {};
 
   // Open-source weapon icons (game-icons.net, CC BY 3.0) in ./icons — see icons/ATTRIBUTION.txt.
@@ -103,6 +123,7 @@
   const EMOJI = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹' };
   function iconFor(k) {
     if (WEAPON_IMG[k]) return '<img class="wicon" src="icons/' + WEAPON_IMG[k] + '.svg" alt="">';
+    if (String(k).startsWith('ammo_')) return '<img class="wicon" src="icons/ammo.svg" alt="">';
     return EMOJI[k] || '📦';
   }
 
@@ -119,8 +140,11 @@
     } else cap.style.display = 'none';
 
     const term = search.trim().toLowerCase();
+    $('tabs').hidden = isMarket;
+    const isAmmo = (it) => String(it.key).startsWith('ammo_');
     const items = (data.items || []).filter(it =>
-      !term || (it.label || '').toLowerCase().includes(term) || (it.key || '').toLowerCase().includes(term));
+      (isMarket || (tab === 'ammo') === isAmmo(it)) &&
+      (!term || (it.label || '').toLowerCase().includes(term) || (it.key || '').toLowerCase().includes(term)));
 
     const grid = $('grid');
     grid.innerHTML = '';
@@ -128,7 +152,8 @@
 
     items.forEach(it => {
       if (qtys[it.key] === undefined) qtys[it.key] = 1;
-      const qty = isMarket ? qtys[it.key] : 1;
+      const hasQty = isMarket || it.qty; // market items and ammo boxes
+      const qty = hasQty ? qtys[it.key] : 1;
       const total = it.price * qty;
       const affordable = (data.money || 0) >= total;
       const card = document.createElement('div');
@@ -137,12 +162,12 @@
         '<div class="icon">' + iconFor(it.key) + '</div>' +
         '<div class="name">' + it.label + '</div>' +
         '<div class="detail">' + (it.detail || '') + '</div>' +
-        '<div class="price">$' + it.price + (isMarket && qty > 1 ? ' ×' + qty + ' = $' + total : '') + '</div>' +
-        (isMarket ? '<div class="qty"><button class="step minus">−</button><span class="q">' + qty + '</span><button class="step plus">+</button></div>' : '') +
+        '<div class="price">$' + it.price + (hasQty && qty > 1 ? ' ×' + qty + ' = $' + total : '') + '</div>' +
+        (hasQty ? '<div class="qty"><button class="step minus">−</button><span class="q">' + qty + '</span><button class="step plus">+</button></div>' : '') +
         '<button class="buy"' + (affordable ? '' : ' disabled') + '>ყიდვა</button>';
-      if (isMarket) {
+      if (hasQty) {
         card.querySelector('.minus').onclick = () => { qtys[it.key] = Math.max(1, qty - 1); render(); };
-        card.querySelector('.plus').onclick = () => { qtys[it.key] = Math.min(99, qty + 1); render(); };
+        card.querySelector('.plus').onclick = () => { qtys[it.key] = Math.min(isMarket ? 99 : 20, qty + 1); render(); };
       }
       card.querySelector('.buy').onclick = () => { if (RAGE) mp.trigger('shop:purchase', it.key, qty); };
       grid.appendChild(card);

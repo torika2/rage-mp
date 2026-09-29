@@ -36,9 +36,8 @@
     grid-template-rows: 58px minmax(0, 1fr);
     border-top: 1px solid rgba(242, 193, 92, .72);
     color: var(--text);
-    background: linear-gradient(112deg, rgba(16, 18, 20, .4), rgba(15, 17, 19, .4) 52%, rgba(18, 20, 22, .4));
-    box-shadow: 0 0 42px rgba(242, 193, 92, .1), 0 24px 90px rgba(0, 0, 0, .44);
-    backdrop-filter: blur(3px);
+    background: linear-gradient(112deg, rgba(16, 18, 20, .96), rgba(15, 17, 19, .96) 52%, rgba(18, 20, 22, .96));
+    box-shadow: 0 0 24px rgba(242, 193, 92, .08);
     animation: lift .2s ease-out;
   }
   .topbar { display: flex; align-items: center; gap: 24px; padding: 0 22px; border-bottom: 1px solid var(--line); }
@@ -125,7 +124,7 @@
           <div class="gear-slot"><span class="gear-orb"></span><span>ქუდი</span></div>
           <div class="gear-slot"><span class="gear-orb"></span><span>სათვალე</span></div>
           <div class="gear-slot"><span class="gear-orb"></span><span>ზედა ტანსაცმელი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>ჟილეტი</span></div>
+          <div class="gear-slot" data-equip="vest"><span class="gear-orb"></span><span>ჟილეტი</span></div>
           <div class="gear-slot"><span class="gear-orb"></span><span>ხელთათმანი</span></div>
           <div class="gear-slot"><span class="gear-orb"></span><span>შარვალი</span></div>
           <div class="gear-slot"><span class="gear-orb"></span><span>საათი</span></div>
@@ -137,8 +136,8 @@
         <div class="quickbar">
           <div class="quickbar-title">სწრაფი წვდომა</div>
           <div class="quick-slots" aria-label="სწრაფი წვდომის სლოტები">
-            <div class="slot" title="უჯრა 1"></div><div class="slot" title="უჯრა 2"></div>
-            <div class="slot" title="უჯრა 3"></div><div class="slot" title="უჯრა 4"></div>
+            <div class="slot" title="უჯრა 1"><span class="inv-key">1</span></div><div class="slot" title="უჯრა 2"><span class="inv-key">2</span></div>
+            <div class="slot" title="უჯრა 3"><span class="inv-key">3</span></div><div class="slot" title="უჯრა 4"><span class="inv-key">4</span></div>
           </div>
         </div>
       </section>
@@ -182,6 +181,17 @@
       </section>
     </div>
   </main>
+  <div id="splitBox" class="split-box" hidden>
+    <div class="split-title"><span id="splitVerb">გაყოფა</span>: <span id="splitName"></span></div>
+    <div class="split-row">
+      <input id="splitRange" type="range" min="1" value="1">
+      <input id="splitNum" type="number" min="1" value="1">
+    </div>
+    <div class="split-actions">
+      <button id="splitCancel" type="button">გაუქმება</button>
+      <button id="splitOk" type="button" class="ok">გაყოფა</button>
+    </div>
+  </div>
 </div>
 <script>
   const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
@@ -197,19 +207,88 @@
   });
 
   // ---- Personal inventory rendering (added; does not alter the existing layout) ----
-  const INV_ICONS = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹', armor:'🛡️' };
-  const iconFor = (id) => INV_ICONS[id] || '📦';
+  // Weapon/armour icons are shared with the gun shop (ui/shop/icons, game-icons.net, CC BY 3.0).
+  const WEAPON_IMG = {
+    pistol: 'revolver', combatpistol: 'revolver', appistol: 'revolver',
+    microsmg: 'uzi', smg: 'mp5', pumpshotgun: 'shotgun',
+    assaultrifle: 'ak47', carbinerifle: 'ak47',
+    knife: 'knife', bat: 'bat', armor: 'vest'
+  };
+  const INV_ICONS = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹' };
+  const iconFor = (id) => {
+    const img = WEAPON_IMG[id] || (String(id).startsWith('ammo_') ? 'ammo' : null);
+    return img ? '<img class="inv-wicon" src="../shop/icons/' + img + '.svg" alt="">' : (INV_ICONS[id] || '📦');
+  };
   (function () {
     const style = document.createElement('style');
     style.textContent =
-      '.personal > .slot-grid .slot.filled{border-color:rgba(242,193,92,.6);background:rgba(242,193,92,.08);cursor:pointer;}' +
-      '.personal > .slot-grid .slot .inv-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:1;}' +
-      '.personal > .slot-grid .slot .inv-qty{position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:700;color:#f2c15c;text-shadow:0 1px 2px #000;}' +
+      '.inv-slot.filled{border-color:rgba(242,193,92,.6);background:rgba(242,193,92,.08);cursor:pointer;}' +
+      '.inv-slot .inv-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:1;}' +
+      '.inv-slot .inv-wicon{width:70%;height:70%;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));}' +
+      '.inv-slot .inv-qty{position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:700;color:#f2c15c;text-shadow:0 1px 2px #000;}' +
       '.columns.no-storage{grid-template-columns:minmax(230px,.85fr) minmax(360px,1.15fr);}' +
       '.column.storage.inv-hidden{display:none;}' +
-      '.bag.inv-hidden{display:none;}';
+      '.bag.inv-hidden{display:none;}' +
+      '.inv-slot.drag-source{opacity:.35;}' +
+      '.inv-slot.drag-over{border-color:var(--gold);box-shadow:0 0 12px rgba(242,193,92,.25);}' +
+      '.inventory.drag-outside{border-top-color:#ff6978;}' +
+      '.inv-slot.equipped{border-color:#5fd19b;box-shadow:0 0 12px rgba(95,209,155,.35);cursor:default;}' +
+      '.inv-slot.depleted .inv-icon{opacity:.3;filter:grayscale(1);}' +
+      '.inv-slot.depleted .inv-qty{color:#ff6978;}' +
+      '.inv-slot.equipped.locked,.inv-slot.equipped.locked-over{border-color:#ff6978;box-shadow:0 0 14px rgba(255,105,120,.5);}' +
+      '.inv-slot.locked{animation:inv-shake .3s ease-in-out;}' +
+      '@keyframes inv-shake{0%,100%{transform:none}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}' +
+      '.paperdoll .gear-slot[data-equip]{cursor:pointer;}' +
+      '.gear-slot[data-equip] .gear-orb{position:relative;}' +
+      '.gear-slot.worn .gear-orb{width:52px;height:52px;border-color:#5aa9ff;background:rgba(90,169,255,.12);box-shadow:0 0 14px rgba(90,169,255,.3);}' +
+      '.gear-slot.worn .gear-orb::after{display:none;}' +
+      '.gear-slot.worn .gear-orb .inv-wicon{width:62%;height:62%;object-fit:contain;}' +
+      '.gear-slot .gear-val{position:absolute;right:-6px;bottom:-4px;font-size:10px;font-weight:700;color:#5aa9ff;text-shadow:0 1px 2px #000;}' +
+      '.gear-slot.drag-over .gear-orb{border-color:var(--gold);box-shadow:0 0 14px rgba(242,193,92,.35);}' +
+      '.gear-slot.locked-over .gear-orb{border-color:#ff6978;box-shadow:0 0 14px rgba(255,105,120,.5);}' +
+      '.split-box{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;width:300px;padding:16px 18px;background:rgba(15,19,25,.96);border:1px solid rgba(242,193,92,.5);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:grid;gap:12px;}' +
+      '.split-box[hidden]{display:none;}' +
+      '.split-title{font-size:13px;font-weight:700;}' +
+      '.split-title span{color:var(--gold);}' +
+      '.split-row{display:grid;grid-template-columns:1fr 64px;gap:10px;align-items:center;}' +
+      '.split-row input[type=range]{accent-color:#f2c15c;width:100%;}' +
+      '.split-row input[type=number]{width:100%;padding:5px 6px;background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--text);font:inherit;font-size:13px;text-align:center;}' +
+      '.split-actions{display:flex;justify-content:flex-end;gap:8px;}' +
+      '.split-actions button{padding:6px 14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;font-size:12px;}' +
+      '.split-actions button.ok{border-color:#f2c15c;color:#f2c15c;}' +
+      '.inv-slot .inv-rounds::before{content:"";display:inline-block;width:4px;height:8px;margin-right:2px;border-radius:2px 2px 0 0;background:currentColor;vertical-align:-1px;}' +
+      '.inv-slot .inv-rounds.none{color:#ff6978;}' +
+      '.inv-slot .inv-key{position:absolute;left:5px;top:3px;z-index:1;font-size:12px;font-weight:700;line-height:1;color:var(--gold);text-shadow:0 1px 2px #000;}' +
+      '.inv-ghost{position:fixed;z-index:50;width:52px;height:52px;margin:-26px 0 0 -26px;display:flex;align-items:center;justify-content:center;font-size:24px;pointer-events:none;border:1px solid var(--gold);background:rgba(12,14,17,.85);}' +
+      '.inv-ghost .inv-wicon{width:70%;height:70%;object-fit:contain;}';
     document.head.appendChild(style);
   })();
+
+  // Grid slots (0-24) followed by the quick-access bar (25-28) — same order as the server array.
+  const allSlots = () => [
+    ...document.querySelectorAll('.personal > .slot-grid .slot'),
+    ...document.querySelectorAll('.quick-slots .slot')
+  ];
+  allSlots().forEach(s => s.classList.add('inv-slot'));
+
+  // ---- Equipment (paperdoll): ჟილეტი holds the worn armour vest ----
+  const vestSlot = document.querySelector('.gear-slot[data-equip="vest"]');
+  let wornVest = null;
+  function renderEquipment(eq) {
+    wornVest = eq.vest || null;
+    const orb = vestSlot.querySelector('.gear-orb');
+    vestSlot.classList.toggle('worn', !!wornVest);
+    orb.innerHTML = wornVest ? iconFor(wornVest.id) + '<span class="gear-val">' + wornVest.armour + '%</span>' : '';
+    vestSlot.title = wornVest
+      ? wornVest.label + ' — ' + wornVest.armour + '%  (click / drag to inventory: take off · only when undamaged)'
+      : 'ჟილეტი — drag armour here to wear it';
+  }
+  vestSlot.onclick = () => { if (justDragged || !wornVest) return; if (RAGE) mp.trigger('inventory:unequip', 'vest', -1); };
+  vestSlot.oncontextmenu = (e) => { e.preventDefault(); vestSlot.onclick(); };
+  vestSlot.onmousedown = (e) => {
+    if (e.button !== 0 || !wornVest) return;
+    pending = { equip: 'vest', index: -1, item: { id: wornVest.id }, x: e.clientX, y: e.clientY };
+  };
 
   window.setInventory = function (data) {
     // Trunk column only at a vehicle; backpack section only when a backpack is equipped.
@@ -222,28 +301,186 @@
     }
     if (bag) bag.classList.toggle('inv-hidden', !data.hasBackpack);
 
-    const grid = document.querySelector('.personal > .slot-grid');
-    if (!grid) return;
-    const slots = grid.querySelectorAll('.slot');
+    const slots = allSlots();
+    const quickStart = data.quickStart || 25;
+    renderEquipment((data.equipment || {}));
     const cap = document.querySelector('.personal > .section-head .capacity');
     if (cap) cap.textContent = (data.used || 0) + ' / ' + (data.max || 25);
     const items = data.items || [];
+    lastItems = items;
     slots.forEach((slot, i) => {
       const item = items[i];
       slot.innerHTML = '';
-      slot.classList.remove('filled');
+      slot.classList.remove('filled', 'equipped', 'depleted', 'locked', 'locked-over');
       slot.onclick = null;
+      slot.onmousedown = null;
       slot.oncontextmenu = null;
-      slot.title = '';
+      const quick = i >= quickStart;
+      slot.title = quick ? 'სწრაფი სლოტი ' + (i - quickStart + 1) + ' (კლავიში ' + (i - quickStart + 1) + ')' : '';
+      if (quick) slot.innerHTML = '<span class="inv-key">' + (i - quickStart + 1) + '</span>';
       if (!item) return;
       slot.classList.add('filled');
-      slot.title = item.label + (item.qty > 1 ? ' ×' + item.qty : '') + '  (click: use · right-click: drop)';
-      slot.innerHTML = '<span class="inv-icon">' + iconFor(item.id) + '</span>' +
-        (item.qty > 1 ? '<span class="inv-qty">' + item.qty + '</span>' : '');
-      slot.onclick = () => { if (RAGE) mp.trigger('inventory:use', item.id); };
-      slot.oncontextmenu = (e) => { e.preventDefault(); if (RAGE) mp.trigger('inventory:drop', item.id); };
+      if (data.equippedSlot === i) slot.classList.add('equipped');
+      if (item.qty <= 0) slot.classList.add('depleted');
+      slot.title = item.label + (item.qty > 1 ? ' ×' + item.qty : '') + (quick
+        ? '  (click / key ' + (i - quickStart + 1) + ': use · drag or right-click: back to inventory)'
+        : item.type === 'ammo'
+          ? '  (loads automatically into its gun · Ctrl+drag: split / drop some · drag out / right-click: drop stack)'
+        : item.type === 'weapon'
+          ? '  (drag to a quick slot 1-4 to equip · drag out / right-click: drop)'
+          : '  (click: use · drag: move / to quick slot · Ctrl+drag: split / drop some · drag out / right-click: drop)');
+      slot.innerHTML += '<span class="inv-icon">' + iconFor(item.id) + '</span>' +
+        (item.rounds !== undefined ? '<span class="inv-qty inv-rounds' + (item.rounds <= 0 ? ' none' : '') + '">' + item.rounds + '</span>'
+          : (item.qty > 1 || item.qty <= 0) ? '<span class="inv-qty">' + item.qty + '</span>' : '');
+      slot.onclick = () => { if (justDragged) return; if (RAGE) mp.trigger('inventory:use', item.id, i); };
+      const equipped = data.equippedSlot === i;
+      slot.onmousedown = (e) => {
+        if (e.button !== 0) return;
+        if (equipped) return flashLocked(slot); // equipped weapon can't be dragged
+        pending = { index: i, item, x: e.clientX, y: e.clientY };
+      };
+      slot.oncontextmenu = (e) => {
+        e.preventDefault();
+        if (!RAGE || equipped) return; // equipped weapon can't be moved or dropped
+        if (!quick || item.qty <= 0) return mp.trigger('inventory:drop', item.id, i); // empty quick slot -> clear it
+        const free = slots.findIndex((s, j) => j < quickStart && !items[j]); // quick slot -> first free grid slot
+        if (free !== -1) mp.trigger('inventory:move', i, free);
+      };
     });
   };
+
+  // ---- Drag & drop: drop on another slot to move/swap, drop outside the window to throw away ----
+  let pending = null, drag = null, justDragged = false;
+  const gridSlots = allSlots;
+  const panel = document.querySelector('.inventory');
+  function slotAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const slot = el && el.closest('.inv-slot');
+    return slot ? gridSlots().indexOf(slot) : -1;
+  }
+  function isOutside(x, y) {
+    const r = panel.getBoundingClientRect();
+    return x < r.left || x > r.right || y < r.top || y > r.bottom;
+  }
+  function flashLocked(slot) {
+    slot.classList.remove('locked');
+    void slot.offsetWidth; // restart the animation on repeated clicks
+    slot.classList.add('locked');
+    clearTimeout(slot._lockTimer);
+    slot._lockTimer = setTimeout(() => slot.classList.remove('locked'), 600);
+  }
+  function clearHighlights() {
+    gridSlots().forEach(s => s.classList.remove('drag-over', 'drag-source', 'locked-over'));
+    vestSlot.classList.remove('drag-over', 'locked-over');
+    panel.classList.remove('drag-outside');
+  }
+  function endDrag() {
+    if (drag) { drag.ghost.remove(); clearHighlights(); }
+    pending = null; drag = null;
+  }
+  document.addEventListener('mousemove', (e) => {
+    if (pending && !drag && Math.hypot(e.clientX - pending.x, e.clientY - pending.y) > 5) {
+      const ghost = document.createElement('div');
+      ghost.className = 'inv-ghost';
+      ghost.innerHTML = iconFor(pending.item.id);
+      document.body.appendChild(ghost);
+      drag = { ...pending, ghost };
+      if (drag.index >= 0) gridSlots()[drag.index].classList.add('drag-source');
+    }
+    if (!drag) return;
+    drag.ghost.style.left = e.clientX + 'px';
+    drag.ghost.style.top = e.clientY + 'px';
+    const over = slotAt(e.clientX, e.clientY);
+    gridSlots().forEach((s, i) => {
+      const hovered = i === over && i !== drag.index;
+      const locked = s.classList.contains('equipped'); // can't swap onto the weapon in hand
+      s.classList.toggle('drag-over', hovered && !locked);
+      s.classList.toggle('locked-over', hovered && locked);
+    });
+    // Vest slot accepts armour only (and only when nothing is worn).
+    const onVest = overVest(e.clientX, e.clientY) && !drag.equip;
+    const vestOk = onVest && drag.item.type === 'armor' && !wornVest;
+    vestSlot.classList.toggle('drag-over', vestOk);
+    vestSlot.classList.toggle('locked-over', onVest && !vestOk);
+    panel.classList.toggle('drag-outside', !drag.equip && isOutside(e.clientX, e.clientY));
+  });
+  function overVest(x, y) {
+    const el = document.elementFromPoint(x, y);
+    return !!(el && el.closest('.gear-slot[data-equip="vest"]'));
+  }
+  document.addEventListener('mouseup', (e) => {
+    if (!drag) { pending = null; return; }
+    const to = slotAt(e.clientX, e.clientY);
+    const toEquipped = to !== -1 && gridSlots()[to].classList.contains('equipped');
+    if (drag.equip) { // dragging the worn vest: only onto an empty inventory slot
+      if (to !== -1 && !toEquipped && RAGE) mp.trigger('inventory:unequip', drag.equip, to);
+    }
+    else if (overVest(e.clientX, e.clientY)) { // armour onto ჟილეტი = wear it
+      if (drag.item.type === 'armor' && !wornVest && RAGE) mp.trigger('inventory:use', drag.item.id, drag.index);
+      else flashLocked(vestSlot);
+    }
+    else if (toEquipped) { /* ignore: equipped slot is locked */ }
+    else if (to !== -1 && to !== drag.index && ctrlHeld(e) && drag.item.qty > 1 && canSplitInto(to, drag.item.id)) {
+      openSplit('move', drag.index, to, drag.item); // Ctrl+drop on a slot: choose how many to move
+    }
+    else if (to === -1 && ctrlHeld(e) && drag.item.qty > 1 && isOutside(e.clientX, e.clientY)) {
+      openSplit('drop', drag.index, -1, drag.item); // Ctrl+drop outside: choose how many to drop on the ground
+    }
+    else if (to !== -1 && to !== drag.index) { if (RAGE) mp.trigger('inventory:move', drag.index, to); }
+    else if (isOutside(e.clientX, e.clientY)) { if (RAGE) mp.trigger('inventory:drop', drag.item.id, drag.index); }
+    justDragged = true;
+    setTimeout(() => { justDragged = false; }, 0); // swallow the click that follows the drag
+    endDrag();
+  });
+  // ---- Split popup: Ctrl+drag a stack onto an empty/same-item slot (split) or out of the window (drop some) ----
+  const splitBox = document.getElementById('splitBox');
+  const splitRange = document.getElementById('splitRange');
+  const splitNum = document.getElementById('splitNum');
+  let splitReq = null;
+  // Ctrl state: the browser's own flag isn't always forwarded in-game, so also track key events
+  // and the game's Ctrl key (pushed by the client script via window.setCtrl).
+  let ctrlDown = false;
+  window.setCtrl = (down) => { ctrlDown = !!down; };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Control') ctrlDown = true; });
+  document.addEventListener('keyup', (e) => { if (e.key === 'Control') ctrlDown = false; });
+  window.addEventListener('blur', () => { ctrlDown = false; });
+  const ctrlHeld = (e) => e.ctrlKey || ctrlDown;
+  let lastItems = [];
+  function canSplitInto(to, id) { const t = lastItems[to]; return !t || t.id === id; }
+  // mode 'move': split part of the stack into slot `to` (at most qty-1);
+  // mode 'drop': drop that many on the ground (up to the whole stack).
+  function openSplit(mode, from, to, item) {
+    const max = mode === 'drop' ? item.qty : item.qty - 1;
+    splitReq = { mode, from, to, max, id: item.id };
+    document.getElementById('splitVerb').textContent = mode === 'drop' ? 'გადაგდება' : 'გაყოფა';
+    document.getElementById('splitOk').textContent = mode === 'drop' ? 'გადაგდება' : 'გაყოფა';
+    document.getElementById('splitName').textContent = item.label + ' (' + item.qty + ')';
+    splitRange.max = splitNum.max = max;
+    splitRange.value = splitNum.value = Math.max(1, Math.floor(item.qty / 2));
+    splitBox.hidden = false;
+    splitNum.focus(); splitNum.select();
+  }
+  function closeSplit() { splitBox.hidden = true; splitReq = null; }
+  function clampSplit(v) { return Math.max(1, Math.min(splitReq ? splitReq.max : 1, Math.floor(Number(v) || 1))); }
+  splitRange.oninput = () => { splitNum.value = splitRange.value; };
+  splitNum.oninput = () => { splitRange.value = clampSplit(splitNum.value); };
+  document.getElementById('splitCancel').onclick = closeSplit;
+  document.getElementById('splitOk').onclick = () => {
+    if (splitReq && RAGE) {
+      const n = clampSplit(splitNum.value);
+      if (splitReq.mode === 'drop') mp.trigger('inventory:drop', splitReq.id, splitReq.from, n);
+      else mp.trigger('inventory:split', splitReq.from, splitReq.to, n);
+    }
+    closeSplit();
+  };
+  splitBox.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('splitOk').onclick(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSplit(); }
+  });
+  splitBox.addEventListener('mousedown', (e) => e.stopPropagation()); // don't start drags from the popup
+
+  document.addEventListener('mouseleave', endDrag);
+  window.addEventListener('blur', endDrag);
 
   if (RAGE) mp.trigger('inventory:uiReady');
   else window.setInventory({ used: 2, max: 25, items: [
