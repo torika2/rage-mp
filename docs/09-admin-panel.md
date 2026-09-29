@@ -19,6 +19,12 @@ while leaving the panel available to turn it back on.
   on foot; the destination position and dimension are copied server-side.
 - **Heal** a living player to 100 health.
 - **Revive** an unconscious player at their current position and dimension.
+- **Kill** a non-admin player (with confirmation); self-targeting and
+  allowlisted administrators are rejected server-side.
+- **Give money** to a player by entering a whole-dollar amount from $1 to
+  $1,000,000. The persisted balance is updated server-side and the recipient is
+  notified. The `/addmoney` command is restricted to allowlisted admins with
+  Admin Mode enabled.
 - **Kick** a player after a confirmation prompt.
 - **Mute** or **Ban** an online player using the selected duration: 5 minutes,
   30 minutes, 1 hour, 6 hours, 1 day, 7 days, or permanently. Active mutes
@@ -26,6 +32,7 @@ while leaving the panel available to turn it back on.
   server restarts and expire automatically. **Unmute** is available on the
   player's row; enter a Social Club account name under **Unban account** to
   remove a ban.
+- Allowlisted administrators bypass automatic chat spam bans.
 - Toggle the admin's own flight mode from the panel or press **B** (WASD,
   Space, Ctrl, Shift to move). While flying, the admin is invisible to streamed
   players; invisibility is restored when flight is disabled or the admin dies.

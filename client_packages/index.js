@@ -93,6 +93,11 @@ const baseMaxSpeedByVeh = {};
 let lastEngineToggle = 0;
 let fuelBrowser = null;
 let fuelUIOpen = false;
+let inventoryBrowser = null;
+let vehicleMenuBrowser = null;
+let vehicleMenuVehicle = null;
+let pendingVehicleMenuVehicle = null;
+let vehicleMenuOutside = false;
 let chatting = false;     // native chat input is open (typing)
 let suppressPauseUntil = 0;
 let pendingDrain = false; // "empty tank first" chosen for the in-flight purchase
@@ -154,7 +159,153 @@ function closeFuelUI() {
     mp.gui.cursor.show(false, false);
 }
 
+function openInventoryUI() {
+    if (inventoryBrowser || chatting || fuelUIOpen || adminBrowser) return;
+    inventoryBrowser = mp.browsers.new('package://ui/inventory/index.html');
+    mp.gui.cursor.show(true, true);
+}
+
+function closeInventoryUI() {
+    if (!inventoryBrowser) return;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    inventoryBrowser.destroy();
+    inventoryBrowser = null;
+    mp.gui.cursor.show(false, false);
+}
+
+function sendVehicleMenuState() {
+    const vehicle = vehicleMenuVehicle;
+    if (!vehicleMenuBrowser || !vehicle) return;
+    if (!mp.vehicles.exists(vehicle)) {
+        closeVehicleMenu();
+        return;
+    }
+    vehicleMenuBrowser.execute(`window.setVehicleMenuState(${JSON.stringify({
+        engine: vehicle.getIsEngineRunning() === true,
+        lights: vehicleLightsMode[vehicle.remoteId] || 0,
+        belt: seatbeltOn,
+        outside: vehicleMenuOutside
+    })})`);
+}
+
+function vehicleMenuTargetInRange(vehicle, range = 5) {
+    if (!vehicle || !mp.vehicles.exists(vehicle) ||
+        Number(vehicle.dimension) !== Number(mp.players.local.dimension)) return false;
+    const playerPosition = mp.players.local.position;
+    const vehiclePosition = vehicle.position;
+    const dx = playerPosition.x - vehiclePosition.x;
+    const dy = playerPosition.y - vehiclePosition.y;
+    const dz = playerPosition.z - vehiclePosition.z;
+    return dx * dx + dy * dy + dz * dz <= range * range;
+}
+
+function aimedVehicle() {
+    const cameraPosition = mp.game.cam.getGameplayCamCoord();
+    const cameraRotation = mp.game.cam.getGameplayCamRot(2);
+    const pitch = cameraRotation.x * Math.PI / 180;
+    const yaw = cameraRotation.z * Math.PI / 180;
+    const distance = 8;
+    const directionX = -Math.sin(yaw) * Math.cos(pitch);
+    const directionY = Math.cos(yaw) * Math.cos(pitch);
+    const directionZ = Math.sin(pitch);
+    const rayEnd = new mp.Vector3(
+        cameraPosition.x + directionX * distance,
+        cameraPosition.y + directionY * distance,
+        cameraPosition.z + directionZ * distance
+    );
+    const hit = mp.raycasting.testPointToPoint(cameraPosition, rayEnd, mp.players.local, 3);
+    const vehicle = hit && hit.entity && hit.entity.type === 'vehicle' ? hit.entity : null;
+    return vehicle && vehicleMenuTargetInRange(vehicle) ? vehicle : null;
+}
+
+function openVehicleMenu(vehicle, outside = false) {
+    if (vehicleMenuBrowser || chatting || adminBrowser || fuelUIOpen || inventoryBrowser) return;
+    if (!vehicle) return;
+    vehicleMenuVehicle = vehicle;
+    vehicleMenuOutside = outside;
+    vehicleMenuBrowser = mp.browsers.new('package://ui/vehicle/index.html');
+    mp.gui.cursor.show(true, true);
+}
+
+function requestOutsideVehicleMenu() {
+    if (pendingVehicleMenuVehicle || chatting || adminBrowser || fuelUIOpen || inventoryBrowser) return;
+    const vehicle = aimedVehicle();
+    if (!vehicle) return;
+    pendingVehicleMenuVehicle = vehicle;
+    mp.events.callRemote('vehicle:menu:request', Number(vehicle.remoteId));
+}
+
+function closeVehicleMenu() {
+    pendingVehicleMenuVehicle = null;
+    if (!vehicleMenuBrowser) return;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    vehicleMenuBrowser.destroy();
+    vehicleMenuBrowser = null;
+    vehicleMenuVehicle = null;
+    vehicleMenuOutside = false;
+    mp.gui.cursor.show(false, false);
+}
+
+function applyVehicleMenuAction(action, vehicle, outside) {
+    if (action === 'engine') engineToggle(true, vehicle);
+    else if (action === 'lights') toggleVehicleLights(true, vehicle);
+    else if (action === 'belt' && !outside) toggleSeatbelt(true);
+    else if (action === 'doors') closeVehicleDoors(true, vehicle);
+}
+
 mp.events.add('fuel:uiReady', () => sendFuelData());
+mp.events.add('vehicle:menu:ready', sendVehicleMenuState);
+mp.events.add('vehicle:menu:close', closeVehicleMenu);
+mp.events.add('vehicle:menu:open', vehicleId => {
+    const vehicle = pendingVehicleMenuVehicle;
+    pendingVehicleMenuVehicle = null;
+    if (!vehicle || Number(vehicle.remoteId) !== Number(vehicleId) ||
+        mp.players.local.vehicle || !vehicleMenuTargetInRange(vehicle)) return;
+    const currentTarget = aimedVehicle();
+    if (!currentTarget || Number(currentTarget.remoteId) !== Number(vehicleId)) return;
+    openVehicleMenu(vehicle, true);
+});
+mp.events.add('vehicle:menu:denied', () => {
+    if (pendingVehicleMenuVehicle) {
+        pendingVehicleMenuVehicle = null;
+        notify('მანქანის მენიუ ხელმისაწვდომია მხოლოდ შენს ახლომდებარე ავტომობილზე.');
+    } else if (vehicleMenuOutside) {
+        closeVehicleMenu();
+        notify('მანქანის მართვა ვერ შესრულდა.');
+    }
+});
+mp.events.add('vehicle:menu:action', action => {
+    if (!vehicleMenuBrowser || !vehicleMenuVehicle ||
+        !['engine', 'lights', 'belt', 'doors'].includes(action)) return;
+    if (vehicleMenuOutside) {
+        if (action === 'belt') return;
+        if (!vehicleMenuTargetInRange(vehicleMenuVehicle) || mp.players.local.vehicle) {
+            closeVehicleMenu();
+            return;
+        }
+        mp.events.callRemote('vehicle:menu:action', Number(vehicleMenuVehicle.remoteId), action);
+        return;
+    }
+    const vehicle = mp.players.local.vehicle;
+    if (!vehicle || Number(vehicle.remoteId) !== Number(vehicleMenuVehicle.remoteId)) {
+        closeVehicleMenu();
+        return;
+    }
+    applyVehicleMenuAction(action, vehicle, false);
+    sendVehicleMenuState();
+});
+mp.events.add('vehicle:menu:apply', (vehicleId, action) => {
+    if (!vehicleMenuBrowser || !vehicleMenuOutside || !vehicleMenuVehicle ||
+        Number(vehicleMenuVehicle.remoteId) !== Number(vehicleId) ||
+        !['engine', 'lights', 'doors'].includes(action) ||
+        mp.players.local.vehicle || !vehicleMenuTargetInRange(vehicleMenuVehicle)) {
+        return;
+    }
+    applyVehicleMenuAction(action, vehicleMenuVehicle, true);
+    sendVehicleMenuState();
+});
 mp.events.add('fuel:purchase', (octane, liters, drain) => {
     pendingDrain = (drain === true || drain === 'true' || drain === 1 || drain === '1');
     mp.events.callRemote('fuel:buy', parseInt(octane), parseInt(liters));
@@ -198,9 +349,9 @@ mp.events.add('fuel:deny', (msg) => {
 });
 
 // ---------- Engine toggle ("2") ----------
-function engineToggle() {
-    if (chatting || fuelUIOpen) return;
-    const veh = mp.players.local.vehicle;
+function engineToggle(fromVehicleMenu = false, targetVehicle = null) {
+    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || (vehicleMenuBrowser && !fromVehicleMenu)) return;
+    const veh = targetVehicle || mp.players.local.vehicle;
     if (!veh) return;
     const now = Date.now();
     if (now - lastEngineToggle < CFG.engineCooldownMs) return;
@@ -218,6 +369,7 @@ function engineToggle() {
         veh.setEngineOn(true, true, false);
         notify('ძრავი: ჩართული');
     }
+    if (vehicleMenuBrowser) sendVehicleMenuState();
 }
 
 // ---------- Keybinds ----------
@@ -230,15 +382,29 @@ function blockPauseControls() {
 }
 
 mp.keys.bind(0x45, false, () => {
-    if (chatting) return;
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
     if (!fuelUIOpen && eligibleToRefuel(mp.players.local.vehicle)) openFuelUI();
 });
 mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
     if (chatting) { closeChat(); return; }
     if (adminBrowser) closeAdminPanel(true);
     else if (fuelUIOpen) closeFuelUI();
+    else if (inventoryBrowser) closeInventoryUI();
+    else if (vehicleMenuBrowser) closeVehicleMenu();
 });
-mp.keys.bind(0x32, false, engineToggle);                            // 2 - engine on/off
+mp.keys.bind(0x49, false, () => { // I - inventory
+    if (chatting || vehicleMenuBrowser) return;
+    if (inventoryBrowser) closeInventoryUI();
+    else if (!adminBrowser && !fuelUIOpen) openInventoryUI();
+});
+mp.keys.bind(0x47, false, () => { // G - vehicle interaction menu
+    if (chatting) return;
+    if (vehicleMenuBrowser) closeVehicleMenu();
+    else if (pendingVehicleMenuVehicle) closeVehicleMenu();
+    else if (mp.players.local.vehicle) openVehicleMenu(mp.players.local.vehicle);
+    else requestOutsideVehicleMenu();
+});
+mp.keys.bind(0x32, false, () => engineToggle());                    // 2 - engine on/off
 
 // ---------- Custom chat (CEF) ----------
 mp.gui.chat.show(false); // hide native chat (also removes the "Multiplayer started" line)
@@ -268,7 +434,7 @@ mp.events.add('chat:hasTeam', (value) => {
 });
 
 function openChat() {
-    if (chatting || adminBrowser || fuelUIOpen) return;
+    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser) return;
     chatting = true;
     mp.gui.cursor.show(true, true);
     if (chatBrowser) chatBrowser.execute(
@@ -305,7 +471,7 @@ mp.events.add('voice:setMuted', (value) => {
 });
 
 mp.keys.bind(0x42, true, () => {  // B held -> talk
-    if (voiceBanned || chatting || adminBrowser || fuelUIOpen) return;
+    if (voiceBanned || chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser) return;
     voiceTalking = true;
     if (mp.voiceChat) mp.voiceChat.muted = false;
 });
@@ -316,33 +482,45 @@ mp.keys.bind(0x42, false, () => { // B released -> stop talking
 
 // ---------- Vehicle keybinds: seatbelt (J), close doors (L), lights (H) ----------
 let seatbeltOn = false;
-let lightsForcedOn = false;
+const vehicleLightsMode = Object.create(null);
 
-mp.keys.bind(0x4A, false, () => { // J - seatbelt
-    if (chatting || !mp.players.local.vehicle) return;
+function toggleSeatbelt(fromVehicleMenu = false) {
+    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || (vehicleMenuBrowser && !fromVehicleMenu) || !mp.players.local.vehicle) return;
     seatbeltOn = !seatbeltOn;
     mp.players.local.setConfigFlag(32, !seatbeltOn); // 32 = can fly through windscreen; off while belted
     notify(seatbeltOn ? 'ღვედი: შეკრული' : 'ღვედი: შეხსნილი');
-});
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
 
-mp.keys.bind(0x4C, false, () => { // L - close all doors
-    const veh = mp.players.local.vehicle;
-    if (chatting || !veh) return;
+mp.keys.bind(0x4A, false, toggleSeatbelt); // J - seatbelt
+
+function closeVehicleDoors(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || (vehicleMenuBrowser && !fromVehicleMenu) || !veh) return;
     for (let i = 0; i < 6; i++) veh.setDoorShut(i, false);
     notify('კარები დაიკეტა');
-});
+}
 
-mp.keys.bind(0x48, false, () => { // H - toggle lights (2 = force on, 1 = force off)
-    const veh = mp.players.local.vehicle;
-    if (chatting || !veh) return;
-    lightsForcedOn = !lightsForcedOn;
-    veh.setLights(lightsForcedOn ? 2 : 1);
-    notify(lightsForcedOn ? 'შუქები: ჩართული' : 'შუქები: გამორთული');
-});
+function toggleVehicleLights(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || (vehicleMenuBrowser && !fromVehicleMenu) || !veh) return;
+    const forceOn = vehicleLightsMode[veh.remoteId] !== 1;
+    vehicleLightsMode[veh.remoteId] = forceOn ? 1 : -1;
+    veh.setLights(forceOn ? 2 : 1);
+    notify(forceOn ? 'შუქები: ჩართული' : 'შუქები: გამორთული');
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
 
-mp.events.add('playerLeaveVehicle', () => { // reset per-car states on exit
+mp.keys.bind(0x4C, false, closeVehicleDoors); // L - close all doors
+mp.keys.bind(0x48, false, toggleVehicleLights); // H - toggle lights
+
+mp.events.add('playerLeaveVehicle', vehicle => { // reset per-car states on exit
+    closeVehicleMenu();
+    if (vehicle) {
+        vehicle.setLights(0);
+        delete vehicleLightsMode[vehicle.remoteId];
+    }
     seatbeltOn = false;
-    lightsForcedOn = false;
     mp.players.local.setConfigFlag(32, true);
 });
 
@@ -354,9 +532,13 @@ mp.events.add('playerReady', () => {
 });
 
 mp.events.add('render', () => {
+    if (vehicleMenuBrowser && vehicleMenuOutside &&
+        (mp.players.local.vehicle || !vehicleMenuTargetInRange(vehicleMenuVehicle))) {
+        closeVehicleMenu();
+    }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -492,7 +674,7 @@ mp.events.add('render', () => {
         mp.gui.cursor.show(true, true);
         return;
     }
-    if (!flyEnabled) return;
+    if (fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || !flyEnabled) return;
 
     const player = mp.players.local;
     if (player.health <= 0) {
@@ -548,26 +730,31 @@ function closeAdminPanel(notifyServer) {
     if (notifyServer) mp.events.callRemote('admin:panel:closed');
 }
 
-function requestAdminAction(action, id, duration) {
+function requestAdminAction(action, id, duration, amount) {
     if (!adminBrowser) return;
     const playerId = Number(id);
     const durationSeconds = Number(duration);
+    const moneyAmount = Number(amount);
     if (!Number.isSafeInteger(playerId) || playerId < 0) return;
     mp.events.callRemote('admin:panel:action', JSON.stringify({
         action: String(action),
         id: playerId,
-        duration: Number.isSafeInteger(durationSeconds) ? durationSeconds : null
+        duration: Number.isSafeInteger(durationSeconds) ? durationSeconds : null,
+        amount: Number.isSafeInteger(moneyAmount) ? moneyAmount : null
     }));
 }
 
 mp.events.add('admin:panel:open', () => {
     if (adminBrowser) return;
+    if (vehicleMenuBrowser) closeVehicleMenu();
+    if (inventoryBrowser) closeInventoryUI();
     if (fuelUIOpen) closeFuelUI();
     adminBrowser = mp.browsers.new('package://ui/admin/index.html');
     mp.gui.cursor.show(true, true);
 });
 
 mp.events.add('admin:panel:hide', () => closeAdminPanel(false));
+mp.events.add('inventory:close', closeInventoryUI);
 
 mp.events.add('admin:panel:data', json => {
     if (!adminBrowser) return;

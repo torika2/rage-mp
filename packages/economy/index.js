@@ -5,6 +5,7 @@ const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'money.json');
 const START_MONEY = 5000;
+const MAX_ADMIN_GRANT = 1000000;
 
 // Prices per litre by octane index — MUST match the client's OCTANES order.
 const OCTANE_PRICES = [2.3, 3.0, 4.2, 5.5]; // keep in sync with client OCTANES prices
@@ -12,7 +13,11 @@ const OCTANE_NAMES = ['რეგულარი 87', 'პლუსი 91', 'პ�
 
 let store = {};
 try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
-function save() { try { fs.writeFileSync(DATA_FILE, JSON.stringify(store)); } catch (e) {} }
+function save() {
+    const temporaryFile = DATA_FILE + '.tmp';
+    fs.writeFileSync(temporaryFile, JSON.stringify(store));
+    fs.renameSync(temporaryFile, DATA_FILE);
+}
 
 function keyOf(player) { return player.socialClub || player.name || ('id' + player.id); }
 function getMoney(player) {
@@ -21,10 +26,31 @@ function getMoney(player) {
     return store[k];
 }
 function setMoney(player, amount) {
-    store[keyOf(player)] = Math.max(0, Math.floor(amount));
-    player.setVariable('money', store[keyOf(player)]);
-    save();
+    const key = keyOf(player);
+    const previous = store[key];
+    const updated = Math.max(0, Math.floor(amount));
+    store[key] = updated;
+    try {
+        save();
+    } catch (error) {
+        if (previous === undefined) delete store[key];
+        else store[key] = previous;
+        throw error;
+    }
+    player.setVariable('money', updated);
+    return updated;
 }
+
+global.adminAddMoney = function (player, amount) {
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_ADMIN_GRANT) {
+        throw new RangeError('Admin money grant must be an integer from 1 to 1,000,000.');
+    }
+    const current = getMoney(player);
+    if (current > Number.MAX_SAFE_INTEGER - amount) {
+        throw new RangeError('Player balance would exceed the safe integer limit.');
+    }
+    return setMoney(player, current + amount);
+};
 
 mp.events.add('playerJoin', (player) => player.setVariable('money', getMoney(player)));
 
@@ -32,12 +58,21 @@ mp.events.addCommand('money', (player) => {
     player.outputChatBox('!{#7ec8ff}ბალანსი: $' + getMoney(player));
 });
 
-// testing/admin helper — remove or lock down later
 mp.events.addCommand('addmoney', (player, _, amt) => {
-    const n = parseInt(amt);
-    if (isNaN(n)) return player.outputChatBox('გამოყენება: /addmoney <თანხა>');
-    setMoney(player, getMoney(player) + n);
-    player.outputChatBox('ახალი ბალანსი: $' + getMoney(player));
+    if (typeof global.isProtectedAdmin !== 'function' ||
+        !global.isProtectedAdmin(player) || player.getVariable('admin:mode') !== true) {
+        return player.outputChatBox('!{#ff6b6b}ეს ბრძანება ხელმისაწვდომია მხოლოდ Admin Mode-ში.');
+    }
+    const amount = Number(amt);
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_ADMIN_GRANT) {
+        return player.outputChatBox('გამოყენება: /addmoney <1-1000000>');
+    }
+    try {
+        player.outputChatBox('ახალი ბალანსი: $' + global.adminAddMoney(player, amount));
+    } catch (error) {
+        console.error(`[economy] Could not add money to ${player.name}:`, error);
+        player.outputChatBox('!{#ff6b6b}თანხის დამატება ვერ მოხერხდა.');
+    }
 });
 
 // Fuel purchase: client sends octane index + litres; server prices & charges it.

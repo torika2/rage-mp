@@ -42,8 +42,9 @@
   .players { min-width:0; display:flex; flex-direction:column; padding:18px 20px; }
   .toolbar { display:flex; gap:10px; margin-bottom:14px; }
   .search { flex:1; min-width:0; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px 12px; outline:none; }
-  .search:focus, .announce:focus, .duration:focus { border-color:#ffb42e99; }
+  .search:focus, .announce:focus, .duration:focus, .money-amount:focus { border-color:#ffb42e99; }
   .duration { color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px; }
+  .money-amount { width:120px; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px; }
   .announce.unban-input { min-height:42px; resize:none; }
   .list-wrap { flex:1; overflow:auto; border:1px solid var(--line); border-radius:12px; }
   table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -65,6 +66,12 @@
   .send { width:100%; margin-top:9px; background:#ffb42e; border-color:#ffb42e; color:#211707; font-weight:750; }
   .hint { color:var(--muted); font-size:12px; line-height:1.5; }
   #notice { min-height:20px; color:var(--green); font-size:12px; margin-top:9px; }
+  .confirm-backdrop { position:fixed; inset:0; z-index:5; display:grid; place-items:center; padding:20px; background:#000a; }
+  .confirm-backdrop[hidden] { display:none; }
+  .confirm-dialog { width:min(380px, 100%); padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 55px #000b; }
+  .confirm-dialog p { margin:0 0 18px; line-height:1.5; }
+  .confirm-actions { display:flex; justify-content:flex-end; gap:8px; }
+  .confirm-actions .accept { background:var(--accent); border-color:var(--accent); color:#211707; font-weight:700; }
   footer { border-top:1px solid var(--line); padding:11px 20px; display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
   kbd { padding:2px 5px; color:var(--text); border:1px solid var(--line); border-radius:4px; background:var(--panel); }
   @media (max-width:850px) {
@@ -104,6 +111,7 @@
           <option value="604800">7 days</option>
           <option value="0">Permanent</option>
         </select>
+        <input id="moneyAmount" class="money-amount" type="number" min="1" max="1000000" step="1" value="1000" aria-label="Money to add">
       </div>
       <div class="list-wrap">
         <table>
@@ -142,6 +150,15 @@
   </main>
   <footer><span><kbd>Esc</kbd> closes panel</span><span class="right">Session admin tools</span></footer>
 </section>
+<div id="actionConfirm" class="confirm-backdrop" hidden>
+  <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="actionConfirmMessage">
+    <p id="actionConfirmMessage"></p>
+    <div class="confirm-actions">
+      <button id="actionConfirmCancel" type="button">Cancel</button>
+      <button id="actionConfirmAccept" class="accept" type="button">Confirm</button>
+    </div>
+  </section>
+</div>
 <script>
   const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
   const rows = document.getElementById('rows');
@@ -152,7 +169,34 @@
   const flyStatus = document.getElementById('flyStatus');
   const adminModeButton = document.getElementById('adminMode');
   const adminModeStatus = document.getElementById('adminModeStatus');
+  const actionConfirm = document.getElementById('actionConfirm');
+  const actionConfirmMessage = document.getElementById('actionConfirmMessage');
+  let actionConfirmCallback = null;
+  let previousFocus = null;
   let players = [];
+
+  function showActionConfirmation(message, callback) {
+    previousFocus = document.activeElement;
+    actionConfirmMessage.textContent = message;
+    actionConfirmCallback = callback;
+    actionConfirm.hidden = false;
+    document.getElementById('actionConfirmAccept').focus();
+  }
+
+  function closeActionConfirmation(accepted) {
+    const callback = actionConfirmCallback;
+    actionConfirmCallback = null;
+    actionConfirm.hidden = true;
+    if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+    previousFocus = null;
+    if (accepted && callback) callback();
+  }
+
+  document.getElementById('actionConfirmCancel').onclick = () => closeActionConfirmation(false);
+  document.getElementById('actionConfirmAccept').onclick = () => closeActionConfirmation(true);
+  actionConfirm.addEventListener('click', event => {
+    if (event.target === actionConfirm) closeActionConfirmation(false);
+  });
 
   function render() {
     const query = search.value.trim().toLowerCase();
@@ -169,6 +213,7 @@
     flyButton.textContent = flying ? 'Disable fly mode' : 'Enable fly mode';
     flyButton.disabled = !adminMode || Boolean(self && self.inVehicle && !flying);
     document.getElementById('moderationDuration').disabled = !adminMode;
+    document.getElementById('moneyAmount').disabled = !adminMode;
     document.getElementById('unbanAccount').disabled = !adminMode;
     document.getElementById('unban').disabled = !adminMode;
     document.getElementById('announcement').disabled = !adminMode;
@@ -213,6 +258,8 @@
         ['bring', 'Bring', player.isSelf],
         ['heal', 'Heal', player.health <= 0],
         ['revive', 'Revive', player.health > 0],
+        ['kill', 'Kill', player.isSelf || player.isAdmin],
+        ['addMoney', 'Give money', false],
         ['kick', 'Kick', player.isSelf || player.isAdmin],
         [player.muted ? 'unmute' : 'mute', player.muted ? 'Unmute' : 'Mute', player.isSelf || player.isAdmin],
         ['ban', 'Ban', player.isSelf || player.isAdmin]
@@ -222,7 +269,7 @@
         button.disabled = disabled || !adminMode;
         button.dataset.action = action;
         button.dataset.id = player.id;
-        if (action === 'kick' || action === 'ban' || action === 'mute') button.className = 'danger';
+        if (action === 'kill' || action === 'kick' || action === 'ban' || action === 'mute') button.className = 'danger';
         actions.appendChild(button);
       });
 
@@ -252,10 +299,23 @@
     const action = button.dataset.action;
     const id = Number(button.dataset.id);
     const targetName = players.find(p => p.id === id)?.name || 'this player';
-    if (action === 'kick' && !confirm(`Kick ${targetName}?`)) return;
     const duration = Number(document.getElementById('moderationDuration').value);
-    if (action === 'ban' && !confirm(`Ban ${targetName} ${duration === 0 ? 'permanently' : `for ${document.getElementById('moderationDuration').selectedOptions[0].text}`}?`)) return;
-    mp.trigger('admin:panel:action', action, id, duration);
+    const moneyAmount = Number(document.getElementById('moneyAmount').value);
+    if (action === 'addMoney' && (!Number.isSafeInteger(moneyAmount) || moneyAmount < 1 || moneyAmount > 1000000)) {
+      window.showNotice('Enter a whole number between 1 and 1,000,000.');
+      return;
+    }
+    let confirmation = '';
+    if (action === 'kick') confirmation = `Kick ${targetName}?`;
+    if (action === 'ban') confirmation = `Ban ${targetName} ${duration === 0 ? 'permanently' : `for ${document.getElementById('moderationDuration').selectedOptions[0].text}`}?`;
+    if (action === 'kill') confirmation = `Kill ${targetName}?`;
+    if (action === 'addMoney') confirmation = `Add $${moneyAmount.toLocaleString()} to ${targetName}?`;
+    const submitAction = () => mp.trigger('admin:panel:action', action, id, duration, moneyAmount);
+    if (confirmation) {
+      showActionConfirmation(confirmation, submitAction);
+      return;
+    }
+    submitAction();
   });
   search.addEventListener('input', render);
   document.getElementById('refresh').onclick = () => {
@@ -282,6 +342,24 @@
     document.getElementById('announcement').value = '';
   };
   document.addEventListener('keydown', event => {
+    if (!actionConfirm.hidden && event.key === 'Tab') {
+      const buttons = actionConfirm.querySelectorAll('button:not(:disabled)');
+      const first = buttons[0];
+      const last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    if (event.key === 'Escape' && !actionConfirm.hidden) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeActionConfirmation(false);
+      return;
+    }
     if (event.key === 'Escape' && RAGE) {
       event.preventDefault();
       event.stopPropagation();

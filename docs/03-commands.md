@@ -45,8 +45,19 @@ All native/client behaviour lives here. Tunable constants are in the `CFG` objec
 | `L` | Close all vehicle doors |
 | `H` | Vehicle lights on/off |
 | `E` | Refuel at a pump |
+| `G` | Open the vehicle controls menu inside a car, or while aiming at your nearby spawned car |
+| `I` | Open or close the Georgian inventory panel |
 | `T` | Open chat. While typing, movement/keybinds are frozen |
 | `TAB` | While typing, cycle chat channel (Local → Team → Global) |
+
+The inventory panel closes with **Escape** or its close button. Its equipment,
+personal, backpack, and vehicle slots are currently an empty UI shell; item
+transfer, vehicle access rules, and persistence are not connected yet.
+
+The vehicle controls menu also closes with **Escape** or its close button. It
+exposes the existing engine, light, seatbelt, and door-close controls. On foot,
+it only opens for your own empty spawned car within five metres; seatbelt is
+available only while seated.
 
 > Keybinds and movement are disabled while the chat input is open, so typing letters no longer
 > triggers actions or walking. Handled by a `chatting` flag + `disableAllControlActions` in the render loop.
@@ -125,14 +136,14 @@ engine off while driving, and engine state is a client native — the server can
 
 ### Escape behavior
 
-Escape closes the active gas-station or admin interface, or exits the built-in
-chat input, before allowing gameplay controls through. A left mouse click also
+Escape closes the active gas-station, vehicle, inventory, or admin interface,
+or exits the built-in chat input, before allowing gameplay controls through. A left mouse click also
 closes the built-in chat input. Pause/map controls are suppressed in all control groups while chat or a CEF
 interface is active and for 1.5 seconds after an interaction closes. This
 suppression is armed before the client destroys the UI, so Escape cannot fall
 through and open the map. Native chat activation and the in-game chat control
 are also disabled while a CEF menu is open, so pressing T cannot open chat over
-the admin or fuel interface.
+the admin, fuel, inventory, or vehicle interface.
 
 ## Police job
 

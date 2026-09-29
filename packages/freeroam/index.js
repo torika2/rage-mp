@@ -7,6 +7,58 @@ const CAR_NAMES = {
     'audirs7sport': 'rmodrs7'    // Audi RS7 Sportback
 };
 
+const VEHICLE_MENU_RANGE = 5;
+const VEHICLE_MENU_ACTION_COOLDOWN_MS = 250;
+const vehicleMenuActionAt = new Map();
+
+function ownedVehicleForMenu(player, requestedId) {
+    if (typeof requestedId !== 'number' || !Number.isSafeInteger(requestedId)) return null;
+    const vehicleId = requestedId;
+    const vehicle = player.myCar;
+    if (!vehicle || !mp.vehicles.exists(vehicle) ||
+        Number(vehicle.id) !== vehicleId || player.vehicle ||
+        Number(player.dimension) !== Number(vehicle.dimension)) return null;
+
+    let occupied = false;
+    mp.players.forEach(other => {
+        if (other.vehicle && Number(other.vehicle.id) === vehicleId) occupied = true;
+    });
+    if (occupied) return null;
+
+    const dx = player.position.x - vehicle.position.x;
+    const dy = player.position.y - vehicle.position.y;
+    const dz = player.position.z - vehicle.position.z;
+    return dx * dx + dy * dy + dz * dz <= VEHICLE_MENU_RANGE * VEHICLE_MENU_RANGE
+        ? vehicle
+        : null;
+}
+
+mp.events.add('vehicle:menu:request', (player, vehicleId) => {
+    const vehicle = ownedVehicleForMenu(player, vehicleId);
+    if (!vehicle) {
+        player.call('vehicle:menu:denied');
+        return;
+    }
+    player.call('vehicle:menu:open', [Number(vehicle.id)]);
+});
+
+mp.events.add('vehicle:menu:action', (player, vehicleId, action) => {
+    if (action !== 'engine' && action !== 'lights' && action !== 'doors') {
+        player.call('vehicle:menu:denied');
+        return;
+    }
+    const vehicle = ownedVehicleForMenu(player, vehicleId);
+    if (!vehicle) {
+        player.call('vehicle:menu:denied');
+        return;
+    }
+    const now = Date.now();
+    const lastActionAt = vehicleMenuActionAt.get(player.id) || 0;
+    if (now - lastActionAt < VEHICLE_MENU_ACTION_COOLDOWN_MS) return;
+    vehicleMenuActionAt.set(player.id, now);
+    player.call('vehicle:menu:apply', [Number(vehicle.id), action]);
+});
+
 // /pos - show the current world position and heading
 mp.events.addCommand('pos', (player) => {
     const position = player.position;
@@ -69,6 +121,7 @@ mp.events.addCommand('dv', (player) => {
 
 // clean up when a player leaves
 mp.events.add('playerQuit', (player) => {
+    vehicleMenuActionAt.delete(player.id);
     if (player.myCar && mp.vehicles.exists(player.myCar)) player.myCar.destroy();
 });
 

@@ -88,6 +88,8 @@ function isAdmin(player) {
     return FLY_ADMINS.has(String(player.socialClub || '').trim().toLowerCase());
 }
 
+global.isProtectedAdmin = isAdmin;
+
 function requireAdmin(player) {
     if (isAdmin(player)) return true;
     tell(player, 'You are not authorized to use the admin panel.');
@@ -229,6 +231,40 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
     if (!target) {
         tell(player, 'Player ID not found; refresh the player list.');
         sendPlayerList(player);
+        return;
+    }
+
+    if (action === 'kill') {
+        if (target.id === player.id || isAdmin(target)) {
+            tell(player, 'You cannot kill yourself or an allowlisted administrator.');
+            return;
+        }
+        target.health = 0;
+        finishAction(player, `Killed ${target.name}.`);
+        return;
+    }
+
+    if (action === 'addMoney') {
+        const amount = request.amount;
+        if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1000000) {
+            tell(player, 'Money amount must be a whole number between 1 and 1,000,000.');
+            return;
+        }
+        if (typeof global.adminAddMoney !== 'function') {
+            tell(player, 'Money service is unavailable; no money was added.');
+            console.error('[admin] adminAddMoney API is unavailable.');
+            return;
+        }
+        let balance;
+        try {
+            balance = global.adminAddMoney(target, amount);
+        } catch (error) {
+            console.error(`[admin] Could not add money to ${target.name}:`, error);
+            tell(player, 'Could not add money; the balance was not changed.');
+            return;
+        }
+        finishAction(player, `Added $${amount} to ${target.name}. New balance: $${balance}.`);
+        target.outputChatBox(`!{#8ed17a}[Admin] !{#ffffff}An administrator added $${amount} to your balance.`);
         return;
     }
 

@@ -46,22 +46,26 @@ mp.events.add('chat:submit', (player, text, channel) => {
     // anti-spam / chat ban
     const key = keyOf(player);
     const now = Date.now();
-    if ((chatBans[key] || 0) > now) {
+    const protectedAdmin = typeof global.isProtectedAdmin === 'function' &&
+        global.isProtectedAdmin(player);
+    if (!protectedAdmin && (chatBans[key] || 0) > now) {
         const mins = Math.ceil((chatBans[key] - now) / 60000);
         global.chatSend(player, { ch: 'system', text: `!{#ff6b6b}ჩატში დაბლოკილი ხარ. დარჩენილია ~${mins} წუთი.`, ts: now });
         return;
     }
-    const norm = text.toLowerCase();
-    let recent = (recentMsgs[key] || []).filter(e => now - e.ts < SPAM_WINDOW);
-    if (recent.filter(e => e.text === norm).length >= SPAM_LIMIT) {
-        chatBans[key] = now + CHATBAN_MS;
-        recentMsgs[key] = [];
-        global.chatSend(player, { ch: 'system', text: '!{#ff6b6b}სპამის გამო ჩატი დაგებლოკა 1 საათით.', ts: now });
-        console.log(`[chat] 1h chatban (spam): ${key}`);
-        return;
+    if (!protectedAdmin) {
+        const norm = text.toLowerCase();
+        let recent = (recentMsgs[key] || []).filter(e => now - e.ts < SPAM_WINDOW);
+        if (recent.filter(e => e.text === norm).length >= SPAM_LIMIT) {
+            chatBans[key] = now + CHATBAN_MS;
+            recentMsgs[key] = [];
+            global.chatSend(player, { ch: 'system', text: '!{#ff6b6b}სპამის გამო ჩატი დაგებლოკა 1 საათით.', ts: now });
+            console.log(`[chat] 1h chatban (spam): ${key}`);
+            return;
+        }
+        recent.push({ text: norm, ts: now });
+        recentMsgs[key] = recent;
     }
-    recent.push({ text: norm, ts: now });
-    recentMsgs[key] = recent;
 
     if (channel !== 'local' && channel !== 'team' && channel !== 'global') channel = 'local';
 
