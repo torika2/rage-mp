@@ -69,6 +69,22 @@ mp.events.addCommand('pos', (player) => {
     });
 });
 
+// /tp <x> <y> <z> - teleport to world coordinates (handy for testing map/ymap edits)
+mp.events.addCommand('tp', (player, _, x, y, z) => {
+    if (x === undefined || y === undefined || z === undefined)
+        return player.outputChatBox('!{#ffb42e}გამოყენება: /tp <x> <y> <z>');
+    const px = parseFloat(x), py = parseFloat(y), pz = parseFloat(z);
+    if ([px, py, pz].some(Number.isNaN)) return player.outputChatBox('!{#ff6b6b}არასწორი კოორდინატები.');
+    player.position = new mp.Vector3(px, py, pz);
+    player.outputChatBox(`!{#8ed17a}გადაყვანა: ${px}, ${py}, ${pz}`);
+});
+
+// /hospital - jump to the Central LS Medical Center interior (rc12b_default.ymap area)
+mp.events.addCommand('hospital', (player) => {
+    player.position = new mp.Vector3(325.6, -579.0, 45.4);
+    player.outputChatBox('!{#8ed17a}საავადმყოფო (Central LS Medical).');
+});
+
 // /car <name> - spawn a car and get in
 mp.events.addCommand('car', (player, _, name) => {
     if (!name) return player.outputChatBox('!{#ffb42e}გამოყენება: /car <სახელი> — მაგ. /car bmwm4.  სია: /cars');

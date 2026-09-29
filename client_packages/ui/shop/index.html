@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>მაღაზია</title>
+<style>
+  :root {
+    --bg: rgba(18, 20, 24, 0.94);
+    --panel: rgba(32, 36, 43, 0.92);
+    --panel2: rgba(24, 27, 32, 0.9);
+    --accent: #c0894b;
+    --text: #eef2f4;
+    --muted: #9aa4ad;
+    --good: #8ed17a;
+    --danger: #ff5b5b;
+    --border: rgba(255, 255, 255, 0.09);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Segoe UI", "Noto Sans Georgian", Roboto, system-ui, sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  /* wrap is click-through so the inventory behind stays interactive; only the card catches the mouse */
+  #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 3vw; pointer-events: none; }
+  #card {
+    pointer-events: auto; position: fixed; top: 7vh; right: 3vw;
+    width: 460px; max-width: 40vw; max-height: 86vh; display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 20px;
+    padding: 20px 22px; color: var(--text); box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    animation: pop .18s ease-out;
+  }
+  @keyframes pop { from { transform: translateY(12px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+  #head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; cursor: move; user-select: none; }
+  #head.dragging, #head.dragging * { cursor: grabbing !important; }
+  .head-left { display: flex; align-items: center; gap: 10px; }
+  .move-grip { color: var(--muted); font-size: 17px; line-height: 1; opacity: .8; }
+  #title { font-size: 22px; font-weight: 800; color: var(--accent); }
+  .head-right { display: flex; align-items: center; gap: 12px; }
+  .chip { font-size: 12px; color: var(--muted); background: var(--panel2); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; }
+  #money { font-size: 16px; color: var(--good); font-weight: 700; }
+  #search {
+    width: 100%; background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 11px 14px; color: var(--text); font-size: 14px; margin-bottom: 14px; outline: none;
+  }
+  #search:focus { border-color: var(--accent); }
+  #grid {
+    overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px; padding-right: 4px;
+  }
+  #grid::-webkit-scrollbar { width: 8px; }
+  #grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 8px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center;
+  }
+  .card .icon { font-size: 34px; line-height: 1; height: 42px; display: grid; place-items: center; }
+  .card .icon .wicon { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+  .card .name { font-size: 14px; font-weight: 700; line-height: 1.15; }
+  .card .detail { font-size: 11px; color: var(--muted); min-height: 14px; line-height: 1.1; }
+  .card .price { font-size: 14px; font-weight: 700; color: var(--accent); }
+  .qty { display: flex; align-items: center; gap: 8px; }
+  .qty .step {
+    width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2);
+    color: var(--text); font-size: 16px; font-weight: 700; cursor: pointer; line-height: 1;
+  }
+  .qty .step:hover { border-color: var(--accent); }
+  .qty .q { min-width: 22px; font-size: 14px; font-weight: 700; }
+  .card .buy {
+    width: 100%; margin-top: 2px; background: var(--accent); color: #14110c; border: none; border-radius: 10px;
+    padding: 9px 0; font-size: 14px; font-weight: 800; cursor: pointer;
+  }
+  .card .buy:hover { filter: brightness(1.1); }
+  .card .buy:disabled { opacity: .38; cursor: not-allowed; }
+  .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 30px 0; }
+  #foot { margin-top: 14px; display: flex; justify-content: flex-end; }
+  #closeBtn { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 8px 18px; font-size: 13px; cursor: pointer; }
+  #closeBtn:hover { color: var(--text); }
+</style>
+</head>
+<body>
+  <div id="wrap"><div id="card">
+    <div id="head">
+      <div class="head-left"><span class="move-grip" title="გადასაადგილებლად ჩავიჭიდე">✥</span><span id="title">მაღაზია</span></div>
+      <div class="head-right"><span id="cap" class="chip" style="display:none"></span><span id="money">$0</span></div>
+    </div>
+    <input id="search" type="text" placeholder="ძებნა..." autocomplete="off" />
+    <div id="grid"></div>
+    <div id="foot"><button id="closeBtn">დახურვა (Esc)</button></div>
+  </div></div>
+<script>
+  const RAGE = typeof mp !== 'undefined';
+  const $ = (id) => document.getElementById(id);
+  let data = { title: 'მაღაზია', mode: 'weapons', money: 0, items: [], capacity: null };
+  let search = '';
+  const qtys = {};
+
+  // Open-source weapon icons (game-icons.net, CC BY 3.0) in ./icons — see icons/ATTRIBUTION.txt.
+  // Consumables keep emoji (those render accurately).
+  const WEAPON_IMG = {
+    pistol: 'revolver', combatpistol: 'revolver', appistol: 'revolver',
+    microsmg: 'uzi', smg: 'mp5', pumpshotgun: 'shotgun',
+    assaultrifle: 'ak47', carbinerifle: 'ak47',
+    knife: 'knife', bat: 'bat', armor: 'vest'
+  };
+  const EMOJI = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹' };
+  function iconFor(k) {
+    if (WEAPON_IMG[k]) return '<img class="wicon" src="icons/' + WEAPON_IMG[k] + '.svg" alt="">';
+    return EMOJI[k] || '📦';
+  }
+
+  window.setShopData = function (d) { data = d || data; render(); };
+
+  function render() {
+    const isMarket = data.mode === 'market';
+    $('title').textContent = data.title || 'მაღაზია';
+    $('money').textContent = '$' + (data.money || 0);
+    const cap = $('cap');
+    if (data.capacity && data.capacity.max) {
+      cap.style.display = '';
+      cap.textContent = 'ინვენტარი: ' + (data.capacity.used || 0) + '/' + data.capacity.max;
+    } else cap.style.display = 'none';
+
+    const term = search.trim().toLowerCase();
+    const items = (data.items || []).filter(it =>
+      !term || (it.label || '').toLowerCase().includes(term) || (it.key || '').toLowerCase().includes(term));
+
+    const grid = $('grid');
+    grid.innerHTML = '';
+    if (!items.length) { grid.innerHTML = '<div class="empty">ვერაფერი მოიძებნა</div>'; return; }
+
+    items.forEach(it => {
+      if (qtys[it.key] === undefined) qtys[it.key] = 1;
+      const qty = isMarket ? qtys[it.key] : 1;
+      const total = it.price * qty;
+      const affordable = (data.money || 0) >= total;
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="icon">' + iconFor(it.key) + '</div>' +
+        '<div class="name">' + it.label + '</div>' +
+        '<div class="detail">' + (it.detail || '') + '</div>' +
+        '<div class="price">$' + it.price + (isMarket && qty > 1 ? ' ×' + qty + ' = $' + total : '') + '</div>' +
+        (isMarket ? '<div class="qty"><button class="step minus">−</button><span class="q">' + qty + '</span><button class="step plus">+</button></div>' : '') +
+        '<button class="buy"' + (affordable ? '' : ' disabled') + '>ყიდვა</button>';
+      if (isMarket) {
+        card.querySelector('.minus').onclick = () => { qtys[it.key] = Math.max(1, qty - 1); render(); };
+        card.querySelector('.plus').onclick = () => { qtys[it.key] = Math.min(99, qty + 1); render(); };
+      }
+      card.querySelector('.buy').onclick = () => { if (RAGE) mp.trigger('shop:purchase', it.key, qty); };
+      grid.appendChild(card);
+    });
+  }
+
+  // Drag the window by its header.
+  (function () {
+    const card = $('card'), handle = $('head');
+    let dragging = false, offX = 0, offY = 0;
+    handle.addEventListener('mousedown', (e) => {
+      dragging = true;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'grabbing';
+      const r = card.getBoundingClientRect();
+      offX = e.clientX - r.left; offY = e.clientY - r.top;
+      card.style.right = 'auto'; card.style.left = r.left + 'px'; card.style.top = r.top + 'px';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const x = Math.max(0, Math.min(window.innerWidth - card.offsetWidth, e.clientX - offX));
+      const y = Math.max(0, Math.min(window.innerHeight - card.offsetHeight, e.clientY - offY));
+      card.style.left = x + 'px'; card.style.top = y + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+    });
+  })();
+
+  $('search').oninput = (e) => { search = e.target.value; render(); };
+  $('closeBtn').onclick = () => { if (RAGE) mp.trigger('shop:close'); };
+  document.addEventListener('keyup', (e) => {
+    if ((e.key === 'Escape' || e.key === 'Esc') && RAGE) mp.trigger('shop:close');
+  });
+
+  window.onload = () => {
+    if (RAGE) mp.trigger('shop:uiReady');
+    else window.setShopData({ title: 'იარაღის მაღაზია', mode: 'weapons', money: 4200, items: [
+      { key: 'pistol', label: 'პისტოლეტი', detail: 'მ.შ. $25 გადასახადი', price: 525 },
+      { key: 'smg', label: 'SMG', detail: '', price: 4000 },
+      { key: 'burger', label: 'ბურგერი', detail: '+40 HP', price: 25 }
+    ]});
+  };
+</script>
+</body>
+</html>
