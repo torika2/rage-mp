@@ -220,6 +220,115 @@ function closeInventoryUI() {
     mp.gui.cursor.show(false, false);
 }
 
+function getCameraCoord() {
+    if (mp.game && mp.game.cam) {
+        if (typeof mp.game.cam.getGameplayCoord === 'function') {
+            return mp.game.cam.getGameplayCoord();
+        }
+        if (typeof mp.game.cam.getGameplayCamCoord === 'function') {
+            return mp.game.cam.getGameplayCamCoord();
+        }
+    }
+    try {
+        const cam = mp.cameras.new('gameplay');
+        if (cam && typeof cam.getCoord === 'function') {
+            return cam.getCoord();
+        }
+    } catch (e) {}
+    return mp.players.local.position;
+}
+
+function getCameraRot() {
+    if (mp.game && mp.game.cam) {
+        if (typeof mp.game.cam.getGameplayCamRot === 'function') {
+            return mp.game.cam.getGameplayCamRot(2);
+        }
+        if (typeof mp.game.cam.getGameplayRot === 'function') {
+            return mp.game.cam.getGameplayRot(2);
+        }
+    }
+    return new mp.Vector3(0, 0, mp.players.local.getHeading ? mp.players.local.getHeading() : 0);
+}
+
+function getVehiclePassengers(vehicle) {
+    const list = [];
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return list;
+    mp.players.forEachInStreamRange(p => {
+        if (p.vehicle && Number(p.vehicle.remoteId) === Number(vehicle.remoteId)) {
+            let role = 'მგზავრი';
+            try {
+                if (p.seat === -1 || (typeof vehicle.getPedInSeat === 'function' && vehicle.getPedInSeat(-1) === p.handle)) {
+                    role = 'მძღოლი';
+                }
+            } catch (e) {}
+            list.push({
+                name: p.name || 'უცნობი',
+                role: role
+            });
+        }
+    });
+    return list;
+}
+
+function toggleVehicleDoors(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    let anyOpen = false;
+    if (typeof veh.getDoorAngleRatio === 'function') {
+        anyOpen = veh.getDoorAngleRatio(0) > 0.1 || veh.getDoorAngleRatio(1) > 0.1 ||
+                  veh.getDoorAngleRatio(2) > 0.1 || veh.getDoorAngleRatio(3) > 0.1;
+    }
+    if (anyOpen) {
+        for (let i = 0; i < 4; i++) veh.setDoorShut(i, false);
+        notify('კარები დაიკეტა');
+    } else {
+        veh.setDoorOpen(0, false, false);
+        veh.setDoorOpen(1, false, false);
+        notify('კარები გაიღო');
+    }
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
+function toggleVehicleTrunk(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const trunkOpen = (typeof veh.getDoorAngleRatio === 'function') && (veh.getDoorAngleRatio(5) > 0.1);
+    if (trunkOpen) {
+        veh.setDoorShut(5, false);
+        notify('საბარგული დაიკეტა');
+    } else {
+        veh.setDoorOpen(5, false, false);
+        notify('საბარგული გაიღო');
+    }
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
+function toggleVehicleHood(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const hoodOpen = (typeof veh.getDoorAngleRatio === 'function') && (veh.getDoorAngleRatio(4) > 0.1);
+    if (hoodOpen) {
+        veh.setDoorShut(4, false);
+        notify('კაპოტი დაიკეტა');
+    } else {
+        veh.setDoorOpen(4, false, false);
+        notify('კაპოტი გაიღო');
+    }
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
+function toggleVehicleLock(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const isLocked = (typeof veh.getDoorLockStatus === 'function') ? (veh.getDoorLockStatus() > 1) : false;
+    const newStatus = isLocked ? 1 : 2;
+    if (typeof veh.setDoorsLocked === 'function') {
+        veh.setDoorsLocked(newStatus);
+    }
+    notify(isLocked ? 'მანქანა გაიღო' : 'მანქანა ჩაიკეტა');
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
 // ---------- CEF shop menu (Ammu-Nation / 24-7 market) ----------
 let shopBrowser = null;
 let shopMode = null; // 'weapons' | 'market'
