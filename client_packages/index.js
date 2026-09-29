@@ -174,6 +174,115 @@ function closeInventoryUI() {
     mp.gui.cursor.show(false, false);
 }
 
+function getCameraCoord() {
+    if (mp.game && mp.game.cam) {
+        if (typeof mp.game.cam.getGameplayCoord === 'function') {
+            return mp.game.cam.getGameplayCoord();
+        }
+        if (typeof mp.game.cam.getGameplayCamCoord === 'function') {
+            return mp.game.cam.getGameplayCamCoord();
+        }
+    }
+    try {
+        const cam = mp.cameras.new('gameplay');
+        if (cam && typeof cam.getCoord === 'function') {
+            return cam.getCoord();
+        }
+    } catch (e) {}
+    return mp.players.local.position;
+}
+
+function getCameraRot() {
+    if (mp.game && mp.game.cam) {
+        if (typeof mp.game.cam.getGameplayCamRot === 'function') {
+            return mp.game.cam.getGameplayCamRot(2);
+        }
+        if (typeof mp.game.cam.getGameplayRot === 'function') {
+            return mp.game.cam.getGameplayRot(2);
+        }
+    }
+    return new mp.Vector3(0, 0, mp.players.local.getHeading ? mp.players.local.getHeading() : 0);
+}
+
+function getVehiclePassengers(vehicle) {
+    const list = [];
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return list;
+    mp.players.forEachInStreamRange(p => {
+        if (p.vehicle && Number(p.vehicle.remoteId) === Number(vehicle.remoteId)) {
+            let role = 'მგზავრი';
+            try {
+                if (p.seat === -1 || (typeof vehicle.getPedInSeat === 'function' && vehicle.getPedInSeat(-1) === p.handle)) {
+                    role = 'მძღოლი';
+                }
+            } catch (e) {}
+            list.push({
+                name: p.name || 'უცნობი',
+                role: role
+            });
+        }
+    });
+    return list;
+}
+
+function toggleVehicleDoors(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    let anyOpen = false;
+    if (typeof veh.getDoorAngleRatio === 'function') {
+        anyOpen = veh.getDoorAngleRatio(0) > 0.1 || veh.getDoorAngleRatio(1) > 0.1 ||
+                  veh.getDoorAngleRatio(2) > 0.1 || veh.getDoorAngleRatio(3) > 0.1;
+    }
+    if (anyOpen) {
+        for (let i = 0; i < 4; i++) veh.setDoorShut(i, false);
+        notify('კარები დაიკეტა');
+    } else {
+        veh.setDoorOpen(0, false, false);
+        veh.setDoorOpen(1, false, false);
+        notify('კარები გაიღო');
+    }
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
+function toggleVehicleTrunk(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const trunkOpen = (typeof veh.getDoorAngleRatio === 'function') && (veh.getDoorAngleRatio(5) > 0.1);
+    if (trunkOpen) {
+        veh.setDoorShut(5, false);
+        notify('საბარგული დაიკეტა');
+    } else {
+        veh.setDoorOpen(5, false, false);
+        notify('საბარგული გაიღო');
+    }
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
+function toggleVehicleHood(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const hoodOpen = (typeof veh.getDoorAngleRatio === 'function') && (veh.getDoorAngleRatio(4) > 0.1);
+    if (hoodOpen) {
+        veh.setDoorShut(4, false);
+        notify('კაპოტი დაიკეტა');
+    } else {
+        veh.setDoorOpen(4, false, false);
+        notify('კაპოტი გაიღო');
+    }
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
+function toggleVehicleLock(fromVehicleMenu = false, targetVehicle = null) {
+    const veh = targetVehicle || mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const isLocked = (typeof veh.getDoorLockStatus === 'function') ? (veh.getDoorLockStatus() > 1) : false;
+    const newStatus = isLocked ? 1 : 2;
+    if (typeof veh.setDoorsLocked === 'function') {
+        veh.setDoorsLocked(newStatus);
+    }
+    notify(isLocked ? 'მანქანა გაიღო' : 'მანქანა ჩაიკეტა');
+    if (vehicleMenuBrowser) sendVehicleMenuState();
+}
+
 function sendVehicleMenuState() {
     const vehicle = vehicleMenuVehicle;
     if (!vehicleMenuBrowser || !vehicle) return;
@@ -181,11 +290,35 @@ function sendVehicleMenuState() {
         closeVehicleMenu();
         return;
     }
+    const bodyHealth = typeof vehicle.getBodyHealth === 'function' ? vehicle.getBodyHealth() : 1000;
+    const healthPct = Math.max(0, Math.min(100, Math.round(bodyHealth / 10)));
+    const fuelLiters = Math.round((getFuel(vehicle) / CFG.fuelMax) * CFG.tankLiters);
+    const maxFuelLiters = CFG.tankLiters;
+    const isLocked = (typeof vehicle.getDoorLockStatus === 'function') ? (vehicle.getDoorLockStatus() > 1) : false;
+    const isEngineRunning = vehicle.getIsEngineRunning() === true;
+    const doorsOpen = (typeof vehicle.getDoorAngleRatio === 'function')
+        ? (vehicle.getDoorAngleRatio(0) > 0.1 || vehicle.getDoorAngleRatio(1) > 0.1 || vehicle.getDoorAngleRatio(2) > 0.1 || vehicle.getDoorAngleRatio(3) > 0.1)
+        : false;
+    const trunkOpen = (typeof vehicle.getDoorAngleRatio === 'function')
+        ? (vehicle.getDoorAngleRatio(5) > 0.1)
+        : false;
+    const hoodOpen = (typeof vehicle.getDoorAngleRatio === 'function')
+        ? (vehicle.getDoorAngleRatio(4) > 0.1)
+        : false;
+
     vehicleMenuBrowser.execute(`window.setVehicleMenuState(${JSON.stringify({
-        engine: vehicle.getIsEngineRunning() === true,
+        engine: isEngineRunning,
         lights: vehicleLightsMode[vehicle.remoteId] || 0,
         belt: seatbeltOn,
-        outside: vehicleMenuOutside
+        outside: vehicleMenuOutside,
+        locked: isLocked,
+        doorsOpen: doorsOpen,
+        trunkOpen: trunkOpen,
+        hoodOpen: hoodOpen,
+        fuel: fuelLiters,
+        maxFuel: maxFuelLiters,
+        health: healthPct,
+        passengers: getVehiclePassengers(vehicle)
     })})`);
 }
 
@@ -200,23 +333,74 @@ function vehicleMenuTargetInRange(vehicle, range = 5) {
     return dx * dx + dy * dy + dz * dz <= range * range;
 }
 
+function isLookingAtVehicle(vehicle, cameraPosition, dirX, dirY, dirZ) {
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return false;
+    const vPos = vehicle.position;
+    const toVehX = vPos.x - cameraPosition.x;
+    const toVehY = vPos.y - cameraPosition.y;
+    const toVehZ = vPos.z - cameraPosition.z;
+    const distSq = toVehX * toVehX + toVehY * toVehY + toVehZ * toVehZ;
+    if (distSq > 5.5 * 5.5) return false;
+    const dist = Math.sqrt(distSq);
+    if (dist < 0.1) return true;
+    const dot = (toVehX * dirX + toVehY * dirY + toVehZ * dirZ) / dist;
+    return dot > 0.92;
+}
+
 function aimedVehicle() {
-    const cameraPosition = mp.game.cam.getGameplayCamCoord();
-    const cameraRotation = mp.game.cam.getGameplayCamRot(2);
-    const pitch = cameraRotation.x * Math.PI / 180;
-    const yaw = cameraRotation.z * Math.PI / 180;
-    const distance = 8;
-    const directionX = -Math.sin(yaw) * Math.cos(pitch);
-    const directionY = Math.cos(yaw) * Math.cos(pitch);
-    const directionZ = Math.sin(pitch);
-    const rayEnd = new mp.Vector3(
-        cameraPosition.x + directionX * distance,
-        cameraPosition.y + directionY * distance,
-        cameraPosition.z + directionZ * distance
-    );
-    const hit = mp.raycasting.testPointToPoint(cameraPosition, rayEnd, mp.players.local, 3);
-    const vehicle = hit && hit.entity && hit.entity.type === 'vehicle' ? hit.entity : null;
-    return vehicle && vehicleMenuTargetInRange(vehicle) ? vehicle : null;
+    let cameraPosition, dirX, dirY, dirZ;
+    try {
+        cameraPosition = getCameraCoord();
+        const cameraRotation = getCameraRot();
+        const pitch = cameraRotation.x * Math.PI / 180;
+        const yaw = cameraRotation.z * Math.PI / 180;
+        const distance = 8;
+        dirX = -Math.sin(yaw) * Math.cos(pitch);
+        dirY = Math.cos(yaw) * Math.cos(pitch);
+        dirZ = Math.sin(pitch);
+        const rayEnd = new mp.Vector3(
+            cameraPosition.x + dirX * distance,
+            cameraPosition.y + dirY * distance,
+            cameraPosition.z + dirZ * distance
+        );
+        let hit = mp.raycasting.testPointToPoint(cameraPosition, rayEnd, mp.players.local, 2);
+        if (!hit || !hit.entity || hit.entity.type !== 'vehicle') {
+            hit = mp.raycasting.testPointToPoint(cameraPosition, rayEnd, mp.players.local, -1);
+        }
+        const vehicle = hit && hit.entity && hit.entity.type === 'vehicle' ? hit.entity : null;
+        if (vehicle && vehicleMenuTargetInRange(vehicle, 5.0)) return vehicle;
+    } catch (e) {}
+
+    // Fallback: only if camera is pointing directly towards the car (dot > 0.92, ~23°)
+    if (!cameraPosition || dirX === undefined) return null;
+
+    const playerPosition = mp.players.local.position;
+    let closestVeh = null;
+    let bestDot = 0.92;
+
+    mp.vehicles.forEachInStreamRange(veh => {
+        if (!veh || !mp.vehicles.exists(veh) || Number(veh.dimension) !== Number(mp.players.local.dimension)) return;
+        const vPos = veh.position;
+        const dx = playerPosition.x - vPos.x;
+        const dy = playerPosition.y - vPos.y;
+        const dz = playerPosition.z - vPos.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq > 4.5 * 4.5) return;
+
+        const toVehX = vPos.x - cameraPosition.x;
+        const toVehY = vPos.y - cameraPosition.y;
+        const toVehZ = vPos.z - cameraPosition.z;
+        const camDist = Math.sqrt(toVehX * toVehX + toVehY * toVehY + toVehZ * toVehZ);
+        if (camDist < 0.1) return;
+
+        const dot = (toVehX * dirX + toVehY * dirY + toVehZ * dirZ) / camDist;
+        if (dot > bestDot) {
+            bestDot = dot;
+            closestVeh = veh;
+        }
+    });
+
+    return closestVeh;
 }
 
 function openVehicleMenu(vehicle, outside = false) {
@@ -252,19 +436,26 @@ function applyVehicleMenuAction(action, vehicle, outside) {
     if (action === 'engine') engineToggle(true, vehicle);
     else if (action === 'lights') toggleVehicleLights(true, vehicle);
     else if (action === 'belt' && !outside) toggleSeatbelt(true);
-    else if (action === 'doors') closeVehicleDoors(true, vehicle);
+    else if (action === 'doors') toggleVehicleDoors(true, vehicle);
+    else if (action === 'trunk') toggleVehicleTrunk(true, vehicle);
+    else if (action === 'hood') toggleVehicleHood(true, vehicle);
+    else if (action === 'lock') toggleVehicleLock(true, vehicle);
 }
+
+const VALID_VEHICLE_ACTIONS = ['engine', 'lights', 'belt', 'doors', 'trunk', 'hood', 'lock'];
 
 mp.events.add('fuel:uiReady', () => sendFuelData());
 mp.events.add('vehicle:menu:ready', sendVehicleMenuState);
 mp.events.add('vehicle:menu:close', closeVehicleMenu);
+mp.events.add('vehicle:menu:inventory', () => {
+    closeVehicleMenu();
+    openInventoryUI();
+});
 mp.events.add('vehicle:menu:open', vehicleId => {
     const vehicle = pendingVehicleMenuVehicle;
     pendingVehicleMenuVehicle = null;
     if (!vehicle || Number(vehicle.remoteId) !== Number(vehicleId) ||
         mp.players.local.vehicle || !vehicleMenuTargetInRange(vehicle)) return;
-    const currentTarget = aimedVehicle();
-    if (!currentTarget || Number(currentTarget.remoteId) !== Number(vehicleId)) return;
     openVehicleMenu(vehicle, true);
 });
 mp.events.add('vehicle:menu:denied', () => {
@@ -277,8 +468,7 @@ mp.events.add('vehicle:menu:denied', () => {
     }
 });
 mp.events.add('vehicle:menu:action', action => {
-    if (!vehicleMenuBrowser || !vehicleMenuVehicle ||
-        !['engine', 'lights', 'belt', 'doors'].includes(action)) return;
+    if (!vehicleMenuBrowser || !vehicleMenuVehicle || !VALID_VEHICLE_ACTIONS.includes(action)) return;
     if (vehicleMenuOutside) {
         if (action === 'belt') return;
         if (!vehicleMenuTargetInRange(vehicleMenuVehicle) || mp.players.local.vehicle) {
@@ -299,7 +489,7 @@ mp.events.add('vehicle:menu:action', action => {
 mp.events.add('vehicle:menu:apply', (vehicleId, action) => {
     if (!vehicleMenuBrowser || !vehicleMenuOutside || !vehicleMenuVehicle ||
         Number(vehicleMenuVehicle.remoteId) !== Number(vehicleId) ||
-        !['engine', 'lights', 'doors'].includes(action) ||
+        !VALID_VEHICLE_ACTIONS.includes(action) ||
         mp.players.local.vehicle || !vehicleMenuTargetInRange(vehicleMenuVehicle)) {
         return;
     }
@@ -567,7 +757,31 @@ mp.events.add('render', () => {
 
     if (!veh) {
         if (fuelUIOpen) closeFuelUI();
-        payload = { money: getMoney(), inVehicle: false };
+        let targetVehData = null;
+        if (!chatting && !adminBrowser && !inventoryBrowser) {
+            const target = aimedVehicle();
+            if (target && mp.vehicles.exists(target)) {
+                const bodyHealth = typeof target.getBodyHealth === 'function' ? target.getBodyHealth() : 1000;
+                const healthPct = Math.max(0, Math.min(100, Math.round(bodyHealth / 10)));
+                const fuelLiters = Math.round((getFuel(target) / CFG.fuelMax) * CFG.tankLiters);
+                const maxFuelLiters = CFG.tankLiters;
+                const isLocked = (typeof target.getDoorLockStatus === 'function') ? (target.getDoorLockStatus() > 1) : false;
+                const isEngineRunning = target.getIsEngineRunning() === true;
+                targetVehData = {
+                    fuel: fuelLiters,
+                    maxFuel: maxFuelLiters,
+                    health: healthPct,
+                    locked: isLocked,
+                    engine: isEngineRunning
+                };
+            }
+        }
+        payload = {
+            money: getMoney(),
+            inVehicle: false,
+            targetVehicle: targetVehData,
+            vehicleMenuOpen: Boolean(vehicleMenuBrowser)
+        };
     } else {
         const speed = speedOf(veh);
         const rpm = (typeof veh.rpm === 'number') ? Math.max(0, veh.rpm) : 0;

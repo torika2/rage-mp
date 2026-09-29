@@ -3,153 +3,640 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>მანქანის კონტროლი</title>
+<title>მანქანის მენიუ</title>
 <style>
   :root {
     color-scheme: dark;
-    --gold: #f2bd4f;
-    --text: #f5f3ee;
-    --muted: #a9a9aa;
-    --pill: rgba(29, 31, 35, .88);
-    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+    --gold: #f5a623;
+    --gold-hover: #ea9512;
+    --dark-pill: rgba(28, 31, 38, 0.9);
+    --dark-card: rgba(20, 23, 30, 0.92);
+    --border-subtle: rgba(255, 255, 255, 0.09);
+    --text-white: #ffffff;
+    --text-muted: #9ca3af;
+    --text-dark: #121418;
+    font-family: "Noto Sans Georgian", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
   }
-  * { box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-  body { color: var(--text); background: transparent; user-select: none; }
-  button { font: inherit; color: inherit; }
-  .veil {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent !important;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  button {
+    font: inherit;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: inherit;
+  }
+
+  .overlay {
     position: absolute;
     inset: 0;
-    display: grid;
-    place-items: center;
-    padding: 20px;
-    background: transparent;
-    backdrop-filter: none;
-    animation: fade-in .14s ease-out;
-  }
-  .menu {
-    position: relative;
-    width: min(560px, 94vw);
-    padding: 24px 48px;
-    animation: rise-in .16s ease-out;
-  }
-  .title { margin-bottom: 18px; color: rgba(245, 243, 238, .72); font-size: 11px; text-align: center; }
-  .actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 38px minmax(0, 1fr);
-    grid-template-areas: "engine . lights" ". close ." "belt . doors";
-    gap: 10px 8px;
-    align-items: center;
-  }
-  #engineAction { grid-area: engine; }
-  #lightsAction { grid-area: lights; }
-  #beltAction { grid-area: belt; }
-  #doorsAction { grid-area: doors; }
-  .action {
-    min-height: 46px;
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 7px 15px;
-    border: 1px solid rgba(255, 255, 255, .035);
-    border-radius: 999px;
-    background: var(--pill);
-    cursor: pointer;
-    text-align: left;
-    transition: background .12s ease, border-color .12s ease, transform .12s ease;
+    justify-content: center;
+    background: transparent !important;
+    animation: fadeIn .15s ease-out;
   }
-  .action:hover { transform: translateY(-1px); border-color: rgba(242, 189, 79, .5); background: rgba(44, 42, 35, .94); }
-  .action:disabled { opacity: .42; cursor: not-allowed; }
-  .action:disabled:hover { transform: none; border-color: rgba(255, 255, 255, .035); background: var(--pill); }
-  .action:focus-visible, .close:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-  .icon { width: 20px; flex: none; color: var(--gold); font-size: 15px; text-align: center; }
-  .copy { min-width: 0; flex: 1; }
-  .label { display: block; font-size: 12px; font-weight: 700; line-height: 1.4; }
-  .state { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
-  .close {
-    grid-area: close;
-    width: 38px;
-    height: 38px;
-    display: grid;
-    place-items: center;
-    border: 1px solid rgba(255, 255, 255, .12);
+
+  /* Radial Container */
+  .wheel-wrap {
+    position: relative;
+    width: 650px;
+    height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  /* Center Close Button */
+  .center-btn {
+    pointer-events: auto;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background: rgba(26, 28, 31, .96);
-    color: #ddd;
-    cursor: pointer;
+    background: rgba(24, 27, 34, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 21px;
     line-height: 1;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: all .16s ease;
+    z-index: 10;
   }
-  .close:hover { border-color: var(--gold); color: var(--gold); }
-  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes rise-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
-  @media (max-width: 520px) {
-    .menu { padding: 22px 16px; }
-    .actions { grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr); gap: 10px 7px; }
-    .action { min-height: 48px; padding: 7px 11px; }
-    .label { font-size: 11px; }
-    .close { width: 34px; height: 34px; }
+  .center-btn:hover {
+    transform: scale(1.08);
+    border-color: var(--gold);
+    color: var(--gold);
+    box-shadow: 0 0 16px rgba(245, 166, 35, 0.4);
+  }
+
+  /* Radial Menu Buttons */
+  .pill-btn {
+    pointer-events: auto;
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 22px;
+    border-radius: 9999px;
+    background: var(--dark-pill);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-white);
+    font-size: 14.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    transition: all .15s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 5;
+  }
+  .pill-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    flex-shrink: 0;
+    transition: transform .15s ease;
+  }
+
+  /* Hover & Active State matching Screenshot 2 */
+  .pill-btn:hover, .pill-btn.active {
+    background: var(--gold);
+    color: var(--text-dark);
+    border-color: var(--gold);
+    transform: scale(1.04);
+    box-shadow: 0 8px 25px rgba(245, 166, 35, 0.45);
+  }
+  .pill-btn:hover svg, .pill-btn.active svg {
+    transform: scale(1.06);
+  }
+
+  /* Specific Button Layouts matching Image 2 */
+  /* Top Left: ★ მოქმედებები */
+  .pos-actions {
+    top: 65px;
+    left: 80px;
+  }
+  /* Top Right: 👥 მგზავრების სია */
+  .pos-passengers {
+    top: 65px;
+    right: 70px;
+  }
+  /* Mid Left: 💼 ინვენტარი */
+  .pos-inventory {
+    top: 155px;
+    left: 55px;
+  }
+  /* Mid Right: 🚪 კარების გახსნა */
+  .pos-doors {
+    top: 155px;
+    right: 50px;
+  }
+  /* Bottom Left: 🚗 საბარგულის გახსნა */
+  .pos-trunk {
+    bottom: 60px;
+    left: 70px;
+  }
+
+  /* Submenus / Flyouts */
+  .popover-menu {
+    display: none;
+    pointer-events: auto;
+    position: absolute;
+    min-width: 210px;
+    background: var(--dark-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+    z-index: 20;
+    animation: riseIn .14s ease-out;
+  }
+  .popover-menu.open {
+    display: block;
+  }
+  .actions-popover {
+    top: -125px;
+    left: 60px;
+  }
+  .passengers-popover {
+    top: -95px;
+    right: 50px;
+  }
+
+  .popover-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--gold);
+    letter-spacing: .5px;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .sub-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #e5e7eb;
+    transition: background .12s ease;
+  }
+  .sub-item:hover {
+    background: rgba(245, 166, 35, 0.15);
+    color: #ffffff;
+  }
+  .sub-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-muted);
+  }
+  .sub-status.active {
+    background: rgba(22, 163, 74, 0.25);
+    color: #4ade80;
+  }
+
+  .passenger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    font-size: 12.5px;
+    color: #e5e7eb;
+    border-radius: 6px;
+  }
+  .passenger-row:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .empty-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 8px;
+    text-align: center;
+  }
+
+  /* Bottom-Right Floating Stats Card */
+  .hud-badge {
+    position: fixed;
+    right: 32px;
+    bottom: 32px;
+    left: auto;
+    background: var(--dark-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 12px 18px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    animation: riseIn .16s ease-out;
+  }
+  .hud-row-stats {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #f3f4f6;
+  }
+  .stat-item svg {
+    width: 17px;
+    height: 17px;
+    fill: currentColor;
+    color: var(--gold);
+    flex-shrink: 0;
+  }
+  .stat-item .unit {
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .indicator-badges {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-left: 4px;
+  }
+  .badge-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transition: background .2s ease;
+  }
+  .badge-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: #ffffff;
+  }
+  .badge-lock.locked {
+    background: #dc2626; /* red locked */
+  }
+  .badge-lock.unlocked {
+    background: #16a34a; /* green unlocked */
+  }
+  .badge-engine.running {
+    background: #16a34a; /* green running */
+  }
+  .badge-engine.off {
+    background: #4b5563; /* grey off */
+  }
+
+  .hud-row-hint {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .key-diamond {
+    width: 18px;
+    height: 18px;
+    background: var(--gold);
+    border-radius: 3px;
+    transform: rotate(45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(245, 166, 35, 0.35);
+  }
+  .key-letter {
+    transform: rotate(-45deg);
+    font-size: 11px;
+    font-weight: 900;
+    color: #111827;
+    line-height: 1;
+  }
+  .hint-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: #d1d5db;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @media (max-width: 720px) {
+    .wheel-wrap { width: 94vw; height: 320px; }
+    .pos-actions { top: 30px; left: 20px; }
+    .pos-passengers { top: 30px; right: 20px; }
+    .pos-inventory { top: 120px; left: 10px; }
+    .pos-doors { top: 120px; right: 10px; }
+    .pos-trunk { bottom: 30px; left: 20px; }
+    .hud-badge { right: 16px; bottom: 16px; left: auto; padding: 10px 14px; }
   }
 </style>
 </head>
 <body>
-<div class="veil">
-  <main class="menu" aria-label="მანქანის კონტროლი">
-    <div class="title">მანქანის კონტროლი</div>
-    <div class="actions">
-      <button id="engineAction" class="action" type="button">
-        <span class="icon" aria-hidden="true">◉</span>
-        <span class="copy"><span class="label">ძრავის მართვა</span><span class="state">სტატუსი უცნობია</span></span>
+
+<div class="overlay" id="overlay">
+  <!-- Radial Wheel Container -->
+  <div class="wheel-wrap">
+    
+    <!-- Top-Left: მოქმედებები (Actions) -->
+    <button id="btnActions" class="pill-btn pos-actions" type="button">
+      <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      <span>მოქმედებები</span>
+    </button>
+    <div id="actionsPopover" class="popover-menu actions-popover">
+      <div class="popover-title">მანქანის კონტროლი</div>
+      <button id="subEngine" class="sub-item" type="button">
+        <span>ძრავის მართვა</span>
+        <span id="subEngineStatus" class="sub-status">...</span>
       </button>
-      <button id="lightsAction" class="action" type="button">
-        <span class="icon" aria-hidden="true">✦</span>
-        <span class="copy"><span class="label">ფარების მართვა</span><span class="state">სტატუსი უცნობია</span></span>
+      <button id="subLights" class="sub-item" type="button">
+        <span>ფარების მართვა</span>
+        <span id="subLightsStatus" class="sub-status">...</span>
       </button>
-      <button id="beltAction" class="action" type="button">
-        <span class="icon" aria-hidden="true">◇</span>
-        <span class="copy"><span class="label">ღვედის მართვა</span><span class="state">სტატუსი უცნობია</span></span>
+      <button id="subLock" class="sub-item" type="button">
+        <span>საკეტის მართვა</span>
+        <span id="subLockStatus" class="sub-status">...</span>
       </button>
-      <button id="doorsAction" class="action" type="button">
-        <span class="icon" aria-hidden="true">▣</span>
-        <span class="copy"><span class="label">კარების დაკეტვა</span><span class="state">ყველა კარი დაიხურება</span></span>
+      <button id="subHood" class="sub-item" type="button">
+        <span>კაპოტის მართვა</span>
+        <span id="subHoodStatus" class="sub-status">...</span>
       </button>
-      <button id="closeMenu" class="close" type="button" aria-label="მენიუს დახურვა" title="დახურვა">×</button>
     </div>
-  </main>
+
+    <!-- Top-Right: მგზავრების სია (Passenger List) -->
+    <button id="btnPassengers" class="pill-btn pos-passengers" type="button">
+      <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+      <span>მგზავრების სია</span>
+    </button>
+    <div id="passengersPopover" class="popover-menu passengers-popover">
+      <div class="popover-title">მგზავრები სალონში</div>
+      <div id="passengerList">
+        <div class="empty-note">მგზავრები არ არიან</div>
+      </div>
+    </div>
+
+    <!-- Mid-Left: ინვენტარი (Inventory) -->
+    <button id="btnInventory" class="pill-btn pos-inventory" type="button">
+      <svg viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/></svg>
+      <span>ინვენტარი</span>
+    </button>
+
+    <!-- Mid-Right: კარების გახსნა/დაკეტვა (Doors) -->
+    <button id="btnDoors" class="pill-btn pos-doors" type="button">
+      <svg viewBox="0 0 24 24"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-7 10h-2v-4h2v4z"/></svg>
+      <span id="doorsLabel">კარების გახსნა</span>
+    </button>
+
+    <!-- Bottom-Left: საბარგულის გახსნა/დაკეტვა (Trunk) -->
+    <button id="btnTrunk" class="pill-btn pos-trunk" type="button">
+      <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+      <span id="trunkLabel">საბარგულის გახსნა</span>
+    </button>
+
+    <!-- Center Close Button -->
+    <button id="btnClose" class="center-btn" type="button" aria-label="დახურვა" title="დახურვა">✕</button>
+
+  </div>
+
+  <!-- Bottom-Left HUD Badge (Matching Screenshot 2) -->
+  <div class="hud-badge">
+    <!-- Row 1: Fuel, HP, Lock, Key -->
+    <div class="hud-row-stats">
+      <div class="stat-item">
+        <svg viewBox="0 0 24 24"><path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg>
+        <span id="fuelText">113 / 130</span>
+        <span class="unit">ლ.</span>
+      </div>
+      <div class="stat-item">
+        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span id="hpText">100</span>%
+        <span class="unit">HP CAR</span>
+      </div>
+      <div class="indicator-badges">
+        <!-- Lock Status Badge (Red locked / Green unlocked) -->
+        <div id="badgeLock" class="badge-icon badge-lock locked" title="მანქანის საკეტი">
+          <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+        </div>
+        <!-- Engine Status Badge (Green running / Grey off) -->
+        <div id="badgeEngine" class="badge-icon badge-engine off" title="ძრავის სტატუსი">
+          <svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+        </div>
+      </div>
+    </div>
+    <!-- Row 2: Interaction key hint -->
+    <div class="hud-row-hint">
+      <div class="key-diamond">
+        <span class="key-letter">G</span>
+      </div>
+      <span class="hint-text">დააჭირეთ ურთიერთქმედებისთვის</span>
+    </div>
+  </div>
 </div>
+
 <script>
   const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
-  const stateLabels = {
-    engine: document.querySelector('#engineAction .state'),
-    lights: document.querySelector('#lightsAction .state'),
-    belt: document.querySelector('#beltAction .state')
+  let currentState = {
+    engine: false,
+    lights: 0,
+    locked: false,
+    doorsOpen: false,
+    trunkOpen: false,
+    hoodOpen: false,
+    fuel: 113,
+    maxFuel: 130,
+    health: 100,
+    passengers: []
   };
+
+  const doorsLabel = document.getElementById('doorsLabel');
+  const trunkLabel = document.getElementById('trunkLabel');
+  const fuelText = document.getElementById('fuelText');
+  const hpText = document.getElementById('hpText');
+  const badgeLock = document.getElementById('badgeLock');
+  const badgeEngine = document.getElementById('badgeEngine');
+  const actionsPopover = document.getElementById('actionsPopover');
+  const passengersPopover = document.getElementById('passengersPopover');
+  const passengerList = document.getElementById('passengerList');
+
+  const subEngineStatus = document.getElementById('subEngineStatus');
+  const subLightsStatus = document.getElementById('subLightsStatus');
+  const subLockStatus = document.getElementById('subLockStatus');
+  const subHoodStatus = document.getElementById('subHoodStatus');
 
   window.setVehicleMenuState = state => {
-    stateLabels.engine.textContent = state.engine ? 'ძრავა ჩართულია' : 'ძრავა გამორთულია';
-    stateLabels.lights.textContent = state.lights === 1
-      ? 'ფარები ჩართულია'
-      : (state.lights === -1 ? 'ფარები გამორთულია' : 'ფარები ავტომატურ რეჟიმშია');
-    const beltAction = document.getElementById('beltAction');
-    beltAction.disabled = state.outside === true;
-    stateLabels.belt.textContent = state.outside
-      ? 'ღვედისთვის მანქანაში ჩაჯექი'
-      : (state.belt ? 'ღვედი შეკრულია' : 'ღვედი შეხსნილია');
+    currentState = Object.assign(currentState, state);
+
+    // Fuel & HP
+    fuelText.textContent = `${currentState.fuel} / ${currentState.maxFuel}`;
+    hpText.textContent = `${currentState.health}`;
+
+    // Badges
+    if (currentState.locked) {
+      badgeLock.className = 'badge-icon badge-lock locked';
+      badgeLock.title = 'მანქანა ჩაკეტილია';
+      subLockStatus.textContent = 'ჩაკეტილია';
+      subLockStatus.className = 'sub-status active';
+    } else {
+      badgeLock.className = 'badge-icon badge-lock unlocked';
+      badgeLock.title = 'მანქანა გაღებულია';
+      subLockStatus.textContent = 'გაღებულია';
+      subLockStatus.className = 'sub-status';
+    }
+
+    if (currentState.engine) {
+      badgeEngine.className = 'badge-icon badge-engine running';
+      badgeEngine.title = 'ძრავი ჩართულია';
+      subEngineStatus.textContent = 'ჩართული';
+      subEngineStatus.className = 'sub-status active';
+    } else {
+      badgeEngine.className = 'badge-icon badge-engine off';
+      badgeEngine.title = 'ძრავი გამორთულია';
+      subEngineStatus.textContent = 'გამორთული';
+      subEngineStatus.className = 'sub-status';
+    }
+
+    // Lights
+    if (currentState.lights === 1) {
+      subLightsStatus.textContent = 'ჩართული';
+      subLightsStatus.className = 'sub-status active';
+    } else {
+      subLightsStatus.textContent = 'გამორთული';
+      subLightsStatus.className = 'sub-status';
+    }
+
+    // Hood
+    subHoodStatus.textContent = currentState.hoodOpen ? 'ღია' : 'დახურული';
+    subHoodStatus.className = currentState.hoodOpen ? 'sub-status active' : 'sub-status';
+
+    // Doors & Trunk button labels
+    doorsLabel.textContent = currentState.doorsOpen ? 'კარების დაკეტვა' : 'კარების გახსნა';
+    trunkLabel.textContent = currentState.trunkOpen ? 'საბარგულის დაკეტვა' : 'საბარგულის გახსნა';
+
+    // Passengers list render
+    renderPassengers(currentState.passengers);
   };
 
-  document.getElementById('engineAction').onclick = () => { if (RAGE) mp.trigger('vehicle:menu:action', 'engine'); };
-  document.getElementById('lightsAction').onclick = () => { if (RAGE) mp.trigger('vehicle:menu:action', 'lights'); };
-  document.getElementById('beltAction').onclick = () => { if (RAGE) mp.trigger('vehicle:menu:action', 'belt'); };
-  document.getElementById('doorsAction').onclick = () => { if (RAGE) mp.trigger('vehicle:menu:action', 'doors'); };
-  document.getElementById('closeMenu').onclick = () => { if (RAGE) mp.trigger('vehicle:menu:close'); };
+  function renderPassengers(passengers) {
+    if (!passengers || passengers.length === 0) {
+      passengerList.innerHTML = '<div class="empty-note">მგზავრები არ არიან</div>';
+      return;
+    }
+    passengerList.innerHTML = passengers.map(p => `
+      <div class="passenger-row">
+        <span>👤 ${p.name || 'მოთამაშე'}</span>
+        <span class="sub-status">${p.role || 'მგზავრი'}</span>
+      </div>
+    `).join('');
+  }
+
+  // Button Interactions
+  function closeAllPopovers() {
+    actionsPopover.classList.remove('open');
+    passengersPopover.classList.remove('open');
+    document.getElementById('btnActions').classList.remove('active');
+    document.getElementById('btnPassengers').classList.remove('active');
+  }
+
+  document.getElementById('btnActions').onclick = (e) => {
+    e.stopPropagation();
+    const willOpen = !actionsPopover.classList.contains('open');
+    closeAllPopovers();
+    if (willOpen) {
+      actionsPopover.classList.add('open');
+      document.getElementById('btnActions').classList.add('active');
+    }
+  };
+
+  document.getElementById('btnPassengers').onclick = (e) => {
+    e.stopPropagation();
+    const willOpen = !passengersPopover.classList.contains('open');
+    closeAllPopovers();
+    if (willOpen) {
+      passengersPopover.classList.add('open');
+      document.getElementById('btnPassengers').classList.add('active');
+    }
+  };
+
+  document.getElementById('btnInventory').onclick = () => {
+    closeAllPopovers();
+    if (RAGE) mp.trigger('vehicle:menu:inventory');
+  };
+
+  document.getElementById('btnDoors').onclick = () => {
+    if (RAGE) mp.trigger('vehicle:menu:action', 'doors');
+  };
+
+  document.getElementById('btnTrunk').onclick = () => {
+    if (RAGE) mp.trigger('vehicle:menu:action', 'trunk');
+  };
+
+  // Sub-actions inside Actions popover
+  document.getElementById('subEngine').onclick = () => {
+    if (RAGE) mp.trigger('vehicle:menu:action', 'engine');
+  };
+  document.getElementById('subLights').onclick = () => {
+    if (RAGE) mp.trigger('vehicle:menu:action', 'lights');
+  };
+  document.getElementById('subLock').onclick = () => {
+    if (RAGE) mp.trigger('vehicle:menu:action', 'lock');
+  };
+  document.getElementById('subHood').onclick = () => {
+    if (RAGE) mp.trigger('vehicle:menu:action', 'hood');
+  };
+
+  // Close Menu
+  function requestClose() {
+    if (RAGE) mp.trigger('vehicle:menu:close');
+  }
+
+  document.getElementById('btnClose').onclick = requestClose;
+
+  document.getElementById('overlay').onclick = (e) => {
+    if (e.target.id === 'overlay') {
+      if (actionsPopover.classList.contains('open') || passengersPopover.classList.contains('open')) {
+        closeAllPopovers();
+      } else {
+        requestClose();
+      }
+    }
+  };
+
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && RAGE) {
+    if ((event.key === 'Escape' || event.key === 'g' || event.key === 'G') && RAGE) {
       event.preventDefault();
       event.stopPropagation();
-      mp.trigger('vehicle:menu:close');
+      requestClose();
     }
   });
-  window.onload = () => { if (RAGE) mp.trigger('vehicle:menu:ready'); };
+
+  window.onload = () => {
+    if (RAGE) mp.trigger('vehicle:menu:ready');
+  };
 </script>
 </body>
 </html>

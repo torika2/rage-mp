@@ -14,16 +14,14 @@ const vehicleMenuActionAt = new Map();
 function ownedVehicleForMenu(player, requestedId) {
     if (typeof requestedId !== 'number' || !Number.isSafeInteger(requestedId)) return null;
     const vehicleId = requestedId;
-    const vehicle = player.myCar;
+    let vehicle = player.myCar;
+    if (!vehicle || !mp.vehicles.exists(vehicle) || Number(vehicle.id) !== vehicleId) {
+        const found = mp.vehicles.at(vehicleId);
+        if (found && mp.vehicles.exists(found)) vehicle = found;
+    }
     if (!vehicle || !mp.vehicles.exists(vehicle) ||
         Number(vehicle.id) !== vehicleId || player.vehicle ||
         Number(player.dimension) !== Number(vehicle.dimension)) return null;
-
-    let occupied = false;
-    mp.players.forEach(other => {
-        if (other.vehicle && Number(other.vehicle.id) === vehicleId) occupied = true;
-    });
-    if (occupied) return null;
 
     const dx = player.position.x - vehicle.position.x;
     const dy = player.position.y - vehicle.position.y;
@@ -43,7 +41,8 @@ mp.events.add('vehicle:menu:request', (player, vehicleId) => {
 });
 
 mp.events.add('vehicle:menu:action', (player, vehicleId, action) => {
-    if (action !== 'engine' && action !== 'lights' && action !== 'doors') {
+    const validActions = ['engine', 'lights', 'doors', 'trunk', 'hood', 'lock'];
+    if (!validActions.includes(action)) {
         player.call('vehicle:menu:denied');
         return;
     }
