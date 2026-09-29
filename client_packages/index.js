@@ -48,6 +48,52 @@ GAS_STATIONS.forEach(p => {
         { color: [255, 180, 46, 150], visible: true });
 });
 
+// Ammu-Nation gun shops — blips only (visual). The server (packages/shops) is the
+// authority on where you can actually buy; keep these coords in sync with AMMU_LOCATIONS there.
+const AMMU_SHOPS = [
+    [22.09, -1107.28, 29.80], [810.25, -2157.60, 29.62], [1693.44, 3759.63, 34.70],
+    [-330.24, 6083.88, 31.45], [252.63, -50.00, 69.94], [-662.10, -935.30, 21.83],
+    [-1305.18, -393.55, 36.70], [-3172.55, 1085.79, 20.84], [2567.69, 294.38, 108.73],
+    [-1117.58, 2698.61, 18.55], [842.44, -1033.42, 28.19]
+];
+AMMU_SHOPS.forEach(p => {
+    mp.blips.new(110, new mp.Vector3(p[0], p[1], p[2]),
+        { name: 'იარაღის მაღაზია', scale: 0.8, color: 1, shortRange: true });
+    mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
+        { color: [230, 120, 60, 140], visible: true });
+});
+
+// 24/7 mini-markets — blips only (visual). Server (packages/market) enforces where you can buy;
+// keep coords in sync with STORE_LOCATIONS there.
+const MARKET_STORES = [
+    [25.70, -1347.30, 29.50], [-47.50, -1757.50, 29.42], [373.50, 325.60, 103.57],
+    [1135.80, -982.30, 46.20], [-707.50, -914.30, 19.22], [-1223.00, -908.00, 12.33],
+    [-1487.60, -379.10, 40.16], [1728.70, 6414.10, 35.04], [1698.40, 4924.40, 42.06],
+    [1961.50, 3740.70, 32.34], [547.40, 2671.70, 42.16], [2678.50, 3280.70, 55.24],
+    [-3038.70, 585.90, 7.91]
+];
+MARKET_STORES.forEach(p => {
+    mp.blips.new(59, new mp.Vector3(p[0], p[1], p[2]),
+        { name: '24/7 მაღაზია', scale: 0.7, color: 2, shortRange: true });
+    mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
+        { color: [90, 200, 130, 140], visible: true });
+});
+
+// On-foot interaction range for shops. Must be <= the server's SHOP_RANGE so anyone
+// close enough to see the "Press E" prompt is also accepted by the server buy check.
+const SHOP_INTERACT_RANGE = 3.5;
+function nearestShopMode(pos) {
+    for (const p of AMMU_SHOPS) {
+        const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
+        if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'weapons';
+    }
+    for (const p of MARKET_STORES) {
+        const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
+        if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'market';
+    }
+    return null;
+}
+
 function isNearPosition(position, target, range) {
     const dx = position.x - target.x;
     const dy = position.y - target.y;
@@ -173,6 +219,41 @@ function closeInventoryUI() {
     inventoryBrowser = null;
     mp.gui.cursor.show(false, false);
 }
+
+// ---------- CEF shop menu (Ammu-Nation / 24-7 market) ----------
+let shopBrowser = null;
+let shopMode = null; // 'weapons' | 'market'
+function openShopUI(mode) {
+    if (shopBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser) return;
+    shopMode = mode;
+    if (!inventoryBrowser) openInventoryUI();                        // show inventory beside the shop
+    shopBrowser = mp.browsers.new('package://ui/shop/index.html');   // created last -> renders on top
+    mp.gui.cursor.show(true, true);
+}
+function closeShopUI() {
+    if (!shopBrowser) return;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    shopBrowser.destroy();
+    shopBrowser = null;
+    shopMode = null;
+    if (inventoryBrowser) closeInventoryUI();                        // close the paired inventory too
+    mp.gui.cursor.show(false, false);
+}
+function requestShopData() {
+    if (!shopBrowser || !shopMode) return;
+    mp.events.callRemote(shopMode === 'weapons' ? 'shop:requestData' : 'market:requestData');
+}
+mp.events.add('shop:uiReady', requestShopData);                       // UI loaded -> pull catalog
+mp.events.add('shop:setData', (json) => { if (shopBrowser) shopBrowser.execute(`window.setShopData(${json})`); });
+mp.events.add('shop:purchase', (key, qty) => {                        // Buy clicked in the UI
+    if (!shopMode) return;
+    const amount = Math.max(1, Math.min(99, parseInt(qty) || 1));
+    if (shopMode === 'weapons') mp.events.callRemote(String(key) === 'armor' ? 'shop:buyArmor' : 'shop:buyWeapon', String(key));
+    else mp.events.callRemote('market:buy', String(key), amount);
+    setTimeout(requestShopData, 200);                                // refresh balance after purchase
+});
+mp.events.add('shop:close', closeShopUI);
 
 function sendVehicleMenuState() {
     const vehicle = vehicleMenuVehicle;
@@ -381,16 +462,34 @@ function blockPauseControls() {
     }
 }
 
-mp.keys.bind(0x45, false, () => {
-    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
-    if (!fuelUIOpen && eligibleToRefuel(mp.players.local.vehicle)) openFuelUI();
+mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle) or open shop (on foot near a store)
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser) return;
+    if (fuelUIOpen) return;
+    if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
+    if (!mp.players.local.vehicle) {
+        const mode = nearestShopMode(mp.players.local.position);
+        if (mode) openShopUI(mode);
+    }
 });
 mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
     if (chatting) { closeChat(); return; }
     if (adminBrowser) closeAdminPanel(true);
     else if (fuelUIOpen) closeFuelUI();
+    else if (shopBrowser) closeShopUI();               // closes shop + its paired inventory
     else if (inventoryBrowser) closeInventoryUI();
     else if (vehicleMenuBrowser) closeVehicleMenu();
+});
+
+// "Press E to shop" prompt when on foot at an Ammu-Nation / 24-7 marker.
+mp.events.add('render', () => {
+    if (shopBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
+    if (mp.players.local.vehicle) return;
+    const mode = nearestShopMode(mp.players.local.position);
+    if (!mode) return;
+    const label = mode === 'weapons' ? 'Ammu-Nation' : '24/7 Market';
+    mp.game.graphics.drawText('Press E to shop  (' + label + ')', [0.5, 0.86], {
+        font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
+    });
 });
 mp.keys.bind(0x49, false, () => { // I - inventory
     if (chatting || vehicleMenuBrowser) return;
@@ -538,7 +637,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -755,6 +854,11 @@ mp.events.add('admin:panel:open', () => {
 
 mp.events.add('admin:panel:hide', () => closeAdminPanel(false));
 mp.events.add('inventory:close', closeInventoryUI);
+// Inventory data flow: UI ready -> pull items; server pushes -> render; use/drop -> server.
+mp.events.add('inventory:uiReady', () => mp.events.callRemote('inventory:request'));
+mp.events.add('inventory:data', (json) => { if (inventoryBrowser) inventoryBrowser.execute(`window.setInventory(${json})`); });
+mp.events.add('inventory:use', (id) => mp.events.callRemote('inventory:use', String(id)));
+mp.events.add('inventory:drop', (id) => mp.events.callRemote('inventory:drop', String(id)));
 
 mp.events.add('admin:panel:data', json => {
     if (!adminBrowser) return;

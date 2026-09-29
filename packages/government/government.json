@@ -1,0 +1,73 @@
+{
+  "admins": [
+    "SEPHIGR"
+  ],
+  "ranks": {
+    "official": {
+      "label": "მთავრობის წარმომადგენელი",
+      "level": 1,
+      "capabilities": [
+        "duty",
+        "announce"
+      ]
+    },
+    "minister": {
+      "label": "მინისტრი",
+      "level": 2,
+      "capabilities": [
+        "duty",
+        "announce",
+        "law",
+        "fine",
+        "salary"
+      ]
+    },
+    "vice_president": {
+      "label": "ვიცე-პრეზიდენტი",
+      "level": 3,
+      "capabilities": [
+        "duty",
+        "announce",
+        "law",
+        "fine",
+        "salary",
+        "tax",
+        "recruit",
+        "promote"
+      ]
+    },
+    "president": {
+      "label": "პრეზიდენტი",
+      "level": 4,
+      "capabilities": [
+        "duty",
+        "announce",
+        "law",
+        "fine",
+        "salary",
+        "tax",
+        "recruit",
+        "promote",
+        "fire"
+      ]
+    }
+  },
+  "treasury": 100073,
+  "taxRate": 0.05,
+  "taxRateMax": 0.3,
+  "salaries": {
+    "official": 500,
+    "minister": 1000,
+    "vice_president": 1500,
+    "president": 2000
+  },
+  "salaryIntervalMinutes": 30,
+  "fineMax": 5000,
+  "laws": [
+    "დაემორჩილეთ პოლიციისა და მთავრობის კანონიერ მოთხოვნებს.",
+    "აკრძალულია მშვიდობიან მოქალაქეებზე თავდასხმა.",
+    "ავტომობილებმა უნდა დაიცვან საგზაო წესები.",
+    "იარაღის ტარება დაშვებულია მხოლოდ ნებართვით."
+  ],
+  "officials": {}
+}

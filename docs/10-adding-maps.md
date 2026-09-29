@@ -9,9 +9,18 @@ RAGE:MP **cannot load a loose `.ymap`**. A ymap only loads when it lives inside 
 `client_packages/game_resources/dlcpacks/<name>/dlc.rpf` (same as add-on cars — no
 manifest, no code), so adding a map = wrapping the ymap(s) in a minimal map DLC.
 
-Building an RPF archive requires **CodeWalker on Windows** (`CodeWalker30_dev46` in
-Downloads). It can't be done from the Linux/WSL shell — RPF7 archives need CodeWalker
-(or OpenIV) to write valid offsets and hashes.
+You can build the map DLC **two ways**:
+
+- **From Linux (recommended, no Windows):** `_map_build/build_map_dlc.py` packs a
+  CodeWalker-exported `.ymap` straight into a valid `dlc.rpf`. One command, no GUI.
+  ```bash
+  python3 _map_build/build_map_dlc.py <name> /path/to/exported.ymap
+  # writes client_packages/game_resources/dlcpacks/<name>/dlc.rpf
+  ```
+  It emits the RPF7 format verified against this server's existing packs (OPEN encryption,
+  standard `x64/levels/gta5/_citye/maps/custom_maps.rpf` layout) and auto-generates
+  `setup2.xml`/`content.xml`.
+- **In CodeWalker on Windows** (`CodeWalker30_dev46`): manual GUI route, steps below.
 
 ## Target layout
 

@@ -195,6 +195,60 @@
       mp.trigger('inventory:close');
     }
   });
+
+  // ---- Personal inventory rendering (added; does not alter the existing layout) ----
+  const INV_ICONS = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹', armor:'🛡️' };
+  const iconFor = (id) => INV_ICONS[id] || '📦';
+  (function () {
+    const style = document.createElement('style');
+    style.textContent =
+      '.personal > .slot-grid .slot.filled{border-color:rgba(242,193,92,.6);background:rgba(242,193,92,.08);cursor:pointer;}' +
+      '.personal > .slot-grid .slot .inv-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:1;}' +
+      '.personal > .slot-grid .slot .inv-qty{position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:700;color:#f2c15c;text-shadow:0 1px 2px #000;}' +
+      '.columns.no-storage{grid-template-columns:minmax(230px,.85fr) minmax(360px,1.15fr);}' +
+      '.column.storage.inv-hidden{display:none;}' +
+      '.bag.inv-hidden{display:none;}';
+    document.head.appendChild(style);
+  })();
+
+  window.setInventory = function (data) {
+    // Trunk column only at a vehicle; backpack section only when a backpack is equipped.
+    const columns = document.querySelector('.columns');
+    const storage = document.querySelector('.column.storage');
+    const bag = document.querySelector('.personal .bag');
+    if (storage && columns) {
+      storage.classList.toggle('inv-hidden', !data.vehicleOpen);
+      columns.classList.toggle('no-storage', !data.vehicleOpen);
+    }
+    if (bag) bag.classList.toggle('inv-hidden', !data.hasBackpack);
+
+    const grid = document.querySelector('.personal > .slot-grid');
+    if (!grid) return;
+    const slots = grid.querySelectorAll('.slot');
+    const cap = document.querySelector('.personal > .section-head .capacity');
+    if (cap) cap.textContent = (data.used || 0) + ' / ' + (data.max || 25);
+    const items = data.items || [];
+    slots.forEach((slot, i) => {
+      const item = items[i];
+      slot.innerHTML = '';
+      slot.classList.remove('filled');
+      slot.onclick = null;
+      slot.oncontextmenu = null;
+      slot.title = '';
+      if (!item) return;
+      slot.classList.add('filled');
+      slot.title = item.label + (item.qty > 1 ? ' ×' + item.qty : '') + '  (click: use · right-click: drop)';
+      slot.innerHTML = '<span class="inv-icon">' + iconFor(item.id) + '</span>' +
+        (item.qty > 1 ? '<span class="inv-qty">' + item.qty + '</span>' : '');
+      slot.onclick = () => { if (RAGE) mp.trigger('inventory:use', item.id); };
+      slot.oncontextmenu = (e) => { e.preventDefault(); if (RAGE) mp.trigger('inventory:drop', item.id); };
+    });
+  };
+
+  if (RAGE) mp.trigger('inventory:uiReady');
+  else window.setInventory({ used: 2, max: 25, items: [
+    { id: 'burger', label: 'Burger', qty: 1 }, { id: 'water', label: 'Water', qty: 3 }
+  ]});
 </script>
 </body>
 </html>

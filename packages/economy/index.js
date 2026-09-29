@@ -54,6 +54,12 @@ global.adminAddMoney = function (player, amount) {
 
 mp.events.add('playerJoin', (player) => player.setVariable('money', getMoney(player)));
 
+// Shared money API so other packages (government, shops, markets) can charge/pay.
+global.getMoney = getMoney;
+global.setMoney = setMoney;
+global.addMoney = (player, delta) => setMoney(player, getMoney(player) + Math.floor(delta));
+global.canAfford = (player, cost) => getMoney(player) >= Math.max(0, Math.floor(cost));
+
 mp.events.addCommand('money', (player) => {
     player.outputChatBox('!{#7ec8ff}ბალანსი: $' + getMoney(player));
 });

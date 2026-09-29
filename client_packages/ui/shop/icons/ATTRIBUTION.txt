@@ -1,0 +1,11 @@
+Weapon icons from game-icons.net — licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)
+Backgrounds removed and recolored for UI use.
+
+  revolver.svg  — Delapouite
+  uzi.svg       — Delapouite
+  mp5.svg       — Delapouite
+  shotgun.svg   — Delapouite (sawed-off-shotgun)
+  bat.svg       — Delapouite (baseball-bat)
+  ak47.svg      — Skoll
+  knife.svg     — Lorc (bowie-knife)
+  vest.svg      — Lorc (armor-vest)
