@@ -10,7 +10,7 @@ client_packages/game_resources/dlcpacks/<INTERNAL_NAME>/dlc.rpf
 ```
 
 - `<INTERNAL_NAME>` **must** match the mod's own DLC name.
-- Restart server → **fully relaunch** GTA client → reconnect → `/veh <spawnname>`.
+- Restart server → **fully relaunch** GTA client → reconnect → `/car <spawnname>`.
 
 ---
 
@@ -74,7 +74,7 @@ This re-indexes `client_packages` so the new `dlc.rpf` is added to the client do
 
 ## Step 6 — Test & verify
 
-- In game: `/veh <spawnname>` (e.g. `/veh 23rs7`).
+- In game: `/car <spawnname>` (e.g. `/car 23rs7`).
 - From the server box you can confirm the client actually downloaded it — look for a file the
   same size as the `dlc.rpf` in the client cache:
   ```bash

@@ -52,6 +52,16 @@
   #fuelPct { color: var(--text); font-weight: 700; }
   #fuelPct.low { color: var(--danger); }
 
+  .engctrl { display: flex; align-items: center; gap: 8px; margin-top: 13px; }
+  .eico { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center;
+          justify-content: center; font-size: 17px; background: rgba(255,255,255,0.08);
+          border: 1px solid var(--border); transition: .15s; }
+  .eico.on  { color: #66d17a; border-color: rgba(102,209,122,.6); background: rgba(102,209,122,.12); }
+  .eico.off { color: var(--danger); border-color: rgba(255,91,91,.5); background: rgba(255,91,91,.10); }
+  .ekey { font-size: 12px; font-weight: 800; padding: 6px 11px; border-radius: 8px; color: var(--text);
+          background: rgba(255,255,255,0.10); border: 1px solid var(--border); }
+  .elbl { font-size: 11px; color: var(--muted); }
+
   #prompt {
     position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%);
     background: var(--panel); border: 1px solid var(--border); color: var(--text);
@@ -59,6 +69,27 @@
     box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none; white-space: nowrap;
   }
   #prompt b { color: var(--accent); }
+
+  #voice {
+    position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
+    display: none; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  #voice.talking { border-color: #66d17a; color: #bff0c8; }
+  #voice.talking .dot { width: 9px; height: 9px; border-radius: 50%; background: #66d17a; animation: pulse 1s infinite; }
+  #voice.banned { border-color: var(--danger); color: #ffd4d4; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  #chatch {
+    position: absolute; left: 22px; bottom: 26%;
+    background: var(--panel); border: 1px solid var(--accent); color: var(--text);
+    padding: 8px 14px; border-radius: 10px; font-size: 14px; font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none;
+  }
+  #chatch small { color: var(--muted); font-weight: 500; margin-right: 6px; }
+  #chatch b { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -75,16 +106,40 @@
     <div class="bar"><div id="rpmFill"></div></div>
     <div class="bar"><div id="fuelFill"></div></div>
     <div class="barlabel"><span>საწვავი</span><span id="fuelPct">100%</span></div>
+    <div class="engctrl">
+      <div class="eico off" id="engIco">⏻</div>
+      <div class="ekey">2</div>
+      <div class="elbl" id="engLbl">ძრავი</div>
+    </div>
   </div>
 
   <div id="prompt">დააჭირე <b>E</b>-ს საწვავის შესავსებად</div>
 
+  <div id="chatch"><small>TAB — არხი:</small> <b id="chatchName">ლოკალური</b></div>
+
+  <div id="voice"></div>
+
 <script>
   const $ = id => document.getElementById(id);
+  window.setChatChannel = function (label, visible) {
+    $('chatchName').textContent = label;
+    $('chatch').style.display = visible ? 'block' : 'none';
+  };
   // Called by the client ~20x/sec.
   window.hud = function (d) {
     $('money').textContent = '$' + (d.money || 0).toLocaleString();
     $('prompt').style.display = d.refuel ? 'block' : 'none';
+
+    const v = $('voice');
+    if (d.voiceBanned) {
+      v.className = 'banned'; v.style.display = 'flex';
+      v.innerHTML = '🔇 <span>მიკროფონი დაბლოკილია</span>';
+    } else if (d.voiceTalking) {
+      v.className = 'talking'; v.style.display = 'flex';
+      v.innerHTML = '<span class="dot"></span>🎤 <span>საუბრობ...</span>';
+    } else {
+      v.style.display = 'none';
+    }
     const sp = $('speedo');
     if (!d.inVehicle) { sp.classList.remove('on'); return; }
     sp.classList.add('on');
@@ -93,6 +148,8 @@
     const eng = $('eng');
     eng.textContent = d.engineOn ? '● ჩართ.' : '○ გამ.';
     eng.className = 'eng ' + (d.engineOn ? 'on' : 'off');
+    const ei = $('engIco'); ei.className = 'eico ' + (d.engineOn ? 'on' : 'off');
+    $('engLbl').textContent = d.engineOn ? 'ძრავი ჩართ.' : 'ძრავი გამ.';
     $('rpmFill').style.width = Math.round(d.rpm * 100) + '%';
     const low = d.fuel <= 15;
     const ff = $('fuelFill'); ff.style.width = Math.round(d.fuel) + '%'; ff.className = low ? 'low' : '';
@@ -102,7 +159,7 @@
   };
   // demo when opened in a plain browser
   if (typeof mp === 'undefined')
-    window.hud({ money: 4200, inVehicle: true, kmh: 138, gear: 5, engineOn: true, rpm: 0.72, fuel: 46 });
+    window.hud({ money: 4200, inVehicle: true, kmh: 138, gear: 5, engineOn: true, rpm: 0.72, fuel: 46, voiceTalking: true });
 </script>
 </body>
 </html>

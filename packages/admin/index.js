@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const FLY_ADMINS = new Set(['sephigr']);
+const FLY_ADMINS = new Set(['sephigr', 'torika2']);
 const MODERATION_FILE = path.join(__dirname, 'moderation.json');
 const MODERATION_DURATIONS = new Map([
     [300, '5 minutes'],
@@ -54,6 +54,12 @@ function activeSanction(collection, key) {
     }
     return sanction;
 }
+
+// Exposed so the chat package can enforce the admin comms-mute (text side).
+global.getCommsMute = function (player) {
+    const key = accountKey(player);
+    return key ? activeSanction(moderation.mutes, key) : null;
+};
 
 function moderationDuration(value) {
     if (value === null || value === '' || (typeof value !== 'number' && typeof value !== 'string')) return null;
@@ -149,6 +155,11 @@ mp.events.add('playerJoin', player => {
         const until = ban.expiresAt === null ? 'permanently' : `until ${new Date(ban.expiresAt).toISOString()}`;
         player.kick(`You are banned from this server ${until}.`);
         return;
+    }
+
+    // re-apply an active comms-mute's voice side once the client is ready
+    if (key && activeSanction(moderation.mutes, key)) {
+        setTimeout(() => { if (mp.players.exists(player)) player.call('voice:setMuted', [true]); }, 2500);
     }
 
     player.setVariable('admin:mode', false);
@@ -308,7 +319,8 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
             }
             delete moderation.mutes[key];
             saveModeration();
-            target.outputChatBox('!{#e0a94b}[Admin] !{#ffffff}Your chat mute has been removed.');
+            target.call('voice:setMuted', [false]);
+            target.outputChatBox('!{#e0a94b}[Admin] !{#ffffff}Your mute (text + voice) has been removed.');
             finishAction(player, `Unmuted ${target.name}.`);
             return;
         }
@@ -324,8 +336,9 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
         saveModeration();
 
         if (action === 'mute') {
-            target.outputChatBox(`!{#e0a94b}[Admin] !{#ffffff}You have been muted ${durationText(duration)}.`);
-            finishAction(player, `Muted ${target.name} ${durationText(duration)}.`);
+            target.call('voice:setMuted', [true]);
+            target.outputChatBox(`!{#e0a94b}[Admin] !{#ffffff}You have been muted (text + voice) ${durationText(duration)}.`);
+            finishAction(player, `Muted ${target.name} (text + voice) ${durationText(duration)}.`);
             return;
         }
 

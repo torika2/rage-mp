@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SSetupData>
+  <deviceName>dlc_rc12b</deviceName>
+  <datFile>content.xml</datFile>
+  <timeStamp>05/30/2020 00:00:00</timeStamp>
+  <nameHash>rc12b</nameHash>
+  <contentChangeSets />
+  <contentChangeSetGroups>
+    <Item>
+      <NameHash>GROUP_STARTUP</NameHash>
+      <ContentChangeSets>
+        <Item>rc12b_AUTOGEN</Item>
+      </ContentChangeSets>
+    </Item>
+  </contentChangeSetGroups>
+  <startupScript />
+  <scriptCallstackSize value="0" />
+  <type>EXTRACONTENT_COMPAT_PACK</type>
+  <order value="21" />
+  <minorOrder value="0" />
+  <isLevelPack value="false" />
+  <requiredVersion />
+  <subPackCount value="0" />
+</SSetupData>

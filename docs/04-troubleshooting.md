@@ -1,6 +1,6 @@
 # Troubleshooting
 
-## `/veh <name>` spawns a default car (not the add-on)
+## `/car <name>` spawns a default car (not the add-on)
 
 The model isn't mounted on the client. Work through these in order:
 

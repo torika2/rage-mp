@@ -1,17 +1,24 @@
 # Commands & Keybinds
 
+> **Localization:** all player-facing text (fuel UI, HUD, chat messages, command replies) is in **Georgian**.
+> CEF UIs and RAGE:MP chat render Unicode fine. GTA's **native `drawText` does NOT support Georgian glyphs**,
+> so any on-screen prompt must go through CEF (the "press E to refuel" prompt lives in the HUD browser for this
+> reason). The map **blip name** uses the game font, which may not render Georgian — verify in-game.
+
 ## Server-side chat commands
 
 Core freeroam commands are defined in `packages/freeroam/index.js`; police commands are in `packages/police/index.js`.
 
 | Command | Effect |
 |---------|--------|
-| `/veh <model>` | Spawn a car by model name and get in (destroys your previous car first) |
+| `/pos` | Show your current X/Y/Z coordinates and heading |
+| `/car <name>` | Spawn a car and get in (destroys your previous car first). Clear names: `bmwm4`, `audirs7`, `audirs7abt`, `audirs7sport`; or any GTA model (`/car adder`) |
+| `/cars` | List the clear add-on car names |
 | `/fix` | Repair the car you're in |
 | `/dv` | Delete your car |
 | `/livery <n>` | Set livery `n` (classic livery + mod-kit slot 48). No effect on cars without liveries |
 
-Example: `/veh 23rs7`, `/veh rmodrs7`, `/veh g82adro`, `/veh adder`.
+Example: `/car bmwm4`, `/car audirs7`, `/car audirs7sport`, `/car adder`.
 
 ### Adding a new command (pattern)
 
@@ -34,6 +41,28 @@ All native/client behaviour lives here. Tunable constants are in the `CFG` objec
 | Key | Effect |
 |-----|--------|
 | `2` | Toggle engine. Anti-spam 1s cooldown. **Off only allowed while stopped**; blocked when out of fuel |
+| `J` | Seatbelt on/off (ped flag 32) |
+| `L` | Close all vehicle doors |
+| `H` | Vehicle lights on/off |
+| `E` | Refuel at a pump |
+| `T` | Open chat. While typing, movement/keybinds are frozen |
+| `TAB` | While typing, cycle chat channel (Local → Team → Global) |
+
+> Keybinds and movement are disabled while the chat input is open, so typing letters no longer
+> triggers actions or walking. Handled by a `chatting` flag + `disableAllControlActions` in the render loop.
+
+### Chat channels (`packages/chat`)
+
+Native chat is used for input; the server routes each message by the sender's current channel
+(switch with **TAB** while typing; the HUD shows the active channel):
+
+| Channel | Who sees it |
+|---------|-------------|
+| **Local** (`ლოკ.`) | players within **25 m**, same dimension |
+| **Team** (`გუნდი`) | on-duty police — only available while on duty |
+| **Global** (`გლობ.`) | everyone |
+
+Commands (`/veh`, `/money`, …) are unaffected — they never go through chat routing.
 
 ### Radio
 - On entering any car the radio is forced **OFF** (`setVehicleRadioEnabled(false)` + station `OFF`).
@@ -54,10 +83,12 @@ All native/client behaviour lives here. Tunable constants are in the `CFG` objec
   The purchase is charged **server-side** (`fuel:buy` → `fuel:confirm`/`fuel:deny`).
 - **Octane tiers** (`OCTANES` in `index.js`) — 4 grades, good→track-spec:
   - **power** via `setEnginePowerMultiplier` (applied on enter/refuel): Regular ×1.00 baseline, Plus ×1.08,
-    Premium ×1.18, Super 100 ×1.28. The native ignores values <1, so Regular is the floor; higher grades add speed.
+    Premium ×1.18, Super 100 ×1.48. The native ignores values <1, so Regular is the floor.
+  - **speedRate** sets the estimated maximum-speed cap: Regular ×1.00, Plus ×1.08, Premium ×1.18,
+    Super 100 ×1.48. The cap is scaled from each vehicle's base speed.
   - **eff** (burn rate): Regular 1.15 (shortest range) → Super 100 0.75 (longest range).
   - **price** rises with grade so cost-per-distance climbs (2.65 → 4.13): cheap = budget, Super = performance.
-  - **blending:** refuelling mixes the new grade into what's already in the tank by volume (power/eff/rating
+  - **blending:** refuelling mixes the new grade into what's already in the tank by volume (power/eff/speedRate/rating
     become the weighted average) — adding a splash of a lower grade to a full tank barely changes it. The HUD
     shows the blended rating (e.g. `46% · 94`).
   - **"Empty tank first" toggle** in the pump UI: dumps the current fuel (lost, no refund) and fills the pure
@@ -106,14 +137,6 @@ the admin or fuel interface.
 ## Police job
 
 Police ranks, authority, duty, cuffs/arrests, timed jail, and management commands are documented in [07-police-system.md](07-police-system.md). Police commands are defined in `packages/police/index.js`; roster and jail configuration persist in `packages/police/police.json`.
-
-## Hospital job
-
-Hospital ranks, duty, patient treatment/revival, staff management, and the
-hospital entrance and PHMC interior test setup are documented in
-[08-hospital-system.md](08-hospital-system.md). Commands are defined in
-`packages/hospital/index.js`; ranks and staff persist in
-`packages/hospital/hospital.json`.
 
 ## Admin flight
 

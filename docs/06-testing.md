@@ -29,7 +29,7 @@ cat /opt/ragemp-srv/packages/economy/money.json
 | # | Action | Expected |
 |---|--------|----------|
 | 1 | `/money` | Shows `Balance: $5000` (first join) |
-| 2 | `/veh 23rs7` | Audi RS7 spawns; HUD bottom-right shows speed/gear/rpm/fuel; money top-right |
+| 2 | `/car 23rs7` | Audi RS7 spawns; HUD bottom-right shows speed/gear/rpm/fuel; money top-right |
 | 3 | Get in | Radio is OFF |
 | 4 | Press `2` while stopped | `Engine: ON` (then OFF on next press) |
 | 5 | Drive, press `2` while moving | Refused: "Can't turn the engine off while moving" |
@@ -53,6 +53,9 @@ cat /opt/ragemp-srv/packages/economy/money.json
 - Passenger vs driver (fuel is per-client; only relevant solo today).
 - Octane **blending**: fill Super to ~full, then buy a splash of Premium → HUD rating stays ~100 (not 98).
   Burn down to near-empty, fill Premium → rating moves to ~98. From 0% → exactly the grade bought.
+- Octane **speedRate**: with the same car, use "Empty tank first" and fill each grade fully; compare the
+  speedometer maximum on the same long, flat road. Higher grades should raise the speed cap without repeated
+  refuels compounding it.
 - **"Empty tank first" toggle**: with a partial tank, enable it → slider max jumps to full capacity; buy →
   old fuel is discarded (HUD rating becomes exactly the bought grade, e.g. `· 98`), only the pumped litres charged.
 
@@ -60,7 +63,7 @@ cat /opt/ragemp-srv/packages/economy/money.json
 
 - Full tank cost (65 L): Regular ~$150, Plus ~$195, Premium ~$273, Super 100 ~$358.
 - Octane is a real trade: cost-per-distance rises with grade (2.65 → 4.13), and higher grades give more
-  engine power (×1.00 / ×1.08 / ×1.18 / ×1.28) and range. Cheap = budget, Super 100 = performance.
+  engine power and top speed (×1.00 / ×1.08 / ×1.18 / ×1.48) and range. Cheap = budget, Super 100 = performance.
 - ⚠️ **No income source yet** — money only drains. Add jobs/races/payouts before going live,
   or players will end up stranded at $0. Use `/addmoney <n>` for testing until then.
 

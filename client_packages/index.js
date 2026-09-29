@@ -21,13 +21,13 @@ const CFG = {
 // power = engine power multiplier (>=1 only; SET_VEHICLE_ENGINE_POWER_MULTIPLIER
 // ignores values <1, so Regular is the 1.0 baseline and higher grades add power/speed).
 const OCTANES = [
-    { name: 'რეგულარი 87', price: 2.3, eff: 1.15, power: 1.00, rating: 87 },  // cheapest, stock power, shortest range
-    { name: 'პლუსი 91',    price: 3.0, eff: 1.00, power: 1.08, rating: 91 },  // mid cost, +8% power
-    { name: 'პრემიუმი 98', price: 4.2, eff: 0.85, power: 1.18, rating: 98 },  // +18% power, long range
-    { name: 'სუპერი 100',  price: 5.5, eff: 0.75, power: 1.28, rating: 100 }  // top tier: +28% power, longest range
+    { name: 'რეგულარი 87', price: 2.3, eff: 1.15, power: 1.00, speedRate: 1.00, rating: 87 },  // cheapest, stock power, shortest range
+    { name: 'პლუსი 91',    price: 3.0, eff: 1.00, power: 1.08, speedRate: 1.08, rating: 91 },  // mid cost, +8% power/speed
+    { name: 'პრემიუმი 98', price: 4.2, eff: 0.85, power: 1.18, speedRate: 1.18, rating: 98 },  // +18% power/speed, long range
+    { name: 'სუპერი 100',  price: 5.5, eff: 0.75, power: 1.48, speedRate: 1.48, rating: 100 }  // top tier: +48% power/speed, longest range
 ];
 // A fresh full tank behaves like Plus 91.
-const DEFAULT_OCTANE = { power: 1.08, eff: 1.00, rating: 91 };
+const DEFAULT_OCTANE = { power: 1.08, eff: 1.00, speedRate: 1.08, rating: 91 };
 
 const GAS_STATIONS = [
     [49.42, 2778.79, 58.04], [263.89, 2606.46, 46.02], [1039.96, 2671.13, 39.55],
@@ -46,15 +46,6 @@ GAS_STATIONS.forEach(p => {
     // amber ground ring so it's obvious where to stop
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.8,
         { color: [255, 180, 46, 150], visible: true });
-});
-
-mp.blips.new(61, new mp.Vector3(1151.3, -1529.6, 35.0),
-    { name: 'St Fiacre Hospital', scale: 0.9, color: 2, shortRange: false });
-
-const HOSPITAL_EXTERIOR = new mp.Vector3(1151.3, -1529.6, 35.37);
-mp.markers.new(1, HOSPITAL_EXTERIOR, 1.2, {
-    color: [55, 190, 145, 180],
-    visible: true
 });
 
 function isNearPosition(position, target, range) {
@@ -83,17 +74,26 @@ function octaneProfile(veh) {
 // Higher octane in the tank = more engine power / top speed.
 function applyOctanePower(veh) {
     if (!veh) return;
-    veh.setEnginePowerMultiplier(octaneProfile(veh).power);
+    const profile = octaneProfile(veh);
+    veh.setEnginePowerMultiplier(profile.power);
+
+    let baseMaxSpeed = baseMaxSpeedByVeh[veh.remoteId];
+    if (baseMaxSpeed === undefined) {
+        baseMaxSpeed = mp.game.vehicle.getEstimatedMaxSpeed(veh.handle);
+        if (baseMaxSpeed > 0) baseMaxSpeedByVeh[veh.remoteId] = baseMaxSpeed;
+    }
+    if (baseMaxSpeed > 0)
+        mp.game.vehicle.setMaxSpeed(veh.handle, baseMaxSpeed * profile.speedRate);
 }
 
 // ---------- State ----------
 const fuelByVeh = {};
 const octaneByVeh = {};
+const baseMaxSpeedByVeh = {};
 let lastEngineToggle = 0;
 let fuelBrowser = null;
 let fuelUIOpen = false;
-let chatInputOpen = false;
-let chatActivationSuppressed = false;
+let chatting = false;     // native chat input is open (typing)
 let suppressPauseUntil = 0;
 let pendingDrain = false; // "empty tank first" chosen for the in-flight purchase
 
@@ -143,7 +143,6 @@ function openFuelUI() {
     if (fuelUIOpen) return;
     fuelUIOpen = true;
     fuelBrowser = mp.browsers.new('package://ui/fuel/index.html');
-    suppressNativeChatForModal();
     mp.gui.cursor.show(true, true);
 }
 function closeFuelUI() {
@@ -177,8 +176,9 @@ mp.events.add('fuel:confirm', (octaneIndex, liters, cost) => {
         octaneByVeh[veh.remoteId] = totalL > 0 ? {
             power:  (prof.power  * haveL + grade.power  * addL) / totalL,
             eff:    (prof.eff    * haveL + grade.eff    * addL) / totalL,
+            speedRate: (prof.speedRate * haveL + grade.speedRate * addL) / totalL,
             rating: (prof.rating * haveL + grade.rating * addL) / totalL
-        } : { power: grade.power, eff: grade.eff, rating: grade.rating };
+        } : { power: grade.power, eff: grade.eff, speedRate: grade.speedRate, rating: grade.rating };
 
         addFuel(veh, liters / CFG.tankLiters * CFG.fuelMax);
         applyOctanePower(veh); // blended grade takes effect immediately
@@ -187,19 +187,19 @@ mp.events.add('fuel:confirm', (octaneIndex, liters, cost) => {
         sendFuelData();
         fuelBrowser.execute(`window.fuelToast(${JSON.stringify('შეივსო ' + liters + 'ლ · $' + cost)}, true)`);
     } else {
-        mp.gui.chat.push(`შეივსო ${liters}ლ · $${cost}`);
+        notify(`შეივსო ${liters}ლ · $${cost}`);
     }
     pendingDrain = false;
 });
 mp.events.add('fuel:deny', (msg) => {
     pendingDrain = false;
     if (fuelUIOpen && fuelBrowser) fuelBrowser.execute(`window.fuelToast(${JSON.stringify(msg)}, false)`);
-    else mp.gui.chat.push('შევსება ვერ მოხერხდა: ' + msg);
+    else notify('შევსება ვერ მოხერხდა: ' + msg);
 });
 
 // ---------- Engine toggle ("2") ----------
 function engineToggle() {
-    if (fuelUIOpen) return;
+    if (chatting || fuelUIOpen) return;
     const veh = mp.players.local.vehicle;
     if (!veh) return;
     const now = Date.now();
@@ -208,101 +208,173 @@ function engineToggle() {
 
     if (veh.getIsEngineRunning() === true) {
         if (speedOf(veh) > CFG.stopSpeed) {
-            mp.gui.chat.push('მოძრაობისას ძრავის გამორთვა არ შეიძლება. ჯერ გააჩერე.');
+            notify('მოძრაობისას ძრავის გამორთვა არ შეიძლება. ჯერ გააჩერე.');
             return;
         }
         veh.setEngineOn(false, true, true);
-        mp.gui.chat.push('ძრავი: გამორთული');
+        notify('ძრავი: გამორთული');
     } else {
-        if (getFuel(veh) <= 0) { mp.gui.chat.push('საწვავი ამოიწურა — შეავსე საწვავის სადგურზე.'); return; }
+        if (getFuel(veh) <= 0) { notify('საწვავი ამოიწურა — შეავსე საწვავის სადგურზე.'); return; }
         veh.setEngineOn(true, true, false);
-        mp.gui.chat.push('ძრავი: ჩართული');
+        notify('ძრავი: ჩართული');
     }
 }
 
 // ---------- Keybinds ----------
-function closeChatInput() {
-    if (!chatInputOpen && !mp.gui.chat.enabled) return false;
-    chatInputOpen = false;
-    mp.gui.chat.activate(false);
-    suppressPauseUntil = Date.now() + 1500;
-    blockPauseControls();
-    setTimeout(() => {
-        if (!adminBrowser && !fuelUIOpen && !mp.gui.cursor.visible && !chatInputOpen) {
-            mp.gui.chat.activate(true);
-        }
-    }, 300);
-    return true;
-}
-
 function blockPauseControls() {
     for (let group = 0; group <= 2; group += 1) {
-        mp.game.controls.disableControlAction(group, 199, true);
-        mp.game.controls.disableControlAction(group, 200, true);
+        mp.game.controls.disableControlAction(group, 199, true); // FRONTEND_PAUSE
+        mp.game.controls.disableControlAction(group, 200, true); // FRONTEND_PAUSE_ALTERNATE
+        mp.game.controls.disableControlAction(group, 322, true); // ESC (pause/map)
     }
-}
-
-function suppressNativeChatForModal() {
-    if (!chatActivationSuppressed || mp.gui.chat.enabled) {
-        mp.gui.chat.activate(false);
-    }
-    chatActivationSuppressed = true;
 }
 
 mp.keys.bind(0x45, false, () => {
-    const player = mp.players.local;
-    if (isNearPosition(player.position, HOSPITAL_EXTERIOR, 3)) {
-        mp.events.callRemote('hospital:enter');
-        return;
-    }
+    if (chatting) return;
     if (!fuelUIOpen && eligibleToRefuel(mp.players.local.vehicle)) openFuelUI();
 });
-mp.keys.bind(0x0D, false, () => { chatInputOpen = false; });
-mp.keys.bind(0x01, true, () => {
-    if (!closeChatInput()) return;
-    suppressPauseUntil = Date.now() + 300;
-});
-mp.keys.bind(0x1B, true, () => {
-    const chatWasOpen = closeChatInput();
-    const interactionOpen = Boolean(adminBrowser || fuelUIOpen || chatWasOpen || mp.gui.cursor.visible);
-    if (!interactionOpen) return;
-
-    suppressPauseUntil = Date.now() + 1000;
-    blockPauseControls();
+mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
+    if (chatting) { closeChat(); return; }
     if (adminBrowser) closeAdminPanel(true);
     else if (fuelUIOpen) closeFuelUI();
 });
-mp.keys.bind(0x32, false, engineToggle);                            // 2
+mp.keys.bind(0x32, false, engineToggle);                            // 2 - engine on/off
+
+// ---------- Custom chat (CEF) ----------
+mp.gui.chat.show(false); // hide native chat (also removes the "Multiplayer started" line)
+const chatBrowser = mp.browsers.new('package://ui/chat/index.html');
+let chatReady = false;
+const chatBuffer = [];
+let chatChannel = 'local';
+let hasTeam = false;
+
+function chatChannels() { return hasTeam ? ['local', 'team', 'global'] : ['local', 'global']; }
+function chatIn(payload) { // payload = JSON string (from server) or object (local notify)
+    if (chatBrowser) chatBrowser.execute(`window.addMsg(${JSON.stringify(payload)})`);
+}
+function notify(text) {
+    const obj = { ch: 'system', text: String(text), ts: Date.now() };
+    if (!chatReady) chatBuffer.push(obj); else chatIn(obj);
+}
+mp.events.add('chat:in', (json) => {
+    if (!chatReady) { chatBuffer.push(json); if (chatBuffer.length > 300) chatBuffer.shift(); return; }
+    chatIn(json);
+});
+setTimeout(() => { chatReady = true; while (chatBuffer.length) chatIn(chatBuffer.shift()); }, 1500);
+
+mp.events.add('chat:hasTeam', (value) => {
+    hasTeam = value === true || value === 'true';
+    if (!hasTeam && chatChannel === 'team') chatChannel = 'local';
+});
+
+function openChat() {
+    if (chatting || adminBrowser || fuelUIOpen) return;
+    chatting = true;
+    mp.gui.cursor.show(true, true);
+    if (chatBrowser) chatBrowser.execute(
+        `window.openInput(${JSON.stringify(JSON.stringify(chatChannels()))}, ${JSON.stringify(chatChannel)})`);
+}
+function closeChat() {
+    chatting = false;
+    mp.gui.cursor.show(false, false);
+    if (chatBrowser) chatBrowser.execute('window.closeInput()');
+    suppressPauseUntil = Date.now() + 800; // keep the pause/map from opening as Esc is released
+    blockPauseControls();
+}
+mp.keys.bind(0x54, false, openChat); // T - open custom chat input
+
+mp.events.add('chat:send', (text, channel) => {
+    chatChannel = (channel === 'local' || channel === 'team' || channel === 'global') ? channel : 'local';
+    text = String(text || '').trim();
+    if (!text) return; // keep the input open; Esc closes it
+    if (text[0] === '/') mp.events.callRemote('chat:command', text);
+    else mp.events.callRemote('chat:submit', text, chatChannel);
+});
+mp.events.add('chat:cancel', () => closeChat());
+
+// ---------- Voice chat: push-to-talk on B (held), blocked while comms-banned ----------
+let voiceBanned = false;
+let voiceTalking = false;
+if (mp.voiceChat) mp.voiceChat.muted = true; // start muted; B unmutes while held
+
+// admin comms-mute (voice side)
+mp.events.add('voice:setMuted', (value) => {
+    voiceBanned = (value === true || value === 'true');
+    voiceTalking = false;
+    if (mp.voiceChat) mp.voiceChat.muted = true; // stay muted; PTT can't unmute while banned
+});
+
+mp.keys.bind(0x42, true, () => {  // B held -> talk
+    if (voiceBanned || chatting || adminBrowser || fuelUIOpen) return;
+    voiceTalking = true;
+    if (mp.voiceChat) mp.voiceChat.muted = false;
+});
+mp.keys.bind(0x42, false, () => { // B released -> stop talking
+    voiceTalking = false;
+    if (mp.voiceChat) mp.voiceChat.muted = true;
+});
+
+// ---------- Vehicle keybinds: seatbelt (J), close doors (L), lights (H) ----------
+let seatbeltOn = false;
+let lightsForcedOn = false;
+
+mp.keys.bind(0x4A, false, () => { // J - seatbelt
+    if (chatting || !mp.players.local.vehicle) return;
+    seatbeltOn = !seatbeltOn;
+    mp.players.local.setConfigFlag(32, !seatbeltOn); // 32 = can fly through windscreen; off while belted
+    notify(seatbeltOn ? 'ღვედი: შეკრული' : 'ღვედი: შეხსნილი');
+});
+
+mp.keys.bind(0x4C, false, () => { // L - close all doors
+    const veh = mp.players.local.vehicle;
+    if (chatting || !veh) return;
+    for (let i = 0; i < 6; i++) veh.setDoorShut(i, false);
+    notify('კარები დაიკეტა');
+});
+
+mp.keys.bind(0x48, false, () => { // H - toggle lights (2 = force on, 1 = force off)
+    const veh = mp.players.local.vehicle;
+    if (chatting || !veh) return;
+    lightsForcedOn = !lightsForcedOn;
+    veh.setLights(lightsForcedOn ? 2 : 1);
+    notify(lightsForcedOn ? 'შუქები: ჩართული' : 'შუქები: გამორთული');
+});
+
+mp.events.add('playerLeaveVehicle', () => { // reset per-car states on exit
+    seatbeltOn = false;
+    lightsForcedOn = false;
+    mp.players.local.setConfigFlag(32, true);
+});
 
 // ---------- Main loop ----------
 let lastTime = Date.now();
+// Native chat stays hidden — the custom CEF chat handles everything.
 mp.events.add('playerReady', () => {
-    if (adminBrowser || fuelUIOpen || mp.gui.cursor.visible) return;
-    mp.gui.chat.show(true);
-    mp.gui.chat.activate(true);
-    chatActivationSuppressed = false;
+    mp.gui.chat.show(false);
 });
 
 mp.events.add('render', () => {
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || mp.gui.cursor.visible);
+    // Only real CEF panels count as modal. (Including cursor.visible here caused a
+    // self-reinforcing loop that stuck the cursor and killed the native chat.)
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen);
     if (modalOpen) {
+        // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
         mp.game.controls.disableAllControlActions(1);
         mp.game.controls.disableAllControlActions(2);
-        suppressNativeChatForModal();
-        for (let group = 0; group <= 2; group += 1) {
-            mp.game.controls.disableControlAction(group, 245, true);
-        }
         mp.gui.cursor.show(true, true);
-    } else if (chatActivationSuppressed) {
-        mp.gui.chat.show(true);
-        mp.gui.chat.activate(true);
-        chatActivationSuppressed = false;
-    }
-    chatInputOpen = !modalOpen && mp.gui.chat.enabled;
-    if (chatInputOpen || modalOpen || Date.now() < suppressPauseUntil) {
+    } else if (chatting) {
+        // typing in chat: block movement/attack + the pause menu, and detect Esc to close cleanly
+        mp.game.controls.disableAllControlActions(0);
         blockPauseControls();
+        if (mp.game.controls.isDisabledControlJustPressed(0, 200) ||
+            mp.game.controls.isDisabledControlJustPressed(0, 322)) {
+            closeChat();
+        }
+    } else if (mp.gui.cursor.visible) {
+        mp.gui.cursor.show(false, false); // recover any stuck cursor so chat/controls work again
     }
+    if (Date.now() < suppressPauseUntil) blockPauseControls();
 
     const now = Date.now();
     const dt = Math.min((now - lastTime) / 1000, 0.5);
@@ -346,6 +418,10 @@ mp.events.add('render', () => {
         const refuel = !fuelUIOpen && eligibleToRefuel(veh);
         payload = { money: getMoney(), inVehicle: true, kmh: Math.round(speed * 3.6), gear, engineOn, rpm, fuel, octane, refuel };
     }
+
+    // voice state (shown regardless of vehicle)
+    payload.voiceTalking = voiceTalking;
+    payload.voiceBanned = voiceBanned;
 
     // push HUD at CFG.hudHz (not every frame)
     hudAccum += dt;
@@ -401,12 +477,10 @@ mp.events.add('entityStreamIn', entity => {
 });
 mp.events.add('playerDeath', () => setFlyEnabled(false));
 
-mp.keys.bind(0x42, false, () => {
-    if (adminBrowser) return;
-    mp.events.callRemote('admin:fly:toggle');
-});
+// (fly is toggled via the /fly command now — B is push-to-talk voice)
 
 mp.keys.bind(0x77, false, () => {
+    if (chatting) return;
     mp.events.callRemote('admin:panel:toggle');
 });
 
@@ -490,7 +564,6 @@ mp.events.add('admin:panel:open', () => {
     if (adminBrowser) return;
     if (fuelUIOpen) closeFuelUI();
     adminBrowser = mp.browsers.new('package://ui/admin/index.html');
-    suppressNativeChatForModal();
     mp.gui.cursor.show(true, true);
 });
 
@@ -502,11 +575,11 @@ mp.events.add('admin:panel:data', json => {
     try {
         players = JSON.parse(String(json));
     } catch (error) {
-        mp.gui.chat.push('Admin panel: could not read player list.');
+        notify('Admin panel: could not read player list.');
         return;
     }
     if (!Array.isArray(players)) {
-        mp.gui.chat.push('Admin panel: invalid player list.');
+        notify('Admin panel: invalid player list.');
         return;
     }
     adminBrowser.execute(`window.setPlayers(${JSON.stringify(players)})`);
@@ -516,7 +589,7 @@ mp.events.add('admin:panel:result', message => {
     if (adminBrowser) {
         adminBrowser.execute(`window.showNotice(${JSON.stringify(String(message))})`);
     } else {
-        mp.gui.chat.push(String(message));
+        notify(String(message));
     }
 });
 

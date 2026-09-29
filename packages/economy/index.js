@@ -49,9 +49,9 @@ mp.events.add('fuel:buy', (player, octaneIndex, liters) => {
 
     const cost = Math.ceil(liters * OCTANE_PRICES[octaneIndex]);
     const money = getMoney(player);
-    if (money < cost) { player.call('fuel:deny', ['Not enough money — $' + cost + ' needed']); return; }
+    if (money < cost) { player.call('fuel:deny', ['არასაკმარისი თანხა — საჭიროა $' + cost]); return; }
 
     setMoney(player, money - cost);
     player.call('fuel:confirm', [octaneIndex, liters, cost]);
-    player.outputChatBox(`!{#8ed17a}Refuelled ${liters}L ${OCTANE_NAMES[octaneIndex]} for $${cost}. Balance: $${getMoney(player)}`);
+    player.outputChatBox(`!{#8ed17a}შეივსო ${liters}ლ ${OCTANE_NAMES[octaneIndex]} — $${cost}. ბალანსი: $${getMoney(player)}`);
 });

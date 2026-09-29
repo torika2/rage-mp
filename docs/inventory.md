@@ -1,13 +1,21 @@
-# Installed / Pending Mods
+# Installed Mods
 
-Spawn with `/veh <spawn name>`. Folder = `client_packages/game_resources/dlcpacks/<folder>/dlc.rpf`.
+Folder = `client_packages/game_resources/dlcpacks/<folder>/dlc.rpf`.
 
-| Car | Spawn name | Folder (must match internal name) | Liveries | Status |
-|-----|-----------|-----------------------------------|----------|--------|
-| BMW M4 (G82 Adro Kit) | `g82adro` | `g82adro` | none | ⚠️ folder currently named `bmwm5` — **rename to `g82adro`** |
-| Audi RS7 (2023) | `23rs7` | `abtrsr_rs7c8` | none | ⏳ not installed yet |
-| Audi RS7 ABT (2023) | `23rs7abt` | `abtrsr_rs7c8` (same pack) | none | ⏳ not installed yet |
-| Audi RS7 Sportback (RmodCustoms) | `rmodrs7` | `rmodrs7` | ✅ yes | ⏳ not installed yet |
+## Vehicles — spawn with `/car <name>`
+
+| Car | Spawn name | Folder | Liveries | Status |
+|-----|-----------|--------|----------|--------|
+| BMW M4 (G82 Adro Kit) | `g82adro` | `bmwm5` | none | ✅ installed (works despite folder≠name) |
+| Audi RS7 (2023) | `23rs7` | `abtrsr_rs7c8` | none | ✅ installed |
+| Audi RS7 ABT (2023) | `23rs7abt` | `abtrsr_rs7c8` (same pack) | none | ✅ installed |
+| Audi RS7 Sportback (RmodCustoms) | `rmodrs7` | `rmodrs7` | ✅ yes | ✅ installed |
+
+## Map / interiors (no spawn — go to the location)
+
+| Mod | Folder | Notes | Status |
+|-----|--------|-------|--------|
+| None | — | No map/interior DLC mods are currently installed. | — |
 
 ## Source downloads (Windows)
 
