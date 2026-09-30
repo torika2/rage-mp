@@ -442,9 +442,9 @@
   });
 
   // Ban / Mute / Give money / Demorgan (and Unmute / Release DM from the card) open a form asking for the
-  // player ID and the time (minutes) or amount. Row buttons pre-fill the ID. Kick / Kill just confirm.
+  // player ID and the time (days for Ban, minutes otherwise) or amount. Row buttons pre-fill the ID. Kick / Kill just confirm.
   const FORM_ACTIONS = {
-    ban:        { title: 'Ban player',        value: 'Time (minutes) — 0 = permanent', min: 0, max: 525600, def: 60, presets: [[30, '30 min'], [60, '1 h'], [360, '6 h'], [1440, '1 day'], [10080, '7 days'], [0, 'Permanent']] },
+    ban:        { title: 'Ban player',        value: 'Time (days) — 0 = permanent', min: 0, max: 365, def: 1, presets: [[1, '1 day'], [3, '3 days'], [7, '7 days'], [14, '14 days'], [30, '30 days'], [0, 'Permanent']] },
     mute:       { title: 'Mute text + voice', value: 'Time (minutes) — 0 = permanent', min: 0, max: 525600, def: 30, presets: [[5, '5 min'], [15, '15 min'], [30, '30 min'], [60, '1 h'], [1440, '1 day'], [0, 'Permanent']] },
     demorgan:   { title: 'Send to Demorgan',  value: 'Time (minutes)', min: 1, max: 1440, def: 30, reason: true, presets: [[10, '10 min'], [30, '30 min'], [60, '1 h'], [180, '3 h'], [720, '12 h'], [1440, '24 h']] },
     addMoney:   { title: 'Give money',        value: 'Amount ($)', min: 1, max: 1000000, def: 1000, presets: [[1000, '$1k'], [5000, '$5k'], [10000, '$10k'], [50000, '$50k'], [100000, '$100k']] },
@@ -526,11 +526,12 @@
     const reason = formReason.value.trim();
     closeActionForm();
     if (!RAGE) { window.showNotice(`Would ${action} ID ${target.id}${value !== null ? ' · ' + value : ''}`); return; }
-    const seconds = (action === 'ban' || action === 'mute' || action === 'demorgan') ? value * 60 : 0;
+    const minutes = action === 'ban' ? value * 1440 : value; // the ban form is in days
+    const seconds = (action === 'ban' || action === 'mute' || action === 'demorgan') ? minutes * 60 : 0;
     const amount = action === 'addMoney' ? value : 0;
     mp.trigger('admin:panel:action', action, target.id, seconds, amount, reason);
     window.showNotice(action === 'addMoney' ? `Giving $${value.toLocaleString()} to ${target.name}…`
-      : value !== null ? `${cfg.title}: ${target.name} ${action === 'demorgan' ? 'for ' + value + ' min' : minutesText(value)}…`
+      : value !== null ? `${cfg.title}: ${target.name} ${action === 'demorgan' ? 'for ' + value + ' min' : minutesText(minutes)}…`
       : `${cfg.title}: ${target.name}…`);
   });
 

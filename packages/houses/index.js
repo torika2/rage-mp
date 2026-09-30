@@ -386,6 +386,7 @@ mp.events.add('houses:garage', (player, id) => {
 function sendHome(player) {
     if (!mp.players.exists(player)) return;
     if (typeof global.govOnDuty === 'function' && global.govOnDuty(player)) return; // on-duty officials spawn at City Hall
+    if (typeof global.demorganIsJailed === 'function' && global.demorganIsJailed(player)) return; // prisoners stay in Demorgan
     const house = ownedBy(player).find(h => h.spawnHome !== false);
     if (!house) return;
     if (interiorOf(house) && !house.spawn) return enterHouse(player, house); // wake up inside

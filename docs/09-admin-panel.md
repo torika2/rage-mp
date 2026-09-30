@@ -39,8 +39,9 @@ while leaving the panel available to turn it back on.
   the 15-second voice relink respects it, so a modified client can't get around it. Push-to-talk
   (B) is also blocked on their client. When a timed mute expires, voice comes back on its own
   within 15 s.
-- **Mute** or **Ban** an online player (Player actions card): whole minutes up to 525,600
-  (1 year), where **0 = permanent**. The confirmation and the
+- **Mute** an online player (Player actions card): whole minutes up to 525,600 (1 year), where
+  **0 = permanent**. **Ban** is in whole days (presets 1, 3, 7, 14, 30 days, up to 365), where
+  **0 = permanent**. The confirmation and the
   player's message show it readably (e.g. "for 1 day 6 hours"). Active mutes
   block regular chat; bans are checked on every join. Both persist across
   server restarts and expire automatically. **Unmute** is available on the
@@ -58,14 +59,24 @@ while leaving the panel available to turn it back on.
   - **Where:** an enclosed **underground interior**, the Gunrunning **bunker** below the docks,
     in **dimension 1**. Inside a closed interior GTA doesn't draw the outside world, so only the
     Demorgan area is visible, and its walls keep prisoners in. There's **no line/radius** any more.
-  - **Enforced by the server:** an invisible failsafe only. A prisoner who glitches out (falls
-    through the floor or ends up more than 250 m away) or gets into a vehicle is put back on the
-    spawn point without a dimension change. One who leaves dimension 1 is put back into it. Chat
+  - **Enforced by the server:** a prisoner who glitches out (falls 40 m+ through the floor or ends
+    up more than 250 m away) is put back on the spawn point and gets **+5 minutes**; one who dies
+    respawns inside immediately, also **+5 minutes**. Getting into a vehicle just puts them back.
+    One who isn't in dimension 1 (e.g. just connected) is put back into it, no penalty. Everyone
+    in Demorgan is **invincible** (client-side, re-applied every frame). Chat
     commands are blocked except `/pos`, `/money`, `/bank`, `/needs`, `/laws` and `/inv`.
   - **Client:** weapons, melee and vehicles are disabled, and a countdown with the reason shows at
     the top of the screen. Anyone in Demorgan (prisoners, `/sjail`, `/dim 1`, `/setdim … 1`) has
     the **minimap hidden** and **no NPCs or traffic**, and the bunker's furniture (entity sets
-    `Bunker_Style_A`, `standard_bunker_set`, …) is switched on. Everything is restored on leaving.
+    `Bunker_Style_A`, `standard_bunker_set`, …) is switched on. The bunker's Gunrunning IPLs (`gr_grdlc_interior_placement`, `…_interior_0_grdlc_int_01_milo_`) are requested at client start, and the furniture is applied once the interior is loaded (retried for ~30 s), otherwise parts of it show up missing. Everything is restored on leaving.
+  - **Prison work (digging):** each prisoner has a marked spot (orange marker). Standing on it and
+    pressing **E** plays a pickaxe-swinging animation for 10 s (every prisoner is given a **pickaxe inventory item** automatically when jailed or on rejoin, and it's removed on release; if they drop or lose it, a new one is handed out when they press E, if they have a free slot; several prisoners can dig at once, each on their own spot); each prisoner can dig **10 times in a row, then gets a random 5–20 minute break** (rolled per prisoner and per batch) (the prompt shows `Digging break m:ss`), then another 10, and so on; the counter and break are stored with the sentence so reconnecting doesn't skip it (admins aren't limited; `DIG_BATCH` / `DIG_COOLDOWN_MIN` / `DIG_COOLDOWN_MAX`); staying on the spot for the full 10 s pays a
+    **random $50–$300** (digging does **not** shorten the sentence), shown as a push notification in the same style as the ammo chip (`+$450 Digging` under the crosshair, in the
+    HUD page) and in chat right after the animation (skewed so $50 is the most common: ~1 in 4 digs, median ~$80, average ~$110; tune `DIG_MONEY_*` in `packages/demorgan/index.js`) and marks a new spot. Admins digging get the same money and notification. The server checks the spot, the distance
+    at start and end, and one dig at a time. Spots default to 8 offsets around the Demorgan spot;
+    admins manage them with `/dmdig` (list), `/dmdig add` (your position; the first add replaces
+    the defaults), `/dmdig del <n>` and `/dmdig reset`. Admins who enter Demorgan (`/sjail`, `/dim 1`) are also given a pickaxe (taken back when they leave) and can dig at **any** spot with E (same animation, same random money and notification). They always see every spot (golden
+    markers). Each spot (within 15 m) carries an `E  Dig 3/10` label in the HUD's ammo-chip style (prisoners: their own spot, which shows `Digging break m:ss` during the break; admins: all spots). The spots have no number labels; `/dmdig` lists them by number.
   - **Moving it:** `/sjail set` saves your position as the Demorgan spot. Use a spot inside an
     enclosed interior, or the outside map becomes visible again. The first start after this update
     moved any older open-yard spot into the bunker (once, `spotVersion: 2`).

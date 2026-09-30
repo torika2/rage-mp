@@ -384,6 +384,11 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
             return;
         }
 
+        if (action === 'ban' && duration % 86400 !== 0) {
+            tell(player, 'Bans are in whole days (1, 3, 7, 14, 30) or permanent.');
+            return;
+        }
+
         const collection = action === 'mute' ? moderation.mutes : moderation.bans;
         collection[key] = sanctionRecord(target, duration);
         saveModeration();
@@ -521,6 +526,8 @@ const COMMAND_CATALOG = [
     { group: 'Admin', cmd: 'demorgans', desc: 'List everyone serving Demorgan (online + offline)' },
     { group: 'Admin', cmd: 'sjail', desc: 'Teleport yourself into Demorgan / back out (admins only)' },
     { group: 'Admin', cmd: 'sjail set', desc: 'Move the Demorgan spot to where you stand' },
+    { group: 'Admin', cmd: 'dmset', args: '<set> [off]', desc: 'Switch a Demorgan bunker entity set on/off (texture debugging)' },
+    { group: 'Admin', cmd: 'dmdig', args: '[add|del <n>|reset]', desc: 'List / add (your position) / remove Demorgan digging spots' },
     { group: 'Admin', cmd: 'dim', args: '[0|1|main|demorgan|number]', desc: 'Show / change your dimension (0 = main world, 1 = Demorgan)' },
     { group: 'Admin', cmd: 'setdim', args: '<id> <0|1|main|demorgan|number>', target: true, desc: "Move a player to a dimension (0 = main, 1 = Demorgan)" },
     { group: 'Admin', cmd: 'director', desc: 'Open Director Mode (super admin; also F6)' }

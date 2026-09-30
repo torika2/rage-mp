@@ -11,6 +11,15 @@ Folder = `client_packages/game_resources/dlcpacks/<folder>/dlc.rpf`.
 | Audi RS7 ABT (2023) | `23rs7abt` | `abtrsr_rs7c8` (same pack) | none | ✅ installed |
 | Audi RS7 Sportback (RmodCustoms) | `rmodrs7` | `rmodrs7` | ✅ yes | ✅ installed |
 
+### Brand logos removed from the cars
+
+The badge textures inside each car's `.ytd` were blanked (fully transparent) in place, so the brand emblems no longer
+draw: BMW `badgea_diffuseaoso` (roundel / M4 / M Performance); RS7 (RmodCustoms) `audi-rs-7-210058`, `rs7png`, `rmod`;
+RS7 + ABT `rs7_logo`, `abt`, `AUD_RS7_21_symbols_embossed_White` / `_OPAC`. Not removable this way: logos that are 3D
+geometry in the model (e.g. chrome Audi rings), wheel centre caps, tyre sidewalls. The original packs are in git
+(`git checkout -- client_packages/game_resources/dlcpacks/<pack>/dlc.rpf` restores one). The `dlc.rpf` files are
+patched in place, so re-downloading a pack from its source brings the logos back.
+
 ## Map / interiors (no spawn — go to the location)
 
 | Mod | Folder | Notes | Status |

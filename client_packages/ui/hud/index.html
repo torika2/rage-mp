@@ -251,10 +251,34 @@
   #ammo .sep { color: var(--muted); font-size: 13px; }
   #ammo .reserve { font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
   #ammo.low .clip { color: var(--danger); }
+
+  /* Earnings — same look as the ammo chip (under the crosshair, no panel), a bit lower so both can show */
+  #earn {
+    position: absolute; left: 50%; top: calc(50% + 66px); transform: translate(-50%, 6px);
+    display: flex; align-items: baseline; gap: 6px;
+    color: var(--text); text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.6);
+    opacity: 0; transition: opacity .12s, transform .12s; pointer-events: none;
+  }
+  #earn.on { opacity: 1; transform: translate(-50%, 0); }
+  #earn .amt { font-size: 18px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+  #earn .lbl { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+  /* World interaction labels (Press E … on the dig spots) — ammo chip style, positioned by the client each frame */
+  #tags { position: absolute; inset: 0; pointer-events: none; }
+  #tags .tag {
+    position: absolute; transform: translate(-50%, -50%); display: flex; align-items: baseline; gap: 6px; white-space: nowrap;
+    color: var(--text); text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.6);
+  }
+  #tags .tag .key { font-size: 18px; font-weight: 800; color: var(--accent); }
+  #tags .tag .lbl { font-size: 13px; font-weight: 600; color: var(--text); }
+  #tags .tag .extra { font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #tags .tag.warn .extra { color: var(--danger); }
 </style>
 </head>
 <body>
 <div id="ammo"><span class="clip">0</span><span class="sep">/</span><span class="reserve">0</span></div>
+<div id="earn"><span class="amt">+$0</span><span class="lbl"></span></div>
+<div id="tags"></div>
   <div id="money">$0</div>
 
   <div id="stats">
@@ -330,6 +354,24 @@
     el.querySelector('.reserve').textContent = a.reserve;
     el.classList.toggle('low', a.clip < 10);
     el.classList.add('on');
+  };
+  // Earnings chip (same style as the ammo chip): window.hudEarn(amount, label) shows it for ~4 s.
+  let earnTimer = null;
+  window.hudEarn = function (amount, label) {
+    const el = document.getElementById('earn');
+    el.querySelector('.amt').textContent = '+$' + Number(amount).toLocaleString('en-US');
+    el.querySelector('.lbl').textContent = label || '';
+    el.classList.add('on');
+    clearTimeout(earnTimer);
+    earnTimer = setTimeout(() => el.classList.remove('on'), 4000);
+  };
+  // World labels: window.hudTags([{ x, y, key, text, extra, warn }]) with x/y in % of the screen; [] clears them.
+  window.hudTags = function (list) {
+    const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    document.getElementById('tags').innerHTML = (list || []).map(t =>
+      '<div class="tag' + (t.warn ? ' warn' : '') + '" style="left:' + t.x.toFixed(2) + '%;top:' + t.y.toFixed(2) + '%">' +
+      (t.key ? '<span class="key">' + esc(t.key) + '</span>' : '') + '<span class="lbl">' + esc(t.text) + '</span>' +
+      (t.extra ? '<span class="extra">' + esc(t.extra) + '</span>' : '') + '</div>').join('');
   };
   const $ = id => document.getElementById(id);
   window.setChatChannel = function (label, visible) {

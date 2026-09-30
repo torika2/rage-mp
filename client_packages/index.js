@@ -1648,32 +1648,73 @@ mp.events.add('houses:ui:chest', (direction, id, itemId, qty) => {
 // The server syncs 'demorgan:left' (seconds) every 2 s; between syncs we count down locally.
 let demorganLeft = 0, demorganSyncedAt = 0;
 // Demorgan (dimension 1) is an enclosed underground interior (the bunker), so the outside map isn't
-// visible from it. Here: the interior's furniture is switched on, the minimap is hidden, and ambient
-// NPCs / traffic are off while in Demorgan. Everything is restored on leaving.
+// visible from it. Here: the interior's furniture is switched on, the minimap is hidden, ambient
+// NPCs / traffic are off and the player is invincible while in Demorgan. Everything is restored on leaving.
 const DEMORGAN_DIMENSION = 1;
 // Entity sets (furniture / wall style) per interior; the bunker is a bare shell without them.
 const DEMORGAN_INTERIOR_SETS = {
-    bunker: ['Bunker_Style_A', 'standard_bunker_set', 'standard_security_set', 'Office_Upgrade_set', 'gun_wall_blocker']
+    bunker: ['Bunker_Style_A', 'standard_bunker_set', 'standard_security_set', 'Office_Upgrade_set', 'gun_wall_blocker', 'gun_range_blocker_set']
 };
-let demorganIsolated = false;
+// The bunker interior only exists once its Gunrunning IPLs are loaded; without them the walls/props/textures
+// are missing (an empty or see-through shell). Requested at startup so it's ready before anyone is sent there.
+const DEMORGAN_INTERIOR_IPLS = {
+    bunker: ['gr_grdlc_interior_placement', 'gr_grdlc_interior_placement_interior_0_grdlc_int_01_milo_']
+};
+function requestDemorganIpls(kind) {
+    (DEMORGAN_INTERIOR_IPLS[kind] || []).forEach(name => { try { mp.game.streaming.requestIpl(name); } catch (e) {} });
+}
+Object.keys(DEMORGAN_INTERIOR_IPLS).forEach(requestDemorganIpls);
+let demorganIsolated = false, demorganLoadTimer = null;
+// Loads the interior's furniture. The interior can take a while to stream in (and is 0 until its IPLs are
+// up), so retry every 500 ms (up to ~30 s) until it exists and is ready; then pin it in memory and switch the sets on.
 function loadDemorganInterior(area) {
     const sets = DEMORGAN_INTERIOR_SETS[area.interior];
     if (!sets) return;
+    requestDemorganIpls(area.interior);
+    if (demorganLoadTimer) clearInterval(demorganLoadTimer);
+    let tries = 0;
+    demorganLoadTimer = setInterval(() => {
+        tries++;
+        if (!demorganIsolated || tries > 60) { clearInterval(demorganLoadTimer); demorganLoadTimer = null; return; }
+        try {
+            const interior = mp.game.interior.getInteriorAtCoords(area.x, area.y, area.z);
+            if (!interior) return;
+            try { mp.game.invoke('0x2CA429C029CCF247', interior); } catch (e) {} // PIN_INTERIOR_IN_MEMORY
+            let ready = true;
+            try { ready = !!mp.game.invoke('0x6726BDCCC1932F0E', interior); } catch (e) {} // IS_INTERIOR_READY
+            if (!ready) return;
+            sets.forEach(name => {
+                try {
+                    if (typeof mp.game.interior.activateInteriorEntitySet === 'function') mp.game.interior.activateInteriorEntitySet(interior, name);
+                    else mp.game.interior.enableInteriorProp(interior, name);
+                } catch (e) {}
+            });
+            mp.game.interior.refreshInterior(interior);
+            clearInterval(demorganLoadTimer); demorganLoadTimer = null;
+        } catch (e) {}
+    }, 500);
+}
+// Admin tool (/dmset): switch one bunker entity set on/off live to find which one fixes missing textures.
+mp.events.add('demorgan:interior:set', (name, on) => {
+    const area = mp.players.local.getVariable('demorgan:area');
+    if (!area) return;
     try {
         const interior = mp.game.interior.getInteriorAtCoords(area.x, area.y, area.z);
-        if (!interior) return;
-        sets.forEach(name => {
-            try {
-                if (typeof mp.game.interior.activateInteriorEntitySet === 'function') mp.game.interior.activateInteriorEntitySet(interior, name);
-                else mp.game.interior.enableInteriorProp(interior, name);
-            } catch (e) {}
-        });
-        mp.game.interior.refreshInterior(interior);
-    } catch (e) {}
-}
+        if (!interior) { notify('Interior not loaded (id 0).'); return; }
+        const i = mp.game.interior;
+        if (on) { if (i.activateInteriorEntitySet) i.activateInteriorEntitySet(interior, name); else i.enableInteriorProp(interior, name); }
+        else { if (i.deactivateInteriorEntitySet) i.deactivateInteriorEntitySet(interior, name); else i.disableInteriorProp(interior, name); }
+        i.refreshInterior(interior);
+        let active = '?';
+        try { active = i.isInteriorEntitySetActive(interior, name); } catch (e) {}
+        notify('Interior set ' + name + ' → ' + (on ? 'ON' : 'OFF') + ' (active=' + active + ', interior ' + interior + ')');
+    } catch (e) { notify('dmset failed: ' + e); }
+});
 function setDemorganIsolation(on, area) {
     demorganIsolated = on;
     try { mp.game.ui.displayRadar(!on); } catch (e) {}
+    // Leaving: hand invincibility back to whatever admin mode / fly / noclip want.
+    if (!on) { try { mp.players.local.setInvincible(flyEnabled || adminModeEnabled || noclip); } catch (e) {} }
     if (on && area) {
         loadDemorganInterior(area);
         try { mp.game.gameplay.clearArea(area.x, area.y, area.z, 300, true, false, false, false); } catch (e) {}
@@ -1691,7 +1732,15 @@ mp.events.add('render', () => {
     const area = me.getVariable('demorgan:area');
     const inDemorgan = !!area && Number(me.dimension) === DEMORGAN_DIMENSION;
     if (inDemorgan !== demorganIsolated) setDemorganIsolation(inDemorgan, area);
-    if (inDemorgan) suppressAmbientThisFrame();
+    if (inDemorgan) {
+        drawDemorganDigSpotsForAdmin(me);
+        suppressAmbientThisFrame();
+        me.setInvincible(true); // nobody can be hurt in Demorgan (re-applied every frame: respawn resets it)
+    }
+    // Prison work: prisoners get their own marked spot (orange); admins in Demorgan can dig at any spot.
+    const dig = inDemorgan ? me.getVariable('demorgan:dig') : null;
+    if (dig) mp.game.graphics.drawMarker(1, dig.x, dig.y, dig.z - 1.0, 0, 0, 0, 0, 0, 0, 1.2, 1.2, 0.6, 255, 180, 46, 150, false, false, 2, false, null, null, false);
+    updateDemorganDigTags(me, inDemorgan);
     const synced = Number(me.getVariable('demorgan:left')) || 0;
     if (synced !== demorganLeft) { demorganLeft = synced; demorganSyncedAt = Date.now(); }
     if (demorganLeft <= 0) return;
@@ -1704,6 +1753,75 @@ mp.events.add('render', () => {
         font: 4, color: [255, 105, 120, 235], outline: true, centre: true, scale: [0.7, 0.7]
     });
     if (reason) mp.game.graphics.drawText(worldText(reason), [0.5, 0.095], { font: 4, color: [255, 255, 255, 200], outline: true, centre: true, scale: [0.4, 0.4] });
+});
+// Seconds of digging break left for this prisoner (server syncs 'cd' every 2 s; we count down between syncs).
+let digCdSynced = -1, digCdAt = 0;
+function demorganDigCooldown(dig) {
+    if (!dig || !(dig.cd > 0)) { digCdSynced = -1; return 0; }
+    if (dig.cd !== digCdSynced) { digCdSynced = dig.cd; digCdAt = Date.now(); }
+    return Math.max(0, Math.ceil(dig.cd - (Date.now() - digCdAt) / 1000));
+}
+// Push notification when a dig pays: the HUD's earnings chip, styled like the ammo chip (ui/hud).
+mp.events.add('demorgan:dig:reward', (money) => {
+    if (hudBrowser) hudBrowser.execute('window.hudEarn(' + (Number(money) || 0) + ', "Digging")');
+});
+// Admins: every digging spot, numbered like /dmdig, always shown while in Demorgan.
+function drawDemorganDigSpotsForAdmin(me) {
+    const spots = me.getVariable('demorgan:digAll');
+    if (!Array.isArray(spots)) return;
+    spots.forEach(s => mp.game.graphics.drawMarker(1, s.x, s.y, s.z - 1.0, 0, 0, 0, 0, 0, 0, 1.2, 1.2, 0.6, 255, 180, 46, 120, false, false, 2, false, null, null, false));
+}
+// "E Dig" interaction labels on the dig spots (ammo chip style): projected to the screen here, drawn by ui/hud.
+// Prisoners see one on their own spot (with n/10, or the break countdown); admins on every spot. Throttled.
+let lastDigTags = '[]', lastDigTagsAt = 0;
+const DIG_LABEL_RANGE = 15;
+function updateDemorganDigTags(me, inDemorgan) {
+    const now = Date.now();
+    if (now - lastDigTagsAt < 50) return;
+    lastDigTagsAt = now;
+    const tags = [];
+    if (inDemorgan && !me.vehicle) {
+        const own = me.getVariable('demorgan:dig');
+        const spots = own ? [own] : (me.getVariable('demorgan:digAll') || []);
+        const cd = own ? demorganDigCooldown(own) : 0;
+        const label = cd > 0
+            ? { text: 'Digging break', extra: Math.floor(cd / 60) + ':' + String(cd % 60).padStart(2, '0'), warn: true }
+            : { key: 'E', text: 'Dig', extra: own ? (10 - own.left + 1) + '/10' : '' };
+        const p = me.position;
+        if (Array.isArray(spots)) spots.forEach(s => {
+            if (Math.hypot(p.x - s.x, p.y - s.y, p.z - s.z) > DIG_LABEL_RANGE) return;
+            let screen = null;
+            try { screen = mp.game.graphics.world3dToScreen2d(s.x, s.y, s.z + 0.8); } catch (e) {}
+            if (screen) tags.push(Object.assign({ x: screen.x * 100, y: screen.y * 100 }, label));
+        });
+    }
+    const json = JSON.stringify(tags);
+    if (json === lastDigTags && !tags.length) return;
+    lastDigTags = json;
+    if (hudBrowser) hudBrowser.execute('window.hudTags(' + json + ')');
+}
+// Standing on this prisoner's marked digging spot, or (admins) on any digging spot. The server re-checks.
+function demorganDigNear() {
+    const me = mp.players.local;
+    if (me.vehicle || Number(me.dimension) !== DEMORGAN_DIMENSION) return false;
+    const dig = me.getVariable('demorgan:dig');
+    const spots = dig ? [dig] : (me.getVariable('demorgan:digAll') || []);
+    if (!Array.isArray(spots)) return false;
+    const p = me.position;
+    return spots.some(s => Math.hypot(p.x - s.x, p.y - s.y, p.z - s.z) <= 2.0);
+}
+// Pickaxe in the digging prisoner's hands (every prisoner gets one automatically) while the server-synced animation plays.
+mp.events.add('demorgan:digProp', (remoteId, ms) => {
+    const ped = mp.players.atRemoteId(remoteId);
+    if (!ped || !mp.players.exists(ped) || !ped.handle) return;
+    const obj = mp.objects.new(mp.game.joaat('prop_tool_pickaxe'), ped.position, { dimension: ped.dimension });
+    const tryAttach = (tries) => {
+        if (!mp.objects.exists(obj)) return;
+        if (!obj.handle) { if (tries > 0) setTimeout(() => tryAttach(tries - 1), 50); return; }
+        obj.attachTo(ped.handle, ped.getBoneIndex(57005), 0.09, 0.0, -0.02, -78.0, 13.0, 28.0, true, true, false, true, 1, true); // SKEL_R_Hand — tune offsets in-game
+    };
+    tryAttach(20);
+    setTimeout(() => { if (mp.objects.exists(obj)) obj.destroy(); }, Number(ms) || 10000);
 });
 
 // ---------- Director Mode (super admin) ----------
@@ -2277,6 +2395,7 @@ function findNearDrop() {
 mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
     if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing) return;
     if (fuelUIOpen) return;
+    if (demorganDigNear()) { if (demorganDigCooldown(mp.players.local.getVariable('demorgan:dig')) <= 0) mp.events.callRemote('demorgan:dig:start'); return; }
     const house = nearestHouseAction(mp.players.local);
     if (house) { mp.events.callRemote(house.event, house.id); return; }
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }

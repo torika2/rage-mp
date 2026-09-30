@@ -687,7 +687,7 @@ const DROP_MODELS = {
     appistol: 'w_pi_appistol', microsmg: 'w_sb_microsmg', smg: 'w_sb_smg', pumpshotgun: 'w_sg_pumpshotgun',
     assaultrifle: 'w_ar_assaultrifle', carbinerifle: 'w_ar_carbinerifle', armor: 'prop_armour_pickup',
     medkit: 'prop_ld_health_pack', water: 'prop_ld_flow_bottle', soda: 'prop_ecola_can',
-    energy: 'prop_energy_drink', chips: 'prop_ld_snack_01', sandwich: 'prop_sandwich_01', burger: 'prop_cs_burger_01',
+    energy: 'prop_energy_drink', pickaxe: 'prop_tool_pickaxe', chips: 'prop_ld_snack_01', sandwich: 'prop_sandwich_01', burger: 'prop_cs_burger_01',
 };
 const dropModel = (itemId) => DROP_MODELS[itemId]
     || (String(itemId).startsWith('ammo_') ? 'prop_ld_ammo_pack_01' : DROP_FALLBACK_MODEL);

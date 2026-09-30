@@ -7,10 +7,11 @@ const fs = require('fs');
 const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'needs.json');
-const TICK_MS = 30 * 1000;             // drain / penalty interval
+const TICK_MS = 30 * 1000;             // hunger / thirst drain interval
 const HUNGER_EMPTY_MINUTES = 60;       // full -> empty
 const THIRST_EMPTY_MINUTES = 40;
-const STARVE_DAMAGE = 2;               // HP lost per tick for EACH stat at 0
+const STARVE_TICK_MS = 3 * 1000;       // starvation damage interval (separate, so HP drops slowly and steadily)
+const STARVE_DAMAGE = 1;               // HP lost per starvation tick for EACH stat at 0 (20 HP/min: full -> dead in 5 min)
 const RESPAWN_MIN = 40;                // after death you come back with at least this much
 const WARN_AT = [20, 10];              // chat warnings when crossing these values
 
@@ -54,12 +55,21 @@ setInterval(() => {
         warn(player, 'წყურვილი', n.thirst, thirst);
         n.hunger = hunger;
         n.thirst = thirst;
-        const damage = (hunger <= 0 ? STARVE_DAMAGE : 0) + (thirst <= 0 ? STARVE_DAMAGE : 0);
-        if (damage) player.health = Math.max(0, Number(player.health) - damage);
         sync(player);
     });
     save();
 }, TICK_MS);
+
+// Starvation: while hunger and/or thirst is at 0, health goes down 1 HP at a time (per empty stat).
+setInterval(() => {
+    mp.players.forEach(player => {
+        if (!mp.players.exists(player) || Number(player.health) <= 0) return;
+        if (player.getVariable('admin:mode') === true) return;
+        const n = getNeeds(player);
+        const damage = (n.hunger <= 0 ? STARVE_DAMAGE : 0) + (n.thirst <= 0 ? STARVE_DAMAGE : 0);
+        if (damage) player.health = Math.max(0, Number(player.health) - damage);
+    });
+}, STARVE_TICK_MS);
 
 mp.events.add('playerJoin', (player) => sync(player));
 mp.events.add('playerDeath', (player) => {

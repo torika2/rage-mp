@@ -326,6 +326,7 @@ mp.events.add('playerSpawn', (player) => {
         if (!mp.players.exists(player)) return;
         const official = typeof global.govRankOf === 'function' && global.govRankOf(player);
         if (!official || typeof global.govOnDuty !== 'function' || !global.govOnDuty(player)) return;
+        if (typeof global.demorganIsJailed === 'function' && global.demorganIsJailed(player)) return; // prisoners stay in Demorgan
         player.position = new mp.Vector3(points.spawn.x, points.spawn.y, points.spawn.z);
         player.heading = points.spawn.h;
     }, 300);
