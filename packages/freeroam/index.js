@@ -58,6 +58,18 @@ mp.events.add('vehicle:menu:action', (player, vehicleId, action) => {
     player.call('vehicle:menu:apply', [Number(vehicle.id), action]);
 });
 
+// ---- Ambient RP actions: getting in / out of a vehicle (local /me to nearby players) ----
+mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
+    if (global.chatLocalAction) global.chatLocalAction(player, 'ხსნის კარს და ჯდება მანქანაში');
+});
+mp.events.add('playerLeaveVehicle', (player, vehicle, seat) => {
+    if (global.chatLocalAction) global.chatLocalAction(player, 'გამოდის მანქანიდან და კეტავს კარს');
+});
+// Player downed / killed — local RP action to nearby players.
+mp.events.add('playerDeath', (player) => {
+    if (global.chatLocalAction) global.chatLocalAction(player, 'ეცემა უგონოდ მიწაზე');
+});
+
 // /pos - show the current world position and heading
 mp.events.addCommand('pos', (player) => {
     const position = player.position;
@@ -124,6 +136,7 @@ mp.events.addCommand('fix', (player) => {
     if (!player.vehicle) return player.outputChatBox('შენ არ ხარ მანქანაში.');
     player.vehicle.repair();
     player.outputChatBox('მანქანა შეკეთდა.');
+    if (global.chatLocalAction) global.chatLocalAction(player, 'აკეთებს მანქანას'); // local RP action
 });
 
 // /dv - delete your car

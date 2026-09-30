@@ -101,7 +101,7 @@ const ATM_LOCATIONS = [
     [-1205.00, -324.90, 37.94], [-821.61, -1081.90, 11.13], [-537.91, -854.60, 29.24],
     [-357.42, -49.61, 49.04], [-284.90, 6224.28, 31.49], [-260.92, -14.30, 49.28],
     [-201.92, -860.70, 30.22], [24.24, -946.30, 29.36], [89.12, 2.50, 68.31],
-    [112.53, -776.90, 31.42], [129.40, -1292.40, 29.28], [147.32, 232.41, 106.29],
+    [112.53, -776.90, 31.42], [129.40, -1292.40, 29.28], [158.683, 234.183, 106.626],
     [155.00, 6642.30, 31.90], [240.80, 223.30, 106.35], [285.50, 143.50, 104.57],
     [288.90, -1282.50, 29.66], [295.90, -895.60, 29.22], [1077.70, -776.90, 58.22],
     [1167.00, 2708.90, 38.01], [1822.60, 3683.10, 34.28], [3011.80, 5940.00, 34.79]
@@ -110,6 +110,168 @@ ATM_LOCATIONS.forEach(p => {
     mp.blips.new(277, new mp.Vector3(p[0], p[1], p[2]),
         { name: 'ბანკომატი (ATM)', scale: 0.6, color: 2, shortRange: true });
 });
+
+// ---------- Parking spots: car-sized footprint + E-to-open UI + admin editor ----------
+// Server (packages/parking) pushes spots + live status. Blue = free, red = rented, yellow = editing.
+let parkingSpots = [];
+let parkingAdmin = false;         // am I a protected admin (may edit spot geometry)?
+let parkingBrowser = null;        // the CEF rent/park UI
+let currentParkSpotId = null;     // spot the UI is open for
+let parkNearby = null;            // spot whose footprint I'm standing in (or null)
+let parkEditing = null;           // working copy { id, x, y, z, h, rx, ry, w, l } while editing, else null
+let parkEditConfirm = false;      // Escape during edit → show the save/discard confirm bar
+let parkHudPrompt = null;         // spot id for the HUD "press E" prompt (Georgian, rendered in CEF)
+let parkHudEdit = null;           // HTML edit-help string for the HUD (Georgian)
+// Rotate local corner (u=width, v=length, 0) by pitch(rx), roll(ry), yaw(rz) — all degrees.
+function parkRot(u, v, rx, ry, rz) {
+    const dr = Math.PI / 180, cx = Math.cos(rx * dr), sx = Math.sin(rx * dr),
+        cy = Math.cos(ry * dr), sy = Math.sin(ry * dr), cz = Math.cos(rz * dr), sz = Math.sin(rz * dr);
+    let x = u, y = v, z = 0;
+    let y1 = y * cx - z * sx, z1 = y * sx + z * cx;            // pitch about X
+    let x2 = x * cy + z1 * sy, z2 = -x * sy + z1 * cy;         // roll about Y
+    let x3 = x2 * cz - y1 * sz, y3 = x2 * sz + y1 * cz;        // yaw about Z
+    return [x3, y3, z2];
+}
+const PARK_DRAW_DIST = 60;        // only draw/scan spots within this many metres (perf)
+const PARK_DEF_W = 2.6, PARK_DEF_L = 5.2;
+const halfW = (s) => (s.w || PARK_DEF_W) / 2;
+const halfL = (s) => (s.l || PARK_DEF_L) / 2;
+
+mp.events.add('parking:spots', (json) => { try { parkingSpots = JSON.parse(json) || []; } catch (e) { parkingSpots = []; } });
+mp.events.add('parking:admin', (flag) => { parkingAdmin = !!flag; });
+
+// Snap the slot to the real ground so it lies flat at foot level, whatever z was captured at placement.
+function parkGroundZ(spot) {
+    try {
+        const gz = mp.game.gameplay.getGroundZFor3dCoord(spot.x, spot.y, spot.z + 1.0, false, false);
+        if (typeof gz === 'number' && gz !== 0 && Math.abs(gz - spot.z) < 5) return gz;
+    } catch (e) {}
+    return spot.z;
+}
+// Is a world position inside this spot's rectangle (with a small entry margin)?
+function pointInSpot(pos, spot, margin) {
+    const hr = (spot.h || 0) * Math.PI / 180;
+    const dx = pos.x - spot.x, dy = pos.y - spot.y;
+    const u = dx * Math.cos(hr) + dy * Math.sin(hr);   // width axis
+    const v = -dx * Math.sin(hr) + dy * Math.cos(hr);  // length axis
+    return Math.abs(u) <= halfW(spot) + (margin || 0) && Math.abs(v) <= halfL(spot) + (margin || 0);
+}
+function drawParkQuad(spot, groundZ, color) {
+    const hw = halfW(spot), hl = halfL(spot), baseZ = groundZ + 0.03;
+    const rx = spot.rx || 0, ry = spot.ry || 0, rz = spot.h || 0;
+    const corner = (u, v) => { const r = parkRot(u, v, rx, ry, rz); return [spot.x + r[0], spot.y + r[1], baseZ + r[2]]; };
+    const A = corner(-hw, -hl), B = corner(hw, -hl), C = corner(hw, hl), D = corner(-hw, hl);
+    const c = color || (spot.rented ? [220, 40, 40, 110] : [30, 130, 255, 100]);
+    const tri = (p, q, r) => { try { mp.game.invoke('0xAC26716048436851', p[0], p[1], p[2], q[0], q[1], q[2], r[0], r[1], r[2], c[0], c[1], c[2], c[3]); } catch (e) {} };
+    tri(A, B, C); tri(A, C, B); tri(A, C, D); tri(A, D, C); // both windings so it's visible from above
+}
+function drawParkLabel(spot, groundZ, text, color) {
+    let screen = null;
+    try { screen = mp.game.graphics.world3dToScreen2d(spot.x, spot.y, groundZ + 1.0); } catch (e) {}
+    if (!screen) return;
+    mp.game.graphics.drawText(String(text), [screen.x, screen.y], {
+        font: 4, color: color || (spot.rented ? [255, 120, 120, 230] : [140, 200, 255, 235]),
+        outline: true, centre: true, scale: [0.5, 0.5]
+    });
+}
+mp.events.add('render', () => {
+    const me = mp.players.local; if (!me) return;
+    const pos = me.position;
+    let nearest = null;
+    for (const spot of parkingSpots) {
+        const dx = spot.x - pos.x, dy = spot.y - pos.y;
+        if (dx * dx + dy * dy > PARK_DRAW_DIST * PARK_DRAW_DIST) continue;
+        const editingThis = parkEditing && parkEditing.id === spot.id;
+        const drawSpot = editingThis ? parkEditing : spot;
+        const groundZ = parkGroundZ(drawSpot);
+        drawParkQuad(drawSpot, groundZ, editingThis ? [245, 205, 60, 130] : null);
+        drawParkLabel(drawSpot, groundZ, spot.id, editingThis ? [255, 225, 120, 240] : null);
+        if (!parkEditing && pointInSpot(pos, spot, 0.4)) nearest = spot;
+    }
+    parkNearby = nearest;
+
+    // Georgian text can't render via native drawText, so the prompt + edit help go through the CEF HUD.
+    if (parkEditing) {
+        // Block movement is done by freezing the ped; also stop Esc from opening the pause menu.
+        try { mp.game.controls.disableControlAction(0, 199, true); mp.game.controls.disableControlAction(0, 200, true); mp.game.controls.disableControlAction(0, 322, true); } catch (e) {}
+        parkHudPrompt = null;
+        if (parkEditConfirm) {
+            parkHudEdit = '<b>' + parkEditing.id + '</b> — ცვლილების შენახვა? · <span class="dim">Enter = კი · Backspace = არა · Esc = გაგრძელება</span>';
+        } else {
+            parkHudEdit = 'რედაქტირება <b>' + parkEditing.id + '</b> · <span class="dim">ისრები: მოძრაობა · Q/E: Z · ,/.: X · [ ]: Y · −/+: სიგანე · PgUp/PgDn: სიგრძე · Home/End: 5 ასლი · Del: წაშლა · Esc: დასრულება</span> · W ' + parkEditing.w.toFixed(1) + ' L ' + parkEditing.l.toFixed(1) + ' · Z' + Math.round(parkEditing.h) + '° X' + Math.round(parkEditing.rx) + '° Y' + Math.round(parkEditing.ry) + '°';
+        }
+    } else if (parkNearby && !parkingBrowser && !chatting && !adminBrowser && !inventoryBrowser && !vehicleMenuBrowser && !shopBrowser && !clothingBrowser && !bankBrowser && !fuelUIOpen) {
+        parkHudPrompt = parkNearby.id;
+        parkHudEdit = null;
+    } else {
+        parkHudPrompt = null;
+        parkHudEdit = null;
+    }
+});
+
+// --- CEF parking UI ---
+function openParkingUI() {
+    if (parkingBrowser || !parkNearby) return;
+    currentParkSpotId = parkNearby.id;
+    parkingBrowser = mp.browsers.new('package://ui/parking/index.html');
+    mp.gui.cursor.show(true, true);
+}
+function closeParkingUI() {
+    if (!parkingBrowser) return;
+    parkingBrowser.destroy(); parkingBrowser = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('parking:ui:ready', () => { if (currentParkSpotId) mp.events.callRemote('parking:uiData', currentParkSpotId); });
+mp.events.add('parking:ui:data', (json) => { if (parkingBrowser) parkingBrowser.execute('window.setParkingData(' + json + ')'); });
+mp.events.add('parking:ui:rent', (days, slots) => { if (currentParkSpotId) mp.events.callRemote('parking:rent', currentParkSpotId, Number(days), Number(slots)); });
+mp.events.add('parking:ui:renew', (days) => { if (currentParkSpotId) mp.events.callRemote('parking:renew', currentParkSpotId, Number(days)); });
+mp.events.add('parking:ui:park', () => { if (currentParkSpotId) mp.events.callRemote('parking:park', currentParkSpotId); });
+mp.events.add('parking:ui:unpark', (index) => { if (currentParkSpotId) mp.events.callRemote('parking:unpark', currentParkSpotId, Number(index)); });
+mp.events.add('parking:ui:summon', () => { if (currentParkSpotId) mp.events.callRemote('parking:summon', currentParkSpotId); });
+mp.events.add('parking:ui:impound', () => { if (currentParkSpotId) mp.events.callRemote('parking:impound', currentParkSpotId); });
+mp.events.add('parking:ui:delete', () => { if (currentParkSpotId) { mp.events.callRemote('parking:removeSpot', currentParkSpotId); closeParkingUI(); } });
+mp.events.add('parking:ui:close', () => closeParkingUI());
+mp.events.add('parking:ui:edit', () => {
+    const s = parkingSpots.find(sp => sp.id === currentParkSpotId);
+    closeParkingUI();
+    if (s && parkingAdmin) enterParkEdit(s);
+});
+function enterParkEdit(s) {
+    parkEditing = { id: s.id, x: s.x, y: s.y, z: s.z, h: s.h || 0, rx: s.rx || 0, ry: s.ry || 0, w: s.w || PARK_DEF_W, l: s.l || PARK_DEF_L };
+    parkEditConfirm = false;
+    try { mp.game.invoke('0x428CA6DBD1094446', mp.players.local.handle, true); } catch (e) {} // FREEZE_ENTITY_POSITION — no walking while editing
+}
+function exitParkEdit(saveIt) {
+    if (!parkEditing) return;
+    if (saveIt) mp.events.callRemote('parking:edit', JSON.stringify(parkEditing));
+    parkEditing = null; parkEditConfirm = false;
+    try { mp.game.invoke('0x428CA6DBD1094446', mp.players.local.handle, false); } catch (e) {} // unfreeze
+}
+
+// --- Admin editor keybinds. Nudges only apply while editing and not in the confirm dialog. ---
+const MOVE_STEP = 0.15, ROT_STEP = 5, SIZE_STEP = 0.2;
+function nudge(fn) { if (parkEditing && !parkEditConfirm) fn(); }
+mp.keys.bind(0x25, true, () => nudge(() => parkEditing.x -= MOVE_STEP)); // Left  -X
+mp.keys.bind(0x27, true, () => nudge(() => parkEditing.x += MOVE_STEP)); // Right +X
+mp.keys.bind(0x26, false, () => nudge(() => parkEditing.y += MOVE_STEP)); // Up    +Y (keyup so it never opens the phone)
+mp.keys.bind(0x28, false, () => nudge(() => parkEditing.y -= MOVE_STEP)); // Down  -Y
+mp.keys.bind(0x51, true, () => nudge(() => parkEditing.h = (parkEditing.h - ROT_STEP + 360) % 360)); // Q  yaw (Z) -
+mp.keys.bind(0x45, true, () => nudge(() => parkEditing.h = (parkEditing.h + ROT_STEP) % 360));       // E  yaw (Z) + (E-interact is disabled while editing)
+mp.keys.bind(0xBC, true, () => nudge(() => parkEditing.rx = Math.max(-45, parkEditing.rx - ROT_STEP))); // ,  pitch (X) -
+mp.keys.bind(0xBE, true, () => nudge(() => parkEditing.rx = Math.min(45, parkEditing.rx + ROT_STEP)));  // .  pitch (X) +
+mp.keys.bind(0xDB, true, () => nudge(() => parkEditing.ry = Math.max(-45, parkEditing.ry - ROT_STEP))); // [  roll (Y) -
+mp.keys.bind(0xDD, true, () => nudge(() => parkEditing.ry = Math.min(45, parkEditing.ry + ROT_STEP)));  // ]  roll (Y) +
+mp.keys.bind(0xBB, true, () => nudge(() => parkEditing.w = Math.min(6, parkEditing.w + SIZE_STEP)));    // +  width
+mp.keys.bind(0xBD, true, () => nudge(() => parkEditing.w = Math.max(1.6, parkEditing.w - SIZE_STEP)));  // -  width
+mp.keys.bind(0x21, true, () => nudge(() => parkEditing.l = Math.min(12, parkEditing.l + SIZE_STEP)));   // PageUp   length
+mp.keys.bind(0x22, true, () => nudge(() => parkEditing.l = Math.max(3, parkEditing.l - SIZE_STEP)));    // PageDown length
+mp.keys.bind(0x0D, true, () => { if (parkEditing) exitParkEdit(true); });  // Enter — save (also confirms the dialog)
+mp.keys.bind(0x08, true, () => { if (parkEditing) exitParkEdit(false); }); // Backspace — discard
+// Home / End — duplicate this slot 5 times to the left / right (gapped). Uses the live edited geometry.
+mp.keys.bind(0x24, true, () => nudge(() => mp.events.callRemote('parking:duplicate', JSON.stringify(parkEditing), 'left', 5)));  // Home
+mp.keys.bind(0x23, true, () => nudge(() => mp.events.callRemote('parking:duplicate', JSON.stringify(parkEditing), 'right', 5))); // End
+// Delete — remove this slot and exit edit mode.
+mp.keys.bind(0x2E, true, () => nudge(() => { const id = parkEditing.id; exitParkEdit(false); mp.events.callRemote('parking:removeSpot', id); })); // Del
 
 // On-foot interaction range for shops. Must be <= the server's SHOP_RANGE so anyone
 // close enough to see the "Press E" prompt is also accepted by the server buy check.
@@ -821,20 +983,162 @@ mp.keys.bind(0x75, false, () => { // F6 — open/close Director Mode (super admi
     mp.events.callRemote('director:open'); // server verifies super-admin, then opens the panel
 });
 
-// ---------- Phone: Up arrow takes it out, Down arrow puts it away ----------
+// ---------- Phone: Up arrow opens the smartphone, Down arrow closes it ----------
 let phoneOut = false;
-const TASK_USE_MOBILE_PHONE = '0xBE472B6D2FE10B7C';
+let phoneBrowser = null;
+let phoneProp = null;      // the phone object attached to the hand
+let phoneHoldTimer = null; // waits for the anim/model to stream in, then applies once
+// Attach the phone into the right hand and play the "hold & look at phone" idle. Offsets are tunable.
+const PHONE_ANIM = { dict: 'cellphone@', name: 'cellphone_text_read_base' };
+// Offsets are in METRES relative to the right-hand bone (28422). Keep them tiny — the phone sits in
+// the palm, so values are within a few cm. px pushes forward along the fingers, py across the palm,
+// pz up/down. Tune these in-game if the phone isn't seated perfectly.
+const PHONE_ATTACH = { model: 'prop_npc_phone_02', bone: 28422, px: 0.0, py: 0.0, pz: 0.0, rx: 0, ry: 0, rz: 0 };
+function startPhoneHold() {
+    const me = mp.players.local;
+    if (phoneProp) stopPhoneHold(); // never stack a second phone
+    const modelHash = mp.game.joaat(PHONE_ATTACH.model);
+    try { mp.game.streaming.requestAnimDict(PHONE_ANIM.dict); } catch (e) {}
+    try { mp.game.streaming.requestModel(modelHash); } catch (e) {}
+    let animPlayed = false, attached = false, tries = 0;
+    if (phoneHoldTimer) clearInterval(phoneHoldTimer);
+    phoneHoldTimer = setInterval(() => {
+        tries++;
+        if (!animPlayed && mp.game.streaming.hasAnimDictLoaded(PHONE_ANIM.dict)) {
+            // flag 49 = looping + upper-body + secondary, so it's a steady hold and you can still move.
+            try { me.taskPlayAnim(PHONE_ANIM.dict, PHONE_ANIM.name, 4.0, -4.0, -1, 49, 0, false, false, false); animPlayed = true; } catch (e) {}
+        }
+        if (!phoneProp && mp.game.streaming.hasModelLoaded(modelHash)) {
+            const c = me.position;
+            let obj = 0;
+            try { obj = mp.game.object.createObject(modelHash, c.x, c.y, c.z, false, false, false); } catch (e) {}
+            phoneProp = obj || null; // claim it immediately so a failed attach can't spawn more phones
+            // Kill physics so the free object can't fall/roll before we attach it next tick.
+            // These entity helpers aren't exposed in this build, so call the natives via invoke.
+            if (obj) {
+                try { mp.game.invoke('0x1A9205C1B9EE827F', obj, false, false); } catch (e) {} // SET_ENTITY_COLLISION
+                try { mp.game.invoke('0x428CA6DBD1094446', obj, true); } catch (e) {}         // FREEZE_ENTITY_POSITION
+            }
+        }
+        // Attach on a LATER tick than creation: a just-created object isn't registered in the
+        // world the same frame, so a same-frame attach silently no-ops and the phone falls.
+        // `else if` guarantees this branch can't run on the same iteration that created the prop.
+        else if (phoneProp && !attached) {
+            try {
+                // mp.game.ped.getPedBoneIndex doesn't exist in this RAGE:MP build — call the native
+                // GET_PED_BONE_INDEX (0x3F428D08BE5AAE31) directly, which converts a bone TAG to its INDEX.
+                const bone = mp.game.invoke('0x3F428D08BE5AAE31', me.handle, PHONE_ATTACH.bone);
+                // freeze must be off for an entity to be attached, otherwise the attach is ignored.
+                try { mp.game.invoke('0x428CA6DBD1094446', phoneProp, false); } catch (e) {} // FREEZE_ENTITY_POSITION off
+                // ATTACH_ENTITY_TO_ENTITY. args after rotation: p9, useSoftPinning, collision, isPed, vertexIndex, fixedRot.
+                mp.game.invoke('0x6B9BBD38AB0796DF', phoneProp, me.handle, bone,
+                    PHONE_ATTACH.px, PHONE_ATTACH.py, PHONE_ATTACH.pz, PHONE_ATTACH.rx, PHONE_ATTACH.ry, PHONE_ATTACH.rz,
+                    true, false, false, false, 2, true);
+                attached = true;
+            } catch (e) {}
+        }
+        if ((animPlayed && attached) || tries > 60) {
+            clearInterval(phoneHoldTimer); phoneHoldTimer = null;
+            try { mp.game.streaming.setModelAsNoLongerNeeded(modelHash); } catch (e) {}
+        }
+    }, 50);
+}
+function stopPhoneHold() {
+    const me = mp.players.local;
+    if (phoneHoldTimer) { clearInterval(phoneHoldTimer); phoneHoldTimer = null; }
+    try { me.stopAnimTask(PHONE_ANIM.dict, PHONE_ANIM.name, 3.0); } catch (e) {}
+    if (phoneProp) {
+        // Detach first, then let the RAGE:MP wrapper delete it. Do NOT call the raw DELETE_OBJECT
+        // native via invoke: it takes an Object* pointer, and passing a bare handle crashes the game.
+        try { mp.game.invoke('0x961AC54BF0613F5D', phoneProp, true, true); } catch (e) {} // DETACH_ENTITY
+        try { mp.game.invoke('0xAD738C3085FE7E11', phoneProp, true, true); } catch (e) {}  // SET_ENTITY_AS_MISSION_ENTITY
+        try { mp.game.object.deleteObject(phoneProp); } catch (e) {}
+        phoneProp = null;
+    }
+}
 function setPhone(out) {
     if (out === phoneOut) return;
     phoneOut = out;
-    try { mp.game.invoke(TASK_USE_MOBILE_PHONE, mp.players.local.handle, out); } catch (e) {}
-    notify(out ? 'ტელეფონი აღებულია (↓ დასამალად).' : 'ტელეფონი დაიმალა.');
+    if (out) {
+        startPhoneHold();
+        try { mp.events.callRemote('phone:taken'); } catch (e) {} // local RP action for nearby players
+        if (!phoneBrowser) { phoneBrowser = mp.browsers.new('package://ui/phone/index.html'); mp.gui.cursor.show(true, true); }
+    } else {
+        stopPhoneHold();
+        try { mp.events.callRemote('phone:stowed'); } catch (e) {} // local RP action for nearby players
+        if (phoneBrowser) { phoneBrowser.destroy(); phoneBrowser = null; suppressPauseUntil = Date.now() + 1500; blockPauseControls(); mp.gui.cursor.show(false, false); }
+    }
 }
 function anyModalOpen() {
-    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser || fuelUIOpen);
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || parkEditing);
 }
-mp.keys.bind(0x26, true, () => { if (!anyModalOpen()) setPhone(true); });  // Up arrow — take phone
-mp.keys.bind(0x28, true, () => { if (!chatting) setPhone(false); });        // Down arrow — put phone away
+mp.keys.bind(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
+mp.keys.bind(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
+
+mp.events.add('phone:ui:ready', () => {
+    mp.events.callRemote('phone:request');
+    if (currentCall && phoneBrowser) phoneBrowser.execute('window.setPhoneCall(' + JSON.stringify(currentCall) + ')');
+});
+mp.events.add('phone:state', (json) => { if (phoneBrowser) phoneBrowser.execute('window.setPhoneState(' + json + ')'); });
+mp.events.add('phone:ui:bankTransfer', (number, amount) => mp.events.callRemote('phone:bankTransfer', String(number), Number(amount)));
+mp.events.add('phone:ui:contactAdd', (name, number) => mp.events.callRemote('phone:contactAdd', String(name), String(number)));
+mp.events.add('phone:ui:contactDelete', (index) => mp.events.callRemote('phone:contactDelete', Number(index)));
+mp.events.add('phone:ui:call', (number) => mp.events.callRemote('phone:call', String(number)));
+mp.events.add('phone:ui:car', (action) => mp.events.callRemote('phone:car', String(action)));
+mp.events.add('phone:ui:locate', (x, y) => { try { mp.game.ui.setNewWaypoint(Number(x), Number(y)); notify('მანქანა მონიშნულია რუკაზე.'); } catch (e) {} });
+mp.events.add('phone:ui:close', () => setPhone(false));
+
+// ---- Voice calls ----
+let currentCall = null; // { state, name, number, reason }
+function pushCall(data) {
+    currentCall = (data && data.state && data.state !== 'ended') ? data : null;
+    if (phoneBrowser) phoneBrowser.execute('window.setPhoneCall(' + JSON.stringify(data) + ')');
+}
+mp.events.add('call:incoming', (name, number) => { pushCall({ state: 'incoming', name, number }); if (!phoneBrowser) setPhone(true); });
+mp.events.add('call:ringing', (name, number) => { pushCall({ state: 'ringing', name, number }); });
+mp.events.add('call:connected', (name) => { pushCall({ state: 'connected', name }); });
+mp.events.add('call:ended', (reason) => { pushCall({ state: 'ended', reason }); });
+mp.events.add('call:failed', (reason) => { pushCall({ state: 'ended', reason }); });
+// Make the call partner audible at full volume regardless of distance (non-spatial) during the call.
+mp.events.add('call:voice', (remoteId, on) => {
+    const peer = mp.players.atRemoteId(Number(remoteId));
+    if (!peer) return;
+    try { peer.voiceAutoVolume = !on; if (on) peer.voiceVolume = 1.0; } catch (e) {}
+});
+mp.events.add('phone:ui:callAccept', () => mp.events.callRemote('call:accept'));
+mp.events.add('phone:ui:callDecline', () => mp.events.callRemote('call:decline'));
+mp.events.add('phone:ui:callHangup', () => mp.events.callRemote('call:hangup'));
+
+// ---------- Kill GTA's ambient life (empty server: no traffic, no ambient peds/gunfights, no sirens) ----------
+// The density "this frame" natives must be re-applied every frame; the toggles are refreshed on a timer.
+mp.events.add('render', () => {
+    const veh = mp.game.vehicle, ped = mp.game.ped;
+    try { ped.setPedDensityMultiplierThisFrame(0.0); } catch (e) {}
+    try { ped.setScenarioPedDensityMultiplierThisFrame(0.0, 0.0); } catch (e) {}
+    try { veh.setVehicleDensityMultiplierThisFrame(0.0); } catch (e) {}
+    try { veh.setRandomVehicleDensityMultiplierThisFrame(0.0); } catch (e) {}
+    try { veh.setParkedVehicleDensityMultiplierThisFrame(0.0); } catch (e) {}
+});
+function suppressAmbient() {
+    const veh = mp.game.vehicle, ped = mp.game.ped, gp = mp.game.gameplay, player = mp.game.player;
+    try { ped.setCreateRandomCops(false); } catch (e) {}
+    try { ped.setCreateRandomCopsNotOnScenarios(false); } catch (e) {}
+    try { ped.setCreateRandomCopsOnScenarios(false); } catch (e) {}
+    try { ped.setPedPopulationBudget(0); } catch (e) {}
+    try { veh.setVehiclePopulationBudget(0); } catch (e) {}
+    try { veh.setRandomTrains(false); } catch (e) {}
+    try { veh.setRandomBoats(false); } catch (e) {}
+    try { veh.setGarbageTrucks(false); } catch (e) {}
+    try { veh.setDistantCarsEnabled(false); } catch (e) {}
+    // No police at all: zero wanted level + disable every dispatch service (ambient cop cars/sirens).
+    try { player.setMaxWantedLevel(0); } catch (e) {}
+    try { player.setPoliceIgnorePlayer(mp.players.local.handle, true); } catch (e) {}
+    try { for (let type = 1; type <= 15; type++) gp.enableDispatchService(type, false); } catch (e) {}
+    try { mp.game.audio.setAudioFlag('PoliceScannerDisabled', true); } catch (e) {}
+}
+mp.events.add('playerReady', suppressAmbient);
+setInterval(suppressAmbient, 5000);
+suppressAmbient();
 
 // ---------- CEF bank / ATM ----------
 let bankBrowser = null;
@@ -1165,11 +1469,12 @@ function findNearDrop() {
 }
 
 mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
-    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser) return;
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || parkingBrowser || parkEditing) return;
     if (fuelUIOpen) return;
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
     const drop = findNearDrop();
     if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }
+    if (parkNearby) { openParkingUI(); return; } // stand in a parking slot, press E to rent/park
     if (!mp.players.local.vehicle) {
         const mode = nearestShopMode(mp.players.local.position);
         if (mode === 'clothing') openClothingUI();
@@ -1185,6 +1490,9 @@ mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
     else if (clothingBrowser) closeClothingUI();
     else if (directorBrowser) closeDirector();
     else if (bankBrowser) closeBankUI();
+    else if (parkingBrowser) closeParkingUI();
+    else if (parkEditing) parkEditConfirm = !parkEditConfirm; // Esc toggles the save/discard prompt
+    else if (phoneBrowser) setPhone(false);
     else if (inventoryBrowser) closeInventoryUI();
     else if (vehicleMenuBrowser) closeVehicleMenu();
 });
@@ -1457,7 +1765,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -1562,6 +1870,10 @@ mp.events.add('render', () => {
     // voice state (shown regardless of vehicle)
     payload.voiceTalking = voiceTalking;
     payload.voiceBanned = voiceBanned;
+
+    // parking prompt / admin edit help (Georgian → rendered by the CEF HUD, set by the parking render loop)
+    payload.parkPrompt = parkHudPrompt;
+    payload.parkEdit = parkHudEdit;
 
     // push HUD at CFG.hudHz (not every frame)
     hudAccum += dt;

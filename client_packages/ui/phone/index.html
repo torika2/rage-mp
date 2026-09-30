@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d12;
+    --card: #171a21;
+    --text: #f3f0e8;
+    --muted: #8b93a2;
+    --blue: #5ac8fa;
+    --green: #5fd19b;
+    --gold: #f2c15c;
+    --line: rgba(255,255,255,.08);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { background: transparent; user-select: none; display: flex; align-items: flex-end; justify-content: flex-end; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .phone { width: 330px; height: 660px; margin: 18px 26px; background: #05060a; border: 10px solid #05060a; border-radius: 40px; box-shadow: 0 30px 80px rgba(0,0,0,.7), 0 0 0 2px rgba(255,255,255,.05); overflow: hidden; position: relative; animation: rise .22s ease-out; }
+  .screen { position: absolute; inset: 0; background: linear-gradient(180deg, #10141c, #0a0c11); border-radius: 30px; overflow: hidden; display: flex; flex-direction: column; }
+  .notch { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 120px; height: 20px; background: #05060a; border-radius: 0 0 14px 14px; z-index: 5; }
+  .status { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px 6px; font-size: 12px; color: var(--muted); }
+  .status .num { color: var(--text); font-weight: 700; }
+  .view { flex: 1; overflow: auto; padding: 10px 16px 16px; }
+  h2 { margin: 6px 2px 14px; font-size: 17px; }
+  /* Home grid */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+  .app { display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: 0; }
+  .app .ic { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; font-size: 30px; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+  .app .lbl { font-size: 11px; color: var(--muted); }
+  .app.bank .ic { background: linear-gradient(160deg,#2b6fb3,#1b4e86); }
+  .app.contacts .ic { background: linear-gradient(160deg,#c98a2b,#9c6a1c); }
+  .app.dial .ic { background: linear-gradient(160deg,#3aa76d,#26794e); }
+  .app.car .ic { background: linear-gradient(160deg,#8f4fd0,#5f3494); }
+  /* App chrome */
+  .back { background: none; border: 0; color: var(--blue); font-size: 13px; padding: 2px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .bal-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .bal-row + .bal-row { margin-top: 8px; }
+  .bal-row .k { color: var(--muted); font-size: 12px; }
+  .bal-row .v { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .v.cash { color: var(--gold); } .v.bank { color: var(--blue); }
+  label { display: block; color: var(--muted); font-size: 11px; margin: 8px 0 5px; }
+  input { width: 100%; padding: 10px; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 10px; color: var(--text); font: inherit; }
+  input:focus { outline: none; border-color: var(--blue); }
+  .btn { width: 100%; margin-top: 12px; padding: 12px; border: 0; border-radius: 12px; font-weight: 700; background: var(--blue); color: #04222e; }
+  .btn.green { background: var(--green); color: #063020; }
+  .btn.ghost { background: rgba(255,255,255,.06); color: var(--text); font-weight: 600; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .item { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .item .nm { font-size: 14px; }
+  .item .no { color: var(--muted); font-size: 11px; }
+  .item .sp { flex: 1; }
+  .icobtn { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: rgba(255,255,255,.04); font-size: 15px; }
+  .icobtn.call:hover { border-color: var(--green); color: var(--green); }
+  .icobtn.del:hover { border-color: #ff6978; color: #ff6978; }
+  .home-btn { height: 46px; display: grid; place-items: center; }
+  .home-bar { width: 120px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.4); }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 16px; }
+  /* Call overlay */
+  .call { position: absolute; inset: 0; z-index: 10; background: linear-gradient(180deg, #0d2a1f, #0a0f13); border-radius: 30px; display: none; flex-direction: column; align-items: center; justify-content: space-between; padding: 60px 24px 44px; }
+  .call.show { display: flex; }
+  .call .who { text-align: center; }
+  .call .who .avatar { width: 96px; height: 96px; border-radius: 50%; background: rgba(255,255,255,.08); display: grid; place-items: center; font-size: 42px; margin: 0 auto 16px; }
+  .call .who .nm { font-size: 22px; font-weight: 700; }
+  .call .who .st { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .call .acts { display: flex; gap: 30px; }
+  .call .cbtn { width: 66px; height: 66px; border-radius: 50%; border: 0; font-size: 26px; color: #fff; }
+  .cbtn.accept { background: #2ecc71; } .cbtn.decline, .cbtn.hang { background: #e74c3c; }
+  @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="phone"><div class="notch"></div><div class="screen">
+  <div class="status"><span class="num" id="myNum">—</span><span id="clock">00:00</span></div>
+  <div class="view" id="view"></div>
+  <button class="home-btn" id="home"><div class="home-bar"></div></button>
+  <div class="call" id="callScreen">
+    <div class="who"><div class="avatar">👤</div><div class="nm" id="callName">—</div><div class="st" id="callSt">—</div></div>
+    <div class="acts" id="callActs"></div>
+  </div>
+</div></div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (n, ...a) => { if (RAGE) mp.trigger(n, ...a); };
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+  const esc = (s) => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
+  let state = { number: '—', cash: 0, bank: 0, contacts: [], car: { has: false } };
+  let app = 'home';
+
+  el('home').onclick = () => { app = 'home'; render(); };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); trigger('phone:ui:close'); } });
+
+  function clock() { const d = new Date(); el('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  setInterval(clock, 1000); clock();
+
+  function render() {
+    const v = el('view');
+    if (app === 'home') {
+      v.innerHTML =
+        '<div class="grid">' +
+        '<button class="app bank" data-app="bank"><div class="ic">🏦</div><span class="lbl">ბანკი</span></button>' +
+        '<button class="app dial" data-app="dial"><div class="ic">📞</div><span class="lbl">ზარი</span></button>' +
+        '<button class="app contacts" data-app="contacts"><div class="ic">👥</div><span class="lbl">კონტაქტები</span></button>' +
+        '<button class="app car" data-app="car"><div class="ic">🚗</div><span class="lbl">მანქანა</span></button>' +
+        '</div>';
+      v.querySelectorAll('[data-app]').forEach(b => b.onclick = () => { app = b.getAttribute('data-app'); render(); });
+      return;
+    }
+    if (app === 'bank') {
+      v.innerHTML =
+        '<button class="back" id="bk">‹ უკან</button><h2>ბანკი</h2>' +
+        '<div class="card"><div class="bal-row"><span class="k">ნაღდი</span><span class="v cash">' + fmt(state.cash) + '</span></div>' +
+        '<div class="bal-row"><span class="k">ბანკი</span><span class="v bank">' + fmt(state.bank) + '</span></div></div>' +
+        '<div class="card"><div style="font-size:13px;font-weight:700;margin-bottom:4px">გადარიცხვა</div>' +
+        '<label>მიმღების ნომერი</label><input id="tnum" placeholder="1234567">' +
+        '<label>თანხა</label><input id="tamt" type="number" min="1" placeholder="0">' +
+        '<button class="btn" id="tsend">გადარიცხვა</button></div>' +
+        '<div class="empty">შენატანი/გატანა — ბანკომატზე (ATM).</div>';
+      el('bk').onclick = home;
+      el('tsend').onclick = () => { const n = el('tnum').value.trim(), a = parseInt(el('tamt').value) || 0; if (n && a > 0) trigger('phone:ui:bankTransfer', n, a); };
+      return;
+    }
+    if (app === 'dial') {
+      v.innerHTML =
+        '<button class="back" id="bk">‹ უკან</button><h2>ზარი</h2>' +
+        '<div class="card"><label>ნომერი</label><input id="dnum" placeholder="1234567">' +
+        '<button class="btn green" id="dcall">📞 დარეკვა</button></div>';
+      el('bk').onclick = home;
+      el('dcall').onclick = () => { const n = el('dnum').value.trim(); if (n) trigger('phone:ui:call', n); };
+      return;
+    }
+    if (app === 'contacts') {
+      let list = state.contacts.length
+        ? '<div class="list">' + state.contacts.map((c, i) =>
+            '<div class="item"><div><div class="nm">' + esc(c.name) + '</div><div class="no">' + esc(c.number) + '</div></div><div class="sp"></div>' +
+            '<button class="icobtn call" data-call="' + esc(c.number) + '">📞</button>' +
+            '<button class="icobtn del" data-del="' + i + '">🗑</button></div>').join('') + '</div>'
+        : '<div class="empty">კონტაქტები ცარიელია</div>';
+      v.innerHTML =
+        '<button class="back" id="bk">‹ უკან</button><h2>კონტაქტები</h2>' + list +
+        '<div class="card" style="margin-top:12px"><div style="font-size:13px;font-weight:700;margin-bottom:4px">დამატება</div>' +
+        '<label>სახელი</label><input id="cn" placeholder="სახელი">' +
+        '<label>ნომერი</label><input id="cno" placeholder="1234567">' +
+        '<button class="btn ghost" id="cadd">დამატება</button></div>';
+      el('bk').onclick = home;
+      el('cadd').onclick = () => { const n = el('cn').value.trim(), no = el('cno').value.trim(); if (n && no) trigger('phone:ui:contactAdd', n, no); };
+      v.querySelectorAll('[data-call]').forEach(b => b.onclick = () => trigger('phone:ui:call', b.getAttribute('data-call')));
+      v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => trigger('phone:ui:contactDelete', parseInt(b.getAttribute('data-del'))));
+      return;
+    }
+    if (app === 'car') {
+      const car = state.car || { has: false };
+      v.innerHTML =
+        '<button class="back" id="bk">‹ უკან</button><h2>მანქანა</h2>' +
+        (car.has
+          ? '<div class="card"><div class="bal-row"><span class="k">ბლოკი</span><span class="v">' + (car.locked ? 'დაბლოკილი 🔒' : 'ღია 🔓') + '</span></div>' +
+            '<div class="bal-row"><span class="k">ძრავა</span><span class="v">' + (car.engine ? 'ჩართული' : 'გამორთული') + '</span></div></div>' +
+            '<button class="btn" id="clock2">' + (car.locked ? 'გახსნა' : 'დაბლოკვა') + '</button>' +
+            '<button class="btn ghost" id="ceng" style="margin-top:8px">ძრავა ' + (car.engine ? 'გამორთვა' : 'ჩართვა') + '</button>' +
+            '<button class="btn ghost" id="cloc" style="margin-top:8px">📍 რუკაზე მონიშვნა</button>'
+          : '<div class="empty">მანქანა არ გაქვს (/car).</div>');
+      el('bk').onclick = home;
+      if (car.has) {
+        el('clock2').onclick = () => trigger('phone:ui:car', 'lock');
+        el('ceng').onclick = () => trigger('phone:ui:car', 'engine');
+        el('cloc').onclick = () => trigger('phone:ui:locate', car.x, car.y);
+      }
+      return;
+    }
+  }
+  function home() { app = 'home'; render(); }
+
+  window.setPhoneState = function (data) {
+    state = data || state;
+    el('myNum').textContent = '📱 ' + (state.number || '—');
+    render();
+  };
+
+  let callTimer = null;
+  window.setPhoneCall = function (data) {
+    const scr = el('callScreen'), acts = el('callActs');
+    if (callTimer) { clearTimeout(callTimer); callTimer = null; }
+    if (!data || data.state === 'ended') {
+      el('callName').textContent = data && data.reason ? '' : '';
+      if (data && data.reason) { el('callSt').textContent = data.reason; el('callName').textContent = 'ზარი დასრულდა'; acts.innerHTML = ''; scr.classList.add('show'); callTimer = setTimeout(() => scr.classList.remove('show'), 1600); }
+      else scr.classList.remove('show');
+      return;
+    }
+    scr.classList.add('show');
+    el('callName').textContent = data.name || 'უცნობი';
+    if (data.state === 'incoming') {
+      el('callSt').textContent = 'შემომავალი ზარი' + (data.number ? ' · ' + data.number : '');
+      acts.innerHTML = '<button class="cbtn decline" id="cd">✕</button><button class="cbtn accept" id="ca">📞</button>';
+      el('ca').onclick = () => trigger('phone:ui:callAccept');
+      el('cd').onclick = () => trigger('phone:ui:callDecline');
+    } else if (data.state === 'ringing') {
+      el('callSt').textContent = 'დარეკვა…';
+      acts.innerHTML = '<button class="cbtn hang" id="ch">✕</button>';
+      el('ch').onclick = () => trigger('phone:ui:callHangup');
+    } else if (data.state === 'connected') {
+      el('callSt').textContent = 'ხაზზეა · დაჭირე B სალაპარაკოდ';
+      acts.innerHTML = '<button class="cbtn hang" id="ch">✕</button>';
+      el('ch').onclick = () => trigger('phone:ui:callHangup');
+    }
+  };
+
+  render();
+  if (RAGE) mp.trigger('phone:ui:ready');
+  else window.setPhoneState({ number: '5551234', cash: 3200, bank: 15000, contacts: [{ name: 'Nika', number: '7654321' }], car: { has: true, locked: true, engine: false, x: 0, y: 0 } });
+</script>
+</body>
+</html>

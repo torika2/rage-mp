@@ -55,6 +55,25 @@ function persist(player) {
 global.vehPersist = persist;
 global.vehForget = function (player) { const k = keyOf(player); if (store[k]) { delete store[k]; save(); } };
 
+// Adopt an existing world vehicle as this player's persistent car, preserving its fuel.
+// Used by the parking package when a stored car is retrieved (unpark / impound).
+global.vehAdopt = function (player, vehicle, modelName, fuel) {
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return;
+    const keptFuel = (typeof fuel === 'number' && Number.isFinite(fuel)) ? Math.max(0, Math.min(FUEL_MAX, fuel)) : FUEL_MAX;
+    store[keyOf(player)] = {
+        model: vehicle.model,
+        modelName: modelName || null,
+        x: vehicle.position.x, y: vehicle.position.y, z: vehicle.position.z,
+        heading: headingOf(vehicle),
+        dim: Number(vehicle.dimension) || 0,
+        plate: vehicle.numberPlate || null,
+        fuel: keptFuel
+    };
+    try { vehicle.setVariable('veh:fuel', keptFuel); } catch (e) {}
+    player.myCar = vehicle;
+    save();
+};
+
 // Re-spawn the saved car into the world when the owner joins.
 function restore(player) {
     if (player.vehRestored) return;

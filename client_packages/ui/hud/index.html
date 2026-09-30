@@ -70,6 +70,23 @@
   }
   #prompt b { color: var(--accent); }
 
+  #parkPrompt {
+    position: absolute; left: 50%; bottom: 16%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 18px; border-radius: 10px; font-size: 15px; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none; white-space: nowrap;
+  }
+  #parkPrompt b { color: var(--accent); }
+  #parkEdit {
+    position: absolute; left: 50%; bottom: 4%; transform: translateX(-50%);
+    max-width: 92vw; text-align: center;
+    background: rgba(40,30,0,.72); border: 1px solid rgba(245,205,60,.6); color: #ffe58a;
+    padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,.45); display: none;
+  }
+  #parkEdit .dim { color: #cbb96a; font-weight: 500; }
+  #parkEdit b { color: #fff; }
+
   #voice {
     position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
     display: none; align-items: center; gap: 8px;
@@ -267,6 +284,8 @@
 
   <div id="pickup">დააჭირე <b>E</b>-ს ასაღებად: <span id="pickupLabel"></span></div>
   <div id="prompt">დააჭირე <b>E</b>-ს საწვავის შესავსებად</div>
+  <div id="parkPrompt">დააჭირე <b>E</b>-ს — პარკინგი <span id="parkPromptId"></span></div>
+  <div id="parkEdit"></div>
 
   <!-- Vehicle interaction indicator (when looking at a car outside) -->
   <div id="targetVehBadge">
@@ -323,6 +342,12 @@
     $('prompt').style.display = d.refuel ? 'block' : 'none';
     $('pickup').style.display = d.pickup ? 'block' : 'none';
     if (d.pickup) $('pickupLabel').textContent = d.pickup;
+
+    // Parking: "press E" prompt (id shown) and the admin edit help bar.
+    $('parkPrompt').style.display = d.parkPrompt ? 'block' : 'none';
+    if (d.parkPrompt) $('parkPromptId').textContent = d.parkPrompt;
+    $('parkEdit').style.display = d.parkEdit ? 'block' : 'none';
+    if (d.parkEdit) $('parkEdit').innerHTML = d.parkEdit;
 
     // Target vehicle indicator outside
     const tv = $('targetVehBadge');

@@ -18,6 +18,19 @@ function getTeam(player) {
 }
 function nameOf(player) { return player.name || ('Player_' + player.id); }
 
+// Broadcast an RP action (like /me) to players near `player` in the same dimension.
+// Used by e.g. the phone taking out a handset. Rendered as an action line in the local channel.
+global.chatLocalAction = function (player, text) {
+    if (!player || !mp.players.exists(player)) return;
+    const msg = { ch: 'local', name: nameOf(player), sid: player.id, text: String(text), ts: Date.now(), action: true };
+    const pos = player.position;
+    mp.players.forEach(p => {
+        if (p.dimension !== player.dimension) return;
+        const dx = p.position.x - pos.x, dy = p.position.y - pos.y, dz = p.position.z - pos.z;
+        if (dx * dx + dy * dy + dz * dz <= LOCAL_RANGE * LOCAL_RANGE) global.chatSend(p, msg);
+    });
+};
+
 function syncTeam(player) {
     const has = getTeam(player) !== null;
     player.setVariable('chat:hasTeam', has);

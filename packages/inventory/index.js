@@ -549,6 +549,11 @@ function useItem(player, id, index) {
         if (def.health) player.health = Math.min(100, Number(player.health) + def.health);
         if (needs && (def.hunger || def.thirst)) global.needsAdd(player, { hunger: def.hunger || 0, thirst: def.thirst || 0 });
         if (def.anim) playConsumeAnim(player, def);
+        // Local RP action to nearby players: eat / drink / use (bandage, medkit, etc.)
+        if (global.chatLocalAction) {
+            const verb = def.anim === 'eat' ? 'ჭამს' : (def.anim ? 'სვამს' : 'იყენებს');
+            global.chatLocalAction(player, `${verb} ${def.label}`);
+        }
     }
     removeItem(player, id, 1, owned);
     player.outputChatBox(`!{#8ed17a}[ინვენტარი] გამოიყენეთ ${def.label}.`);
@@ -576,6 +581,7 @@ function equipCloth(player, id, stack) {
     if (previous && previous.id) { ensureClothDef(previous.id); addItem(player, previous.id, 1); }
     saveEquip(); save();
     player.outputChatBox(`!{#8ed17a}[ინვენტარი] ჩაიცვით ${def.label}.`);
+    if (global.chatLocalAction) global.chatLocalAction(player, 'იცვლის ტანსაცმელს'); // local RP action
     pushData(player);
 }
 
@@ -666,6 +672,7 @@ function dropItem(player, id, index, amount) {
     if (def && def.type === 'ammo') pushAmmoToGun(player); // gun in hand loses those rounds too
     spawnDrop(player, id, count);
     player.outputChatBox(`!{#9aa4ad}[ინვენტარი] გადააგდეთ ${(def && def.label) || id}${count > 1 ? ' ×' + count : ''}.`);
+    if (global.chatLocalAction) global.chatLocalAction(player, `დებს მიწაზე ${(def && def.label) || id}`); // local RP action
     pushData(player);
 }
 
@@ -716,6 +723,7 @@ function pickupDrop(player, dropId) {
     removeDrop(Number(dropId)); // claim first so two players can't both take it
     addItem(player, drop.itemId, drop.qty);
     player.outputChatBox(`!{#8ed17a}[ინვენტარი] აიღეთ ${(ITEM_DEFS[drop.itemId] && ITEM_DEFS[drop.itemId].label) || drop.itemId}.`);
+    if (global.chatLocalAction) global.chatLocalAction(player, `იღებს მიწიდან ${(ITEM_DEFS[drop.itemId] && ITEM_DEFS[drop.itemId].label) || drop.itemId}`); // local RP action
     pushData(player);
 }
 

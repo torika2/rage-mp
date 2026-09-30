@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>პარკინგი</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --blue: #5ac8fa; --green: #5fd19b; --red: #ff6978; --gold: #f2c15c;
+    --text: #f3f0e8; --muted: #aaa79e; --line: rgba(255,255,255,.12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { color: var(--text); background: transparent; user-select: none; display: flex; align-items: center; justify-content: center; }
+  button { font: inherit; color: inherit; }
+  .panel { width: min(440px, 94vw); max-height: 92vh; overflow-y: auto; background: linear-gradient(180deg,#101822,#0c0f13); border: 1px solid rgba(90,200,250,.45); border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,.55); animation: lift .18s ease-out; }
+  .head { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: #0e141c; }
+  .head h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .head .id { color: var(--blue); font-weight: 800; }
+  .head .spacer { flex: 1; }
+  .close { width: 32px; height: 32px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--muted); border-radius: 8px; font-size: 17px; cursor: pointer; }
+  .close:hover { color: var(--blue); border-color: var(--blue); }
+  .body { padding: 14px 18px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .row .k { color: var(--muted); }
+  .row .v { font-weight: 700; }
+  .status.free { color: var(--blue); } .status.mine { color: var(--green); } .status.taken { color: var(--red); }
+  .sec { margin-top: 14px; }
+  .sec > .lbl { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips button { flex: 1; min-width: 44px; padding: 8px 0; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.04); color: var(--text); cursor: pointer; font-size: 13px; }
+  .chips button.on { border-color: var(--blue); color: var(--blue); background: rgba(90,200,250,.12); }
+  .cost { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .cost b { color: var(--gold); font-size: 15px; }
+  .cars { margin-top: 6px; display: grid; gap: 6px; }
+  .car { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.03); font-size: 13px; }
+  .car .nm { flex: 1; font-weight: 700; }
+  .car .fu { color: var(--muted); font-size: 11px; }
+  .car button { padding: 6px 10px; border: 1px solid var(--green); border-radius: 7px; background: rgba(95,209,155,.14); color: var(--green); cursor: pointer; font-size: 12px; }
+  .empty { color: var(--muted); font-size: 12px; padding: 8px 0; }
+  .go { width: 100%; padding: 11px; margin-top: 8px; border: 1px solid var(--blue); border-radius: 10px; background: rgba(90,200,250,.16); color: var(--blue); font-weight: 700; font-size: 14px; cursor: pointer; }
+  .go:hover { background: rgba(90,200,250,.28); }
+  .go.green { border-color: var(--green); background: rgba(95,209,155,.16); color: var(--green); }
+  .go.gold { border-color: var(--gold); background: rgba(242,193,92,.14); color: var(--gold); }
+  .go.ghost { border-color: var(--line); background: rgba(255,255,255,.04); color: var(--text); }
+  .go.danger { border-color: var(--red); background: rgba(255,105,120,.14); color: var(--red); }
+  .go[disabled] { opacity: .4; cursor: not-allowed; }
+  .msg { min-height: 15px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .msg.ok { color: var(--green); } .msg.err { color: var(--red); }
+  @keyframes lift { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="head"><h1>პარკინგი <span class="id" id="spotId">—</span></h1><div class="spacer"></div><button class="close" id="close">×</button></div>
+  <div class="body">
+    <div class="row"><span class="k">სტატუსი</span><span class="v status" id="status">—</span></div>
+    <div class="row"><span class="k">ფასი</span><span class="v" id="price">—</span></div>
+    <div class="row" id="timeRow" style="display:none"><span class="k">დარჩა</span><span class="v" id="timeLeft">—</span></div>
+    <div class="row"><span class="k">შენი ნაღდი</span><span class="v" id="money">—</span></div>
+    <div id="dyn"></div>
+    <div class="msg" id="msg"></div>
+  </div>
+</div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+  let data = null, days = 1, slots = 1;
+
+  el('close').onclick = () => trigger('parking:ui:close');
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); trigger('parking:ui:close'); } });
+
+  function chips(values, current, fmtLabel, onPick) {
+    const box = document.createElement('div'); box.className = 'chips';
+    values.forEach(val => {
+      const b = document.createElement('button');
+      b.textContent = fmtLabel(val); b.className = (val === current ? 'on' : '');
+      b.onclick = () => onPick(val); box.appendChild(b);
+    });
+    return box;
+  }
+  function section(labelText) {
+    const s = document.createElement('div'); s.className = 'sec';
+    if (labelText) { const l = document.createElement('div'); l.className = 'lbl'; l.textContent = labelText; s.appendChild(l); }
+    return s;
+  }
+  function goButton(label, cls, disabled, onclick) {
+    const b = document.createElement('button'); b.className = 'go ' + (cls || ''); b.textContent = label; b.disabled = !!disabled;
+    if (!disabled) b.onclick = onclick; return b;
+  }
+
+  function render() {
+    if (!data) return;
+    el('spotId').textContent = data.id;
+    const st = el('status'); st.className = 'v status ' + data.status;
+    st.textContent = data.status === 'free' ? 'თავისუფალი' : data.status === 'mine' ? 'შენია' : ('დაკავებული' + (data.ownerName ? ' · ' + data.ownerName : ''));
+    el('price').textContent = fmt(data.price) + ' / დღე / ადგილი';
+    el('money').textContent = fmt(data.money);
+    el('timeRow').style.display = data.timeLeft ? 'flex' : 'none';
+    el('timeLeft').textContent = data.timeLeft || '—';
+    if (slots > (data.maxSlots || 5)) slots = 1;
+    if (days > (data.maxDays || 30)) days = 1;
+
+    const dyn = el('dyn'); dyn.innerHTML = '';
+    const dayVals = [1, 3, 7, 14].filter(d => d <= (data.maxDays || 30));
+    const slotVals = []; for (let i = 1; i <= (data.maxSlots || 5); i++) slotVals.push(i);
+
+    if (data.status === 'free') {
+      if (data.hasAnotherSpot) {
+        dyn.appendChild(goButton('სხვა ადგილი უკვე გაქვს', 'ghost', true, null));
+      } else {
+        const sSlots = section('რამდენი მანქანის ადგილი');
+        sSlots.appendChild(chips(slotVals, slots, v => v + '', v => { slots = v; render(); })); dyn.appendChild(sSlots);
+        const sDays = section('რამდენი დღით');
+        sDays.appendChild(chips(dayVals, days, v => v + ' დღე', v => { days = v; render(); })); dyn.appendChild(sDays);
+        const cost = data.price * slots * days;
+        const c = document.createElement('div'); c.className = 'cost';
+        c.innerHTML = slots + ' ადგილი × ' + days + ' დღე = <b>' + fmt(cost) + '</b>'; dyn.appendChild(c);
+        dyn.appendChild(goButton('იქირავე', 'green', data.money < cost, () => trigger('parking:ui:rent', days, slots)));
+      }
+    } else if (data.status === 'mine') {
+      const sCars = section('შენახული მანქანები (' + data.cars.length + '/' + data.slots + ')');
+      const list = document.createElement('div'); list.className = 'cars';
+      if (!data.cars.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'ცარიელია — დააყენე მანქანა.'; list.appendChild(e); }
+      data.cars.forEach(car => {
+        const row = document.createElement('div'); row.className = 'car';
+        row.innerHTML = '<span class="nm">' + car.label + '</span><span class="fu">' + car.fuel + '%</span>';
+        const b = document.createElement('button'); b.textContent = 'გამოყვანა'; b.onclick = () => trigger('parking:ui:unpark', car.i);
+        row.appendChild(b); list.appendChild(row);
+      });
+      sCars.appendChild(list); dyn.appendChild(sCars);
+      dyn.appendChild(goButton(data.inVehicle ? 'ამ მანქანის დაყენება' : 'დასაყენებლად უნდა იჯდე მანქანაში', 'green', !data.inVehicle || data.cars.length >= data.slots, () => trigger('parking:ui:park')));
+
+      const sRenew = section('ქირის გაგრძელება');
+      sRenew.appendChild(chips(dayVals, days, v => v + ' დღე', v => { days = v; render(); }));
+      const rcost = data.price * data.slots * days;
+      const rc = document.createElement('div'); rc.className = 'cost'; rc.innerHTML = '+' + days + ' დღე = <b>' + fmt(rcost) + '</b>'; sRenew.appendChild(rc);
+      sRenew.appendChild(goButton('გაგრძელება', 'gold', data.money < rcost, () => trigger('parking:ui:renew', days)));
+      dyn.appendChild(sRenew);
+    } else {
+      dyn.appendChild(goButton('დაკავებულია', 'ghost', true, null));
+    }
+
+    // Spawn-anyway: summon your personal car here, or pull an impounded car.
+    const extra = section('სხვა');
+    extra.appendChild(goButton('ჩემი მანქანის გადმოტანა — ' + fmt(data.summonFee), '', !data.hasPersonalCar || data.money < data.summonFee, () => trigger('parking:ui:summon')));
+    if (data.impoundCount > 0) extra.appendChild(goButton('დაყადაღებულის გამოტანა (' + data.impoundCount + ') — ' + fmt(data.impoundFee), '', data.money < data.impoundFee, () => trigger('parking:ui:impound')));
+    dyn.appendChild(extra);
+
+    if (data.isAdmin && data.editable) {
+      const admin = section('ადმინი');
+      admin.appendChild(goButton('✎ რედაქტირება', 'ghost', false, () => trigger('parking:ui:edit')));
+      admin.appendChild(goButton('🗑 ადგილის წაშლა', 'danger', false, () => trigger('parking:ui:delete')));
+      dyn.appendChild(admin);
+    }
+  }
+
+  window.setParkingData = function (d) {
+    data = d;
+    const msg = el('msg'); msg.textContent = d.message || ''; msg.className = 'msg' + (d.message ? (d.ok ? ' ok' : ' err') : '');
+    render();
+  };
+
+  if (RAGE) mp.trigger('parking:ui:ready');
+  else window.setParkingData({ id: 'Parking#1', status: 'free', price: 50, money: 3200, maxDays: 30, maxSlots: 5, hasPersonalCar: true, summonFee: 100, impoundFee: 250, impoundCount: 1, isAdmin: true, editable: true, cars: [] });
+</script>
+</body>
+</html>

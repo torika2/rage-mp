@@ -95,4 +95,5 @@ mp.events.add('fuel:buy', (player, octaneIndex, liters) => {
     setMoney(player, money - cost);
     player.call('fuel:confirm', [octaneIndex, liters, cost]);
     player.outputChatBox(`!{#8ed17a}შეივსო ${liters}ლ ${OCTANE_NAMES[octaneIndex]} — $${cost}. ბალანსი: $${getMoney(player)}`);
+    if (global.chatLocalAction) global.chatLocalAction(player, 'ასხამს საწვავს მანქანაში'); // local RP action
 });
