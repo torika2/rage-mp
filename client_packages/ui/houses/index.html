@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>სახლი</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c;
+    --gold-soft: rgba(242, 193, 92, .48);
+    --green: #6fcf97;
+    --blue: #5aa9ff;
+    --text: #f3f0e8;
+    --muted: #aaa79e;
+    --line: rgba(255, 255, 255, .12);
+    --bad: #ff6978;
+    --panel: linear-gradient(180deg, #131518, #0e1012);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { color: var(--text); background: rgba(0, 0, 0, .35); user-select: none; display: grid; place-items: center; }
+  button, input { color: inherit; font: inherit; }
+  button { cursor: pointer; }
+  .panel { width: min(520px, 92vw); max-height: 88vh; display: grid; grid-template-rows: 62px minmax(0, 1fr) auto; background: var(--panel); border: 1px solid var(--gold-soft); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); overflow: hidden; animation: pop .18s ease-out; }
+  .panel.wide { width: min(820px, 94vw); }
+  .head { display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+  .title { display: flex; flex-direction: column; min-width: 0; }
+  .title h1 { margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title span { color: var(--muted); font-size: 11px; }
+  .spacer { flex: 1; }
+  .money { color: var(--gold); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .close { width: 34px; height: 34px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--muted); font-size: 18px; border-radius: 8px; }
+  .close:hover { color: var(--gold); border-color: var(--gold-soft); }
+  .body { overflow: auto; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .foot { border-top: 1px solid var(--gold-soft); padding: 14px 22px; display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, .25); flex-wrap: wrap; }
+  .price { color: var(--gold); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+  .badge.sale { color: var(--green); border-color: rgba(111, 207, 151, .5); }
+  .badge.mine { color: var(--blue); border-color: rgba(90, 169, 255, .5); }
+  .badge.locked { color: var(--bad); border-color: rgba(255, 105, 120, .5); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chip { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .03); }
+  .chip small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+  .chip b { font-size: 15px; }
+  .btn { padding: 11px 16px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .04); font-size: 13px; }
+  .btn:hover { border-color: var(--gold-soft); color: var(--gold); }
+  .btn.primary { border-color: var(--gold); background: rgba(242, 193, 92, .16); color: var(--gold); font-weight: 700; font-size: 14px; }
+  .btn.primary:hover { background: rgba(242, 193, 92, .28); }
+  .btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .confirm { padding: 12px; border: 1px solid rgba(255, 105, 120, .5); border-radius: 10px; background: rgba(255, 105, 120, .07); font-size: 13px; display: flex; align-items: center; gap: 10px; }
+  /* Chest */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-height: 0; }
+  .col h2 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .list { display: flex; flex-direction: column; gap: 5px; max-height: 52vh; overflow: auto; padding-right: 4px; }
+  .item { display: grid; grid-template-columns: 1fr auto 54px auto; align-items: center; gap: 6px; padding: 7px 8px 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .03); font-size: 12px; }
+  .item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .qty { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .item input { width: 54px; height: 28px; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0, 0, 0, .3); text-align: center; outline: none; }
+  .item button { height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; }
+  .item button:hover { border-color: var(--gold-soft); color: var(--gold); }
+  .item.disabled { opacity: .5; }
+  .empty { color: var(--muted); font-size: 12px; padding: 14px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
+  /* Building (unit list) */
+  .units { display: flex; flex-direction: column; gap: 6px; }
+  .unit { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .03); text-align: left; font-size: 13px; }
+  .unit:hover { border-color: var(--gold-soft); background: rgba(242, 193, 92, .06); }
+  .unit .meta span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .unit .amt { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .unit.mine { border-color: rgba(90, 169, 255, .5); }
+  /* Market (/houses) */
+  .filters { display: flex; gap: 8px; }
+  .filters input, .filters select { height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(0, 0, 0, .3); color: var(--text); outline: none; font-size: 12px; }
+  .filters input { flex: 1; min-width: 0; }
+  .market { display: flex; flex-direction: column; gap: 5px; max-height: 56vh; overflow: auto; padding-right: 4px; }
+  .listing { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .03); font-size: 13px; }
+  .listing .meta span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .listing .amt { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .listing .amt.cant { color: var(--muted); }
+  .listing button { padding: 7px 12px; border: 1px solid var(--green); border-radius: 8px; background: rgba(111, 207, 151, .12); color: var(--green); font-size: 12px; font-weight: 700; }
+  .listing button:hover { background: rgba(111, 207, 151, .22); }
+  .back { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; margin-right: 4px; }
+  .back:hover { color: var(--gold); border-color: var(--gold-soft); }
+  @keyframes pop { from { transform: scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+</style>
+</head>
+<body>
+<main class="panel" id="panel">
+  <header class="head">
+    <div class="title"><h1 id="title">სახლი</h1><span id="subtitle"></span></div>
+    <div class="spacer"></div>
+    <div class="money" id="money"></div>
+    <button class="close" id="close" title="დახურვა (Esc)">×</button>
+  </header>
+  <div class="body" id="body"></div>
+  <div class="foot" id="foot"></div>
+</main>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+
+  let state = null;
+  let confirmSell = false;
+
+  el('close').onclick = () => trigger('houses:ui:close');
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); trigger('houses:ui:close'); }
+  });
+  const act = (action, id) => trigger('houses:ui:action', action, id !== undefined ? id : state.house.id);
+
+  function renderBuilding() {
+    el('panel').classList.remove('wide');
+    el('title').textContent = state.name;
+    const free = state.units.filter(u => u.forSale).length;
+    el('subtitle').textContent = free ? 'იყიდება ' + free + ' ბინა' : 'ყველა ბინა გაყიდულია';
+    el('money').textContent = fmt(state.money);
+    el('body').innerHTML = '<div class="units">' + state.units.map(u => {
+      const status = u.mine ? '<span class="badge mine">ჩემი</span>'
+        : u.forSale ? '<span class="amt">' + fmt(u.price) + '</span>'
+        : '<span class="badge' + (u.locked ? ' locked' : '') + '">' + esc(u.ownerName) + '</span>';
+      const action = u.mine ? 'გახსნა' : u.forSale ? 'ნახვა' : (u.locked ? '🔒' : 'შესვლა');
+      return '<button class="unit' + (u.mine ? ' mine' : '') + '" data-unit="' + u.id + '">' +
+        '<div class="meta">' + esc(u.name) + (u.interior ? '<span>' + esc(u.interior) + '</span>' : '') + '</div>' +
+        status + '<span class="badge">' + action + '</span></button>';
+    }).join('') + '</div>' +
+      (state.ownsMax ? '<div class="hint">თქვენ უკვე გაქვთ სახლი/ბინა — მეტს ვერ იყიდით.</div>' : '<div class="hint">აირჩიეთ ბინა — ნახვა, ყიდვა ან შესვლა.</div>');
+    el('foot').style.display = 'none';
+    el('body').querySelectorAll('[data-unit]').forEach(b => { b.onclick = () => act('unit', Number(b.getAttribute('data-unit'))); });
+  }
+
+  function renderDoor() {
+    const h = state.house;
+    el('panel').classList.remove('wide');
+    el('title').innerHTML = (state.building ? '<button class="back" id="back">← ' + esc(state.building.name) + '</button>' : '') + esc(h.name);
+    el('money').textContent = fmt(state.money);
+    let body = '', foot = '';
+    if (h.forSale) {
+      el('subtitle').textContent = 'იყიდება';
+      body =
+        '<div><span class="badge sale">იყიდება</span></div>' +
+        '<div class="price">' + fmt(h.price) + '</div>' +
+        '<div class="grid">' +
+          (h.interior ? '<div class="chip" style="grid-column:1/-1"><small>ინტერიერი</small><b>' + esc(h.interior) + '</b></div>' : '') +
+          '<div class="chip"><small>სეიფი</small><b>' + (h.hasChest ? 'კი' : 'არა') + '</b></div>' +
+          '<div class="chip"><small>ავტოფარეხი</small><b>' + (h.hasGarage ? 'კი' : 'არა') + '</b></div>' +
+        '</div>' +
+        '<div class="hint">' + (h.canEnter ? '„დათვალიერება“ — შედით და ნახეთ შიგნით. ' : 'კარი ღიაა დასათვალიერებლად. ') + 'ყიდვის შემდეგ კარი ჩაიკეტება და მხოლოდ თქვენ გააღებთ. ' +
+          'გაყიდვისას სახელმწიფო დაგიბრუნებთ ფასის 60%-ს.</div>' +
+        (state.ownsOther ? '<div class="hint" style="color:var(--bad)">თქვენ უკვე გაქვთ სახლი.</div>' : '');
+      foot = (h.canEnter ? '<button class="btn" id="enter">🚪 დათვალიერება</button>' : '') +
+        '<div class="spacer"></div><button class="btn primary" id="buy"' + (state.ownsOther || h.price > state.money ? ' disabled' : '') + '>ყიდვა ' + fmt(h.price) + '</button>';
+    } else if (h.mine) {
+      el('subtitle').textContent = 'თქვენი სახლი';
+      body =
+        '<div><span class="badge mine">ჩემი სახლი</span> ' + (h.locked ? '<span class="badge locked">ჩაკეტილი</span>' : '<span class="badge">ღია</span>') + '</div>' +
+        '<div class="grid">' +
+          (h.interior ? '<div class="chip" style="grid-column:1/-1"><small>ინტერიერი</small><b>' + esc(h.interior) + '</b></div>' : '') +
+          '<div class="chip"><small>სეიფი</small><b>' + (h.hasChest ? h.chestItems + ' ნივთი' : 'არ არის') + '</b></div>' +
+          '<div class="chip"><small>ავტოფარეხი</small><b>' + (h.hasGarage ? (h.carParked ? 'მანქანა შიგნითაა' : 'ცარიელი') : 'არ არის') + '</b></div>' +
+          '<div class="chip"><small>გაღვიძება სახლში</small><b>' + (h.spawnHome ? 'ჩართულია' : 'გამორთულია') + '</b></div>' +
+          '<div class="chip"><small>გაყიდვის ფასი</small><b>' + fmt(h.sellBack) + '</b></div>' +
+        '</div>' +
+        (confirmSell ? '<div class="confirm">გავყიდო სახლი ' + fmt(h.sellBack) + '-ად? <div class="spacer"></div>' +
+          '<button class="btn danger" id="sellYes">დიახ, გაყიდვა</button><button class="btn" id="sellNo">გაუქმება</button></div>' : '') +
+        '<div class="hint">სეიფი და ავტოფარეხი — E მათ ნიშნულებთან. გასაყიდად სეიფი უნდა იყოს ცარიელი და მანქანა გარეთ.</div>';
+      foot =
+        (h.canEnter ? '<button class="btn primary" id="enter">🚪 შესვლა</button>' : '') +
+        '<button class="btn' + (h.canEnter ? '' : ' primary') + '" id="lock">' + (h.locked ? '🔓 გაღება' : '🔒 ჩაკეტვა') + '</button>' +
+        '<button class="btn" id="spawn">' + (h.spawnHome ? 'სახლში გაღვიძება: გამორთვა' : 'სახლში გაღვიძება: ჩართვა') + '</button>' +
+        '<div class="spacer"></div><button class="btn danger" id="sell">გაყიდვა</button>';
+    } else {
+      el('subtitle').textContent = 'კერძო საკუთრება';
+      body = '<div><span class="badge">მფლობელი: ' + esc(h.ownerName) + '</span> ' + (h.locked ? '<span class="badge locked">ჩაკეტილი</span>' : '<span class="badge">ღია</span>') + '</div>' +
+        '<div class="hint">ეს სახლი უკვე გაყიდულია.' + (h.canEnter ? ' კარი ღიაა — შეგიძლიათ შეხვიდეთ.' : '') + '</div>';
+      if (h.canEnter) foot = '<div class="spacer"></div><button class="btn primary" id="enter">🚪 შესვლა</button>';
+    }
+    el('body').innerHTML = body;
+    el('foot').innerHTML = foot;
+    el('foot').style.display = foot ? '' : 'none';
+    const bind = (id, fn) => { const node = el(id); if (node) node.onclick = fn; };
+    bind('buy', () => act('buy'));
+    bind('back', () => { confirmSell = false; act('back'); });
+    bind('enter', () => act('enter'));
+    bind('lock', () => act('lock'));
+    bind('spawn', () => act('spawn'));
+    bind('sell', () => { confirmSell = true; renderDoor(); });
+    bind('sellNo', () => { confirmSell = false; renderDoor(); });
+    bind('sellYes', () => { confirmSell = false; act('sell'); });
+  }
+
+  function itemRows(items, direction) {
+    if (!items.length) return '<div class="empty">' + (direction === 'put' ? 'ინვენტარი ცარიელია' : 'სეიფი ცარიელია') + '</div>';
+    return items.map(item =>
+      '<div class="item' + (item.inHand ? ' disabled' : '') + '" title="' + (item.inHand ? 'ხელშია — ჯერ ჩადეთ' : '') + '">' +
+        '<span class="name">' + esc(item.label) + '</span><span class="qty">×' + item.qty + '</span>' +
+        '<input type="number" min="1" max="' + item.qty + '" value="' + item.qty + '" data-qty="' + esc(item.id) + '">' +
+        '<button data-move="' + esc(item.id) + '"' + (item.inHand ? ' disabled' : '') + '>' + (direction === 'put' ? 'ჩადება →' : '← აღება') + '</button>' +
+      '</div>').join('');
+  }
+  function renderChest() {
+    el('panel').classList.add('wide');
+    el('title').textContent = 'სეიფი — ' + state.name;
+    el('subtitle').textContent = state.chest.length + ' / ' + state.slots + ' სახეობა';
+    el('money').textContent = '';
+    el('body').innerHTML =
+      '<div class="cols">' +
+        '<div class="col"><h2>ინვენტარი</h2><div class="list" id="inv">' + itemRows(state.inventory, 'put') + '</div></div>' +
+        '<div class="col"><h2>სეიფი</h2><div class="list" id="chest">' + itemRows(state.chest, 'take') + '</div></div>' +
+      '</div>';
+    el('foot').style.display = 'none';
+    [['inv', 'put'], ['chest', 'take']].forEach(([listId, direction]) => {
+      el(listId).querySelectorAll('[data-move]').forEach(button => {
+        button.onclick = () => {
+          const id = button.getAttribute('data-move');
+          const input = button.parentElement.querySelector('[data-qty]');
+          const qty = Math.max(1, Math.floor(Number(input.value) || 1));
+          trigger('houses:ui:chest', direction, state.houseId, id, qty);
+        };
+      });
+    });
+  }
+
+  // ---- /houses listing ----
+  let marketFilter = { q: '', max: 0, sort: 'distance' };
+  const distText = (m) => m >= 1000 ? (m / 1000).toFixed(1) + ' კმ' : m + ' მ';
+  function renderMarket() {
+    el('panel').classList.add('wide');
+    el('title').textContent = 'იყიდება სახლები';
+    el('money').textContent = fmt(state.money);
+    const q = marketFilter.q.toLowerCase();
+    let rows = state.rows.filter(r => (!marketFilter.max || r.price <= marketFilter.max) &&
+      (!q || (r.name + ' ' + (r.building || '') + ' ' + (r.interior || '')).toLowerCase().includes(q)));
+    if (marketFilter.sort === 'price') rows = rows.slice().sort((a, b) => a.price - b.price);
+    if (marketFilter.sort === 'priceDesc') rows = rows.slice().sort((a, b) => b.price - a.price);
+    el('subtitle').textContent = rows.length + ' / ' + state.rows.length + ' სახლი';
+    const shown = rows.slice(0, 150);
+    const listHtml = shown.map(r =>
+      '<div class="listing"><div class="meta">' + esc(r.building ? r.name : r.name) +
+        '<span>' + esc(r.interior || '') + ' · ' + distText(r.distance) + '</span></div>' +
+        '<span class="amt' + (r.price > state.money ? ' cant' : '') + '">' + fmt(r.price) + '</span>' +
+        '<button data-gps="' + r.id + '">📍 GPS</button></div>').join('');
+    const listNode = el('marketList');
+    if (listNode) {
+      listNode.innerHTML = listHtml || '<div class="empty">ვერაფერი მოიძებნა.</div>';
+    } else {
+      el('body').innerHTML =
+        '<div class="filters">' +
+          '<input id="mq" placeholder="ძებნა: სახელი, ინტერიერი…" value="' + esc(marketFilter.q) + '">' +
+          '<select id="mmax"><option value="0">ნებისმიერი ფასი</option><option value="80000">≤ $80,000</option><option value="180000">≤ $180,000</option>' +
+            '<option value="350000">≤ $350,000</option><option value="-1">რაც მაქვს</option></select>' +
+          '<select id="msort"><option value="distance">უახლოესი</option><option value="price">იაფი ჯერ</option><option value="priceDesc">ძვირი ჯერ</option></select>' +
+        '</div>' +
+        '<div class="market" id="marketList">' + (listHtml || '<div class="empty">ვერაფერი მოიძებნა.</div>') + '</div>' +
+        '<div class="hint">📍 GPS — მარშრუტი რუკაზე. იყიდება სახლები = მწვანე სახლის ნიშანი; ყიდვა — E საფოსტო ყუთთან / შესასვლელთან.' +
+          (rows.length > shown.length ? ' ნაჩვენებია უახლოესი ' + shown.length + '.' : '') + '</div>';
+      el('mmax').value = String(marketFilter.max === state.money && marketFilter.max ? -1 : marketFilter.max);
+      el('msort').value = marketFilter.sort;
+      el('mq').oninput = (e) => { marketFilter.q = e.target.value; renderMarket(); };
+      el('mmax').onchange = (e) => { const v = Number(e.target.value); marketFilter.max = v === -1 ? state.money : v; renderMarket(); };
+      el('msort').onchange = (e) => { marketFilter.sort = e.target.value; renderMarket(); };
+    }
+    el('body').querySelectorAll('[data-gps]').forEach(b => {
+      b.onclick = () => { const r = state.rows.find(x => x.id === Number(b.getAttribute('data-gps'))); if (r) trigger('houses:ui:gps', r.x, r.y); };
+    });
+    el('foot').style.display = '';
+    el('foot').innerHTML = '<button class="btn' + (state.highlight ? ' primary' : '') + '" id="highlight">' +
+      (state.highlight ? '🗺️ მონიშვნა რუკაზე: ჩართულია' : '🗺️ ყველა მონიშნე რუკაზე') + '</button><div class="spacer"></div>' +
+      '<span class="hint">' + state.rows.length + ' სახლი იყიდება</span>';
+    el('highlight').onclick = () => trigger('houses:ui:highlight');
+  }
+
+  window.setHouse = function (next) {
+    state = next;
+    if (state.mode !== 'market' && el('marketList')) el('body').innerHTML = '';
+    if (state.mode === 'chest') renderChest();
+    else if (state.mode === 'market') { if (!el('marketList')) el('body').innerHTML = ''; renderMarket(); }
+    else if (state.mode === 'building') renderBuilding();
+    else renderDoor();
+  };
+
+  if (RAGE) mp.trigger('houses:ui:ready');
+  else if (location.hash === '#market') {
+    const rows = [];
+    for (let i = 1; i <= 40; i++) rows.push({ id: i, name: 'სახლი #' + i, price: 40000 + i * 12000, interior: i % 3 ? 'საშუალო ბინა (Mid-end apartment)' : '2874 Hillcrest Avenue', x: i, y: i, distance: i * 137 });
+    window.setHouse({ mode: 'market', highlight: false, money: 250000, rows });
+  } else if (location.hash === '#building') {
+    window.setHouse({ mode: 'building', money: 200000, key: 'integrity', name: '4 Integrity Way', ownsMax: false, units: [
+      { id: 2, name: '4 Integrity Way, ბინა 1', price: 150000, forSale: true, interior: 'საშუალო ბინა (Mid-end apartment)' },
+      { id: 3, name: '4 Integrity Way, ბინა 2', price: 150000, forSale: false, mine: true, interior: 'საშუალო ბინა (Mid-end apartment)' },
+      { id: 4, name: '4 Integrity Way, ბინა 3', price: 150000, forSale: false, ownerName: 'Giorgi', locked: true, interior: 'საშუალო ბინა (Mid-end apartment)' }
+    ] });
+  } else if (location.hash === '#chest') {
+    window.setHouse({ mode: 'chest', houseId: 1, name: 'Vinewood Hills', slots: 40,
+      inventory: [{ id: 'water', label: 'წყალი', qty: 5 }, { id: 'pistol', label: 'პისტოლეტი', qty: 1, inHand: true }],
+      chest: [{ id: 'burger', label: 'ბურგერი', qty: 3 }] });
+  } else if (location.hash === '#mine') {
+    window.setHouse({ mode: 'door', money: 50000, ownsOther: false, house: { id: 1, name: 'Vinewood Hills', price: 250000, forSale: false, mine: true,
+      locked: true, spawnHome: true, sellBack: 150000, hasChest: true, hasGarage: true, chestItems: 4, carParked: false } });
+  } else {
+    window.setHouse({ mode: 'door', money: 300000, ownsOther: false, house: { id: 1, name: 'Vinewood Hills', price: 250000, forSale: true, mine: false,
+      locked: false, spawnHome: true, sellBack: 150000, hasChest: true, hasGarage: false, chestItems: 0 } });
+  }
+</script>
+</body>
+</html>

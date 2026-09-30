@@ -157,7 +157,7 @@ mp.events.add('playerQuit', (player) => {
 });
 
 // /arms <index> - set the ped's arms (clothing component 3) to test which value fits a worn top,
-// then add that "<topDrawable>: <armsIndex>" to TOP_ARMS in packages/inventory.
+// then save it for that top with /armsfit <index> (packages/clothing).
 mp.events.addCommand('arms', (player, _, num) => {
     const value = parseInt(num);
     if (Number.isNaN(value)) return player.outputChatBox('!{#ffb42e}გამოყენება: /arms <index>');

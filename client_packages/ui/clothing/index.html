@@ -56,6 +56,9 @@
   .remove { flex: 0 0 auto; padding: 13px 18px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .04); color: var(--muted); font-size: 13px; }
   .remove:hover { border-color: #ff6978; color: #ff6978; }
   .hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .item-name { margin-top: -14px; color: var(--gold); font-size: 14px; font-weight: 600; min-height: 18px; }
+  .item-name.unnamed { color: var(--muted); font-weight: 400; }
+  .stepper .value small { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
   .empty { margin: auto; color: var(--muted); font-size: 13px; }
   /* Cart footer */
   .cart { border-top: 1px solid var(--gold-soft); padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; background: rgba(0, 0, 0, .25); }
@@ -100,18 +103,33 @@
     </div>
   </main>
 </div>
+<script src="names.js"></script>
 <script>
   const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
   const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
   const el = (id) => document.getElementById(id);
   const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
 
-  let state = null; // { money, taxRate, selected, order, categories:{} }
+  let state = null; // { money, taxRate, selected, order, categories:{}, gender }
+
+  // GTA Online name for a drawable/texture (names.js, generated from the game's shop labels).
+  // Falls back to the drawable's first named texture, then null (shown as "#N").
+  function itemName(key, drawable, texture) {
+    const table = window.CLOTH_NAMES && state && window.CLOTH_NAMES[state.gender || 'm'];
+    const byDrawable = table && table[key] && table[key][drawable];
+    if (!byDrawable) return null;
+    return byDrawable[texture] || byDrawable.find(name => name) || null;
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 
   el('close').onclick = () => trigger('clothing:ui:close');
   el('checkout').onclick = () => trigger('clothing:ui:checkout');
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); trigger('clothing:ui:close'); }
+    else if (state && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      event.preventDefault();
+      trigger('clothing:ui:nav', state.selected, event.key === 'ArrowLeft' ? -1 : 1, 0);
+    }
   });
 
   // Drag anywhere over the ped (outside the panel) to spin the character.
@@ -145,15 +163,22 @@
     const category = state.categories[state.selected];
     if (!category) { detail.innerHTML = '<div class="empty">აირჩიეთ კატეგორია</div>'; return; }
     let swatches = '';
-    if (category.texCount > 1) {
-      for (let index = 0; index < category.texCount; index++) {
-        swatches += '<button class="swatch' + (index === category.texture ? ' on' : '') + '" data-tex="' + index + '">' + (index + 1) + '</button>';
-      }
+    const textures = category.textures || [0];
+    if (textures.length > 1) {
+      textures.forEach((texture, index) => {
+        const title = itemName(category.key, category.drawable, texture) || ('#' + (texture + 1));
+        swatches += '<button class="swatch' + (texture === category.texture ? ' on' : '') + '" data-tex="' + texture + '" title="' + esc(title) + '">' + (index + 1) + '</button>';
+      });
     }
+    const none = category.drawable < 0;
+    const name = none ? null : itemName(category.key, category.drawable, category.texture);
+    const position = category.position >= 0 ? (category.position + 1) : '—';
     detail.innerHTML =
       '<h2>' + category.label + '</h2>' +
+      '<div class="item-name' + (name ? '' : ' unnamed') + '">' + (none ? 'არცერთი' : esc(name || ('მოდელი #' + (category.drawable + 1)))) + '</div>' +
       '<div class="picker"><div class="picker-label">მოდელი</div><div class="stepper">' +
-        '<button data-nav="-1">‹</button><div class="value">' + (category.drawable + 1) + ' / ' + category.count + '</div><button data-nav="1">›</button>' +
+        '<button data-nav="-1">‹</button><div class="value"><span>' + position + ' / ' + category.count + '</span>' +
+          (none ? '' : '<small>#' + (category.drawable + 1) + '</small>') + '</div><button data-nav="1">›</button>' +
       '</div></div>' +
       (swatches ? '<div class="picker"><div class="picker-label">ფერი</div><div class="swatches">' + swatches + '</div></div>' : '') +
       '<div class="price-row"><span class="p">' + fmt(category.price) + '</span>' +
@@ -162,7 +187,7 @@
         '<button class="add" id="add">＋ კალათაში დამატება</button>' +
         '<button class="remove" id="none">' + (category.worn ? 'მოხსნა' : 'არცერთი') + '</button>' +
       '</div>' +
-      '<div class="hint">‹ › — მოდელის შეცვლა · ფერის ღილაკები — ტექსტურა · ხასიათს ათრევ ბრუნავს პერსონაჟი. ყიდვის შემდეგ ნივთი ჩნდება ინვენტარში (I). ' +
+      '<div class="hint">‹ › / ისრები — მოდელის შეცვლა · ფერის ღილაკები — ტექსტურა · ხასიათს ათრევ ბრუნავს პერსონაჟი. ყიდვის შემდეგ ნივთი ჩნდება ინვენტარში (I). ' +
         (category.worn ? '„მოხსნა“ — ნივთი ინვენტარში დაბრუნდება.' : '„არცერთი“ — ამ ნაწილს არაფერს აცმევს.') + '</div>';
 
     detail.querySelectorAll('[data-nav]').forEach(b => {
@@ -177,7 +202,7 @@
 
   // ---- Called by the client ----
   window.setClothingData = function (data) {
-    state = { money: data.money, taxRate: data.taxRate, selected: data.selected, order: data.order, categories: {} };
+    state = { money: data.money, taxRate: data.taxRate, selected: data.selected, order: data.order, categories: {}, gender: data.gender || 'm' };
     (data.categories || []).forEach(c => { state.categories[c.key] = c; });
     el('money').textContent = fmt(state.money);
     renderCats();
@@ -203,7 +228,8 @@
     items.forEach((item, index) => {
       const row = document.createElement('div');
       row.className = 'cart-item';
-      row.innerHTML = '<span>' + item.label + '</span><span class="ci-price">' + fmt(item.price) + '</span><button class="ci-del" data-i="' + index + '">×</button>';
+      const name = item.cat != null ? itemName(item.cat, item.d, item.t) : null;
+      row.innerHTML = '<span>' + esc(name ? (item.label.split(' #')[0] + ': ' + name) : item.label) + '</span><span class="ci-price">' + fmt(item.price) + '</span><button class="ci-del" data-i="' + index + '">×</button>';
       row.querySelector('.ci-del').onclick = () => trigger('clothing:ui:cartRemove', index);
       list.appendChild(row);
     });
@@ -212,11 +238,11 @@
   if (RAGE) mp.trigger('clothing:ui:ready');
   else {
     window.setClothingData({ money: 5000, taxRate: .1, selected: 'top', order: ['top', 'pants', 'hat'], categories: [
-      { key: 'top', label: 'ზედა ტანსაცმელი', drawable: 4, count: 120, texture: 1, texCount: 6, price: 198, tax: 18, worn: true },
-      { key: 'pants', label: 'შარვალი', drawable: 0, count: 110, texture: 0, texCount: 4, price: 132, tax: 12 },
-      { key: 'hat', label: 'ქუდი', drawable: 2, count: 30, texture: 0, texCount: 1, price: 51, tax: 5 }
+      { key: 'top', label: 'ზედა ტანსაცმელი', drawable: 70, position: 60, count: 600, texture: 1, textures: [0, 1, 2, 3, 4, 5], price: 198, tax: 18, worn: true },
+      { key: 'pants', label: 'შარვალი', drawable: 0, position: 0, count: 110, texture: 0, textures: [0, 1, 2, 3], price: 132, tax: 12 },
+      { key: 'hat', label: 'ქუდი', drawable: -1, position: 0, count: 30, texture: 0, textures: [0], price: 0, tax: 0 }
     ]});
-    window.setCart([{ label: 'ზედა ტანსაცმელი #5', price: 198 }], 198);
+    window.setCart([{ label: 'ზედა ტანსაცმელი #71/2', price: 198, cat: 'top', d: 70, t: 1 }], 198);
   }
 </script>
 </body>

@@ -53,6 +53,9 @@ mp.events.add('director:setModel', (player, name) => {
     if (typeof global.invRestoreLook === 'function') {
         setTimeout(() => { if (mp.players.exists(player)) global.invRestoreLook(player); }, 1200);
     }
+    if (typeof global.barberRestoreLook === 'function') {
+        setTimeout(() => { if (mp.players.exists(player)) global.barberRestoreLook(player); }, 1400);
+    }
 });
 
 mp.events.add('director:teleport', (player, x, y, z) => {

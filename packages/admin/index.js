@@ -61,10 +61,15 @@ global.getCommsMute = function (player) {
     return key ? activeSanction(moderation.mutes, key) : null;
 };
 
+// Mute/ban length in seconds: 0 = permanent, otherwise whole minutes from 1 minute up to 1 year
+// (the panel sends minutes * 60).
+const MAX_MODERATION_SECONDS = 365 * 24 * 60 * 60;
 function moderationDuration(value) {
     if (value === null || value === '' || (typeof value !== 'number' && typeof value !== 'string')) return null;
     const seconds = Number(value);
-    return Number.isSafeInteger(seconds) && MODERATION_DURATIONS.has(seconds) ? seconds : null;
+    if (!Number.isSafeInteger(seconds)) return null;
+    if (seconds === 0 || MODERATION_DURATIONS.has(seconds)) return seconds;
+    return seconds >= 60 && seconds <= MAX_MODERATION_SECONDS && seconds % 60 === 0 ? seconds : null;
 }
 
 function sanctionRecord(player, duration) {
@@ -76,8 +81,17 @@ function sanctionRecord(player, duration) {
     };
 }
 
+// "permanently" or "for 1 day 6 hours" / "for 45 minutes".
 function durationText(duration) {
-    return MODERATION_DURATIONS.get(duration);
+    if (duration === 0) return 'permanently';
+    let minutes = Math.round(duration / 60);
+    const days = Math.floor(minutes / 1440); minutes -= days * 1440;
+    const hours = Math.floor(minutes / 60); minutes -= hours * 60;
+    const parts = [];
+    if (days) parts.push(days + (days === 1 ? ' day' : ' days'));
+    if (hours) parts.push(hours + (hours === 1 ? ' hour' : ' hours'));
+    if (minutes) parts.push(minutes + (minutes === 1 ? ' minute' : ' minutes'));
+    return 'for ' + parts.join(' ');
 }
 
 function tell(player, message) {
@@ -138,6 +152,8 @@ function sendPlayerList(player) {
             isAdmin: isAdmin(target),
             adminMode: player.getVariable('admin:mode') === true,
             muted: Boolean(accountKey(target) && activeSanction(moderation.mutes, accountKey(target))),
+            demorgan: typeof global.demorganIsJailed === 'function' && global.demorganIsJailed(target),
+            demorganMinutes: typeof global.demorganMinutesLeft === 'function' ? global.demorganMinutesLeft(target) : 0,
             adminFly: target.id === player.id && target.getVariable('admin:fly') === true
         });
     });
@@ -356,6 +372,7 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
             delete moderation.mutes[key];
             saveModeration();
             target.call('voice:setMuted', [false]);
+            if (typeof global.voiceRelink === 'function') global.voiceRelink(target); // restore server-side voice
             target.outputChatBox('!{#e0a94b}[Admin] !{#ffffff}Your mute (text + voice) has been removed.');
             finishAction(player, `Unmuted ${target.name}.`);
             return;
@@ -373,14 +390,26 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
 
         if (action === 'mute') {
             target.call('voice:setMuted', [true]);
+            if (typeof global.voiceRelink === 'function') global.voiceRelink(target); // cut server-side voice
             target.outputChatBox(`!{#e0a94b}[Admin] !{#ffffff}You have been muted (text + voice) ${durationText(duration)}.`);
             finishAction(player, `Muted ${target.name} (text + voice) ${durationText(duration)}.`);
             return;
         }
 
-        const until = duration === 0 ? 'permanently' : `for ${durationText(duration)}`;
+        const until = durationText(duration);
         target.kick(`You have been banned from this server ${until}.`);
         finishAction(player, `Banned ${target.name} ${until}.`);
+        return;
+    }
+
+    // Demorgan (packages/demorgan): duration arrives in seconds from the panel's minutes field.
+    if (action === 'demorgan' || action === 'undemorgan') {
+        if (typeof global.demorganSend !== 'function') { tell(player, 'Demorgan is unavailable.'); return; }
+        const ok = action === 'demorgan'
+            ? global.demorganSend(player, target, Math.round(Number(request.duration) / 60), String(request.reason || '').trim().slice(0, 100) || 'Admin panel')
+            : global.demorganRelease(player, target);
+        if (ok) finishAction(player, action === 'demorgan' ? `${target.name} sent to Demorgan.` : `${target.name} released from Demorgan.`);
+        else sendPlayerList(player);
         return;
     }
 
@@ -394,6 +423,144 @@ mp.events.add('playerChat', (player) => {
     const until = mute.expiresAt === null ? 'permanently' : `until ${new Date(mute.expiresAt).toISOString()}`;
     player.outputChatBox(`!{#e0a94b}[Admin] !{#ffffff}You are muted ${until}.`);
     return false;
+});
+
+// ---- Commands tab: every chat command on the server, runnable from the panel ----
+// cmd = what gets typed (may include a fixed sub-command); args = usage of the rest; target = the
+// first argument is a player id (the panel offers a player picker). Anything registered via
+// mp.events.addCommand but missing here is still listed under "Other" (from global.commandRegistry).
+// Running a command is exactly like typing it: each command still does its own permission checks.
+const COMMAND_CATALOG = [
+    { group: 'General', cmd: 'pos', desc: 'Show your coordinates and heading' },
+    { group: 'General', cmd: 'tp', args: '<x> <y> <z>', desc: 'Teleport to coordinates' },
+    { group: 'General', cmd: 'hospital', desc: 'Teleport to Central LS Medical Center' },
+    { group: 'General', cmd: 'money', desc: 'Show your cash' },
+    { group: 'General', cmd: 'bank', desc: 'Show your cash and bank balance' },
+    { group: 'General', cmd: 'needs', desc: 'Show your hunger and thirst' },
+    { group: 'General', cmd: 'inv', desc: 'Re-send your inventory to the client' },
+    { group: 'General', cmd: 'laws', desc: 'List the state laws' },
+    { group: 'Vehicles', cmd: 'car', args: '<model>', desc: 'Spawn a car (e.g. adder, bmwm4, audirs7) and get in' },
+    { group: 'Vehicles', cmd: 'cars', desc: 'List the add-on car names' },
+    { group: 'Vehicles', cmd: 'fix', desc: 'Repair the car you are in' },
+    { group: 'Vehicles', cmd: 'dv', desc: 'Delete your car' },
+    { group: 'Vehicles', cmd: 'livery', args: '<number>', desc: 'Set livery on the car you are in' },
+    { group: 'Economy & shops', cmd: 'addmoney', args: '<1-1000000>', desc: 'Add money to yourself (Admin Mode)' },
+    { group: 'Economy & shops', cmd: 'store', desc: 'Show the 24/7 catalog' },
+    { group: 'Economy & shops', cmd: 'buy', args: '<item> [qty]', desc: 'Buy from a 24/7 (stand at a store)' },
+    { group: 'Economy & shops', cmd: 'guns', desc: 'Show the Ammu-Nation catalog' },
+    { group: 'Economy & shops', cmd: 'buygun', args: '<weapon> [ammo boxes]', desc: 'Buy a weapon/ammo (stand at Ammu-Nation)' },
+    { group: 'Economy & shops', cmd: 'buyarmor', desc: 'Buy body armour (stand at Ammu-Nation)' },
+    { group: 'Parking', cmd: 'parkings', desc: 'Your parking rentals and stored cars' },
+    { group: 'Parking', cmd: 'rentspot', args: '<days> [slots]', desc: 'Rent the parking spot you stand at' },
+    { group: 'Parking', cmd: 'renewspot', args: '<days>', desc: 'Extend your parking rental' },
+    { group: 'Parking', cmd: 'park', desc: 'Store your car in your rented spot' },
+    { group: 'Parking', cmd: 'unpark', args: '[slot]', desc: 'Take a stored car out of your spot' },
+    { group: 'Parking', cmd: 'impound', desc: 'Get your impounded car back (fee)' },
+    { group: 'Parking', cmd: 'addparkspot', args: '<price per day>', desc: 'Admin: create a parking spot where you stand' },
+    { group: 'Parking', cmd: 'delparkspot', args: '<id>', desc: 'Admin: delete a parking spot' },
+    { group: 'Parking', cmd: 'parkspots', desc: 'Admin: list parking spots' },
+    { group: 'Clothing', cmd: 'arms', args: '<number>', desc: 'Try arms (component 3) on your worn top' },
+    { group: 'Clothing', cmd: 'armsfit', args: '<arms> [texture] | reset', desc: 'Save the fitting arms for the top you wear (everyone)' },
+    { group: 'Government', cmd: 'gov', desc: 'Your government rank and commands' },
+    { group: 'Government', cmd: 'gduty', desc: 'Go on/off government duty (at City Hall)' },
+    { group: 'Government', cmd: 'gannounce', args: '<text>', desc: 'Government announcement to everyone' },
+    { group: 'Government', cmd: 'fine', args: '<id> <amount> [reason]', target: true, desc: 'Fine a player (unpaid part is payable at City Hall)' },
+    { group: 'Government', cmd: 'treasury', desc: 'Show the treasury and tax rate' },
+    { group: 'Government', cmd: 'tax', args: '<percent>', desc: 'Set the sales tax' },
+    { group: 'Government', cmd: 'paysalary', desc: 'Pay on-duty officials now' },
+    { group: 'Government', cmd: 'setlaw add', args: '<text>', desc: 'Add a law' },
+    { group: 'Government', cmd: 'setlaw remove', args: '<number>', desc: 'Remove a law' },
+    { group: 'Government', cmd: 'ghire', args: '<id>', target: true, desc: 'Hire a government official' },
+    { group: 'Government', cmd: 'gpromote', args: '<id> <rank>', target: true, desc: 'Promote an official' },
+    { group: 'Government', cmd: 'gdemote', args: '<id> <rank>', target: true, desc: 'Demote an official' },
+    { group: 'Government', cmd: 'gfire', args: '<id>', target: true, desc: 'Fire an official' },
+    { group: 'Government', cmd: 'granks', desc: 'List government ranks' },
+    { group: 'Police', cmd: 'police', desc: 'Your police rank and commands' },
+    { group: 'Police', cmd: 'pduty', desc: 'Go on/off police duty' },
+    { group: 'Police', cmd: 'cuff', args: '<id>', target: true, desc: 'Cuff a player' },
+    { group: 'Police', cmd: 'uncuff', args: '<id>', target: true, desc: 'Uncuff a player' },
+    { group: 'Police', cmd: 'arrest', args: '<id>', target: true, desc: 'Arrest a cuffed player' },
+    { group: 'Police', cmd: 'jail', args: '<id> <minutes>', target: true, desc: 'Jail a player' },
+    { group: 'Police', cmd: 'release', args: '<id>', target: true, desc: 'Release from jail' },
+    { group: 'Police', cmd: 'hire', args: '<id>', target: true, desc: 'Hire a police officer' },
+    { group: 'Police', cmd: 'promote', args: '<id> <rank>', target: true, desc: 'Promote an officer' },
+    { group: 'Police', cmd: 'demote', args: '<id> <rank>', target: true, desc: 'Demote an officer' },
+    { group: 'Police', cmd: 'fire', args: '<id>', target: true, desc: 'Fire an officer' },
+    { group: 'Police', cmd: 'ranks', desc: 'List police ranks' },
+    { group: 'City Hall', cmd: 'cityhall', desc: 'List City Hall points' },
+    { group: 'City Hall', cmd: 'cityhall arrange', desc: 'Line up all City Hall NPCs + duty point where you stand, facing your direction' },
+    { group: 'City Hall', cmd: 'cityhall set', args: '<entrance|duty|desk|clerk|licenses|weapons|spawn>', desc: 'Move a City Hall point / NPC to where you stand' },
+    { group: 'City Hall', cmd: 'licenses', args: '[id]', desc: "Your licenses, or a player's (police / officials on duty, admins)" },
+    { group: 'City Hall', cmd: 'revokelicense', args: '<id> <driving|motorcycle|truck|boat|pilot|hunting|business|weapon>', target: true, desc: 'Take a license away (on-duty police, admins)' },
+    { group: 'City Hall', cmd: 'cityhall tp', args: '<point>', desc: 'Teleport to a City Hall point' },
+    { group: 'City Hall', cmd: 'cityhall reset', args: '<point>', desc: 'Reset a City Hall point to default' },
+    { group: 'Houses', cmd: 'houses', desc: 'Buyable houses near you, with GPS + map highlight (anyone)' },
+    { group: 'Houses', cmd: 'house list', desc: 'List all houses' },
+    { group: 'Houses', cmd: 'house info', args: '[id]', desc: 'House details (no id: the door you stand at)' },
+    { group: 'Houses', cmd: 'house add', args: '<price> <interior|walkin> [name]', desc: 'Put the house at your position up for sale' },
+    { group: 'Houses', cmd: 'house building', args: '<key> <units> <price> <interior> [name]', desc: 'Create an apartment building at your position' },
+    { group: 'Houses', cmd: 'house addunit', args: '<building> <price> [interior]', desc: 'Add an apartment to a building' },
+    { group: 'Houses', cmd: 'house interiors', desc: 'List interiors' },
+    { group: 'Houses', cmd: 'house itp', args: '<interior>', desc: 'Visit an interior (to check it)' },
+    { group: 'Houses', cmd: 'house addinterior', args: '<key> [label]', desc: 'Save your spot as an interior (fixes a preset)' },
+    { group: 'Houses', cmd: 'house delinterior', args: '<key>', desc: 'Delete a custom interior' },
+    { group: 'Houses', cmd: 'house setinterior', args: '<id> <interior|walkin>', desc: 'Change a house interior' },
+    { group: 'Houses', cmd: 'house price', args: '<id> <price>', desc: 'Change a house price' },
+    { group: 'Houses', cmd: 'house name', args: '<id> <name>', desc: 'Rename a house' },
+    { group: 'Houses', cmd: 'house movedoor', args: '[id]', desc: 'Move a house / building entrance to your position' },
+    { group: 'Houses', cmd: 'house setdoor', args: '<id>', desc: 'Re-pick the real door (walk-in houses; look at it)' },
+    { group: 'Houses', cmd: 'house setchest', args: '<id>', desc: 'Put the chest where you stand (inside)' },
+    { group: 'Houses', cmd: 'house setgarage', args: '<id>', desc: 'Put the garage where you stand / park' },
+    { group: 'Houses', cmd: 'house setspawn', args: '<id>', desc: 'Set where the owner spawns' },
+    { group: 'Houses', cmd: 'house tp', args: '<id>', desc: 'Teleport to a house door' },
+    { group: 'Houses', cmd: 'house evict', args: '[id]', desc: 'Take a house back from its owner' },
+    { group: 'Houses', cmd: 'house remove', args: '[id]', desc: 'Delete a for-sale house (no id: the door / building you stand at)' },
+    { group: 'Admin', cmd: 'fly', desc: 'Toggle flight (Admin Mode; also the N key)' },
+    { group: 'Admin', cmd: 'demorgan', args: '<id> <minutes> [reason]', target: true, desc: 'Send a player to Demorgan (admin jail, own dimension; Admin Mode)' },
+    { group: 'Admin', cmd: 'undemorgan', args: '<id>', target: true, desc: 'Release a player from Demorgan (Admin Mode)' },
+    { group: 'Admin', cmd: 'demorgans', desc: 'List everyone serving Demorgan (online + offline)' },
+    { group: 'Admin', cmd: 'sjail', desc: 'Teleport yourself into Demorgan / back out (admins only)' },
+    { group: 'Admin', cmd: 'sjail set', desc: 'Move the Demorgan spot to where you stand' },
+    { group: 'Admin', cmd: 'dim', args: '[0|1|main|demorgan|number]', desc: 'Show / change your dimension (0 = main world, 1 = Demorgan)' },
+    { group: 'Admin', cmd: 'setdim', args: '<id> <0|1|main|demorgan|number>', target: true, desc: "Move a player to a dimension (0 = main, 1 = Demorgan)" },
+    { group: 'Admin', cmd: 'director', desc: 'Open Director Mode (super admin; also F6)' }
+];
+const PANEL_HIDDEN_COMMANDS = ['admin']; // /admin opens this panel — pointless inside it
+
+function commandList() {
+    const registry = global.commandRegistry || {};
+    const listed = new Set();
+    const out = [];
+    COMMAND_CATALOG.forEach(entry => {
+        const base = entry.cmd.split(' ')[0];
+        if (!registry[base]) return; // package not loaded
+        listed.add(base);
+        out.push(entry);
+    });
+    Object.keys(registry).sort().forEach(name => {
+        if (listed.has(name) || PANEL_HIDDEN_COMMANDS.includes(name)) return;
+        out.push({ group: 'Other', cmd: name, args: '', desc: '' });
+    });
+    return out;
+}
+
+mp.events.add('admin:panel:commands', player => {
+    if (!requireAdmin(player)) return;
+    player.call('admin:panel:commands', [JSON.stringify(commandList())]);
+});
+
+mp.events.add('admin:panel:run', (player, rawText) => {
+    if (!requireAdmin(player)) return;
+    const text = String(rawText || '').replace(/[\r\n]+/g, ' ').trim().replace(/^\/+/, '').slice(0, 200);
+    const name = (text.split(/\s+/)[0] || '').toLowerCase();
+    const registry = global.commandRegistry || {};
+    if (!name || !registry[name] || PANEL_HIDDEN_COMMANDS.includes(name) || typeof global.runCommand !== 'function') {
+        player.call('admin:panel:result', ['Unknown command: /' + name]);
+        return;
+    }
+    global.runCommand(player, '/' + text);
+    player.call('admin:panel:result', ['Ran /' + text + ' — see chat for the result.']);
+    sendPlayerList(player);
 });
 
 mp.events.add('admin:panel:unban', (player, rawAccount) => {
@@ -437,7 +604,7 @@ function toggleAdminFlight(player) {
     player.call('admin:fly:set', [enabled]);
     syncFlyVisibility(player, enabled);
     tell(player, enabled
-        ? 'Flight enabled. WASD moves, Space rises, Ctrl descends, Shift speeds up. Use /fly again to stop.'
+        ? 'Flight enabled. WASD moves, Space rises, Ctrl descends, Shift = fast, Alt = slow. N or /fly to stop.'
         : 'Flight disabled.');
     sendPlayerList(player);
     return enabled;

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>მერია</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c;
+    --gold-soft: rgba(242, 193, 92, .48);
+    --accent: #4b9ce0;
+    --text: #f3f0e8;
+    --muted: #aaa79e;
+    --line: rgba(255, 255, 255, .12);
+    --bad: #ff6978;
+    --panel: linear-gradient(180deg, #131518, #0e1012);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { color: var(--text); background: rgba(0, 0, 0, .35); user-select: none; display: grid; place-items: center; }
+  button, input { color: inherit; font: inherit; }
+  button { cursor: pointer; }
+  .panel { width: min(560px, 92vw); max-height: 88vh; display: grid; grid-template-rows: 62px minmax(0, 1fr) auto; background: var(--panel); border: 1px solid var(--gold-soft); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); animation: pop .18s ease-out; overflow: hidden; }
+  .head { display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+  .title { display: flex; flex-direction: column; }
+  .title h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .title span { color: var(--muted); font-size: 11px; }
+  .spacer { flex: 1; }
+  .money { color: var(--gold); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .close { width: 34px; height: 34px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--muted); font-size: 18px; border-radius: 8px; }
+  .close:hover { color: var(--gold); border-color: var(--gold-soft); }
+  .body { overflow: auto; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px; }
+  .foot { border-top: 1px solid var(--gold-soft); padding: 14px 22px; display: flex; align-items: center; gap: 12px; background: rgba(0, 0, 0, .25); }
+  .foot .total { color: var(--muted); font-size: 13px; }
+  .foot .total b { color: var(--gold); font-size: 18px; font-variant-numeric: tabular-nums; }
+  .primary { padding: 12px 20px; border: 1px solid var(--gold); border-radius: 10px; background: rgba(242, 193, 92, .16); color: var(--gold); font-weight: 700; font-size: 14px; }
+  .primary:hover { background: rgba(242, 193, 92, .28); }
+  .primary:disabled { opacity: .4; cursor: not-allowed; }
+  .info { display: flex; gap: 10px; }
+  .chip { flex: 1; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .03); }
+  .chip small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+  .chip b { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .03); font-size: 13px; }
+  .row .meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .row .meta span { color: var(--muted); font-size: 11px; }
+  .row .amt { margin-left: auto; color: var(--bad); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .row button { padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; }
+  .row button:hover { border-color: var(--gold-soft); color: var(--gold); }
+  .empty { color: var(--muted); font-size: 13px; padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
+  .form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.wide { grid-column: 1 / -1; }
+  .field label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .field input { height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, .3); outline: none; }
+  .field input:focus { border-color: var(--gold-soft); }
+  .hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .error { color: var(--bad); font-size: 12px; min-height: 16px; }
+  /* Mini card preview (the current ID) */
+  .card { display: grid; grid-template-columns: 74px 1fr; gap: 14px; padding: 14px; border-radius: 12px; background: linear-gradient(135deg, #1d3552, #122236); border: 1px solid rgba(75, 156, 224, .5); }
+  .card .photo { width: 74px; height: 92px; border-radius: 8px; background: rgba(255, 255, 255, .08); display: grid; place-items: center; font-size: 34px; }
+  .card .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 12px; }
+  .card .fields small { display: block; color: #9fb7d3; font-size: 10px; text-transform: uppercase; }
+  .card .num { grid-column: 1 / -1; color: var(--gold); font-weight: 700; letter-spacing: .08em; }
+  .lic { display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.03); font-size:13px; }
+  .lic.owned { border-color:rgba(111,207,151,.5); }
+  .lic .meta span { display:block; color:var(--muted); font-size:11px; margin-top:2px; }
+  .lic .amt { margin-left:auto; color:var(--gold); font-weight:700; font-variant-numeric:tabular-nums; }
+  .lic .ok { margin-left:auto; color:#6fcf97; font-size:12px; font-weight:700; }
+  .lic button { padding:8px 14px; border:1px solid var(--gold); border-radius:8px; background:rgba(242,193,92,.14); color:var(--gold); font-weight:700; font-size:12px; }
+  .lic button:disabled { opacity:.4; cursor:not-allowed; }
+  .warn { padding:10px 12px; border:1px solid rgba(255,105,120,.5); border-radius:10px; background:rgba(255,105,120,.07); color:#ffb3bb; font-size:12px; line-height:1.5; }
+  .card .lics { grid-column:1 / -1; color:#cfe0f3; font-size:11px; line-height:1.5; }
+  @keyframes pop { from { transform: scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+</style>
+</head>
+<body>
+<main class="panel">
+  <header class="head">
+    <div class="title"><h1 id="title">მერია</h1><span id="subtitle"></span></div>
+    <div class="spacer"></div>
+    <div class="money" id="money">$0</div>
+    <button class="close" id="close" title="დახურვა (Esc)">×</button>
+  </header>
+  <div class="body" id="body"></div>
+  <div class="foot" id="foot"></div>
+</main>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+  const NAME_RE = /^[A-Za-zა-ჰ][A-Za-zა-ჰ'\-]{1,19}$/;
+
+  let state = null;
+
+  el('close').onclick = () => trigger('cityhall:ui:close');
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); trigger('cityhall:ui:close'); }
+  });
+
+  function renderDesk() {
+    el('title').textContent = 'ჯარიმები და გადასახადები';
+    el('subtitle').textContent = 'მერია — სახელმწიფო სალარო';
+    const fines = state.fines || [];
+    el('body').innerHTML =
+      '<div class="info">' +
+        '<div class="chip"><small>გაყიდვების გადასახადი</small><b>' + (state.taxRate * 100).toFixed(1) + '%</b></div>' +
+        '<div class="chip"><small>გადაუხდელი ჯარიმები</small><b>' + fines.length + '</b></div>' +
+      '</div>' +
+      (fines.length
+        ? '<div class="list">' + fines.map(fine =>
+            '<div class="row"><div class="meta">' + esc(fine.reason) +
+              '<span>' + esc(fine.by || '') + ' · ' + new Date(fine.ts).toLocaleDateString('ka-GE') + '</span></div>' +
+              '<span class="amt">' + fmt(fine.amount) + '</span>' +
+              '<button data-pay="' + fine.index + '"' + (fine.amount > state.money ? ' disabled' : '') + '>გადახდა</button></div>'
+          ).join('') + '</div>'
+        : '<div class="empty">გადაუხდელი ჯარიმა არ გაქვთ.</div>') +
+      '<div class="hint">გადასახადი ემატება ყველა მაღაზიის შენაძენს და შედის სახელმწიფო ხაზინაში. ჯარიმის ის ნაწილი, რომელიც დაჯარიმებისას ვერ ამოიღეს, აქ იხდება.</div>';
+    el('body').querySelectorAll('[data-pay]').forEach(b => { b.onclick = () => trigger('cityhall:ui:pay', Number(b.getAttribute('data-pay'))); });
+    el('foot').innerHTML =
+      '<div class="total">სულ: <b>' + fmt(state.total) + '</b></div><div class="spacer"></div>' +
+      '<button class="primary" id="payAll"' + (!fines.length || state.total > state.money ? ' disabled' : '') + '>ყველას გადახდა</button>';
+    el('payAll').onclick = () => trigger('cityhall:ui:pay', -1);
+  }
+
+  function cardHtml(card) {
+    return '<div class="card"><div class="photo">' + (state.sex === 'F' ? '👩' : '👨') + '</div><div class="fields">' +
+      '<div class="num">' + esc(card.number) + '</div>' +
+      '<div><small>სახელი</small>' + esc(card.first) + '</div><div><small>გვარი</small>' + esc(card.last) + '</div>' +
+      '<div><small>დაბადების თარიღი</small>' + esc(card.dob) + '</div><div><small>სქესი</small>' + (card.sex === 'F' ? 'მდ.' : 'მამრ.') + '</div>' +
+      '<div><small>გაცემულია</small>' + esc(card.issued) + '</div>' +
+      '<div class="lics"><small>ლიცენზიები</small>' + ((card.licenses && card.licenses.length) ? card.licenses.map(esc).join(' · ') : '—') + '</div>' +
+      '</div></div>';
+  }
+
+  function renderLicenses() {
+    const weapons = state.counter === 'weapons';
+    el('title').textContent = weapons ? 'იარაღის ტარების ნებართვა' : 'ლიცენზიები';
+    el('subtitle').textContent = weapons ? 'საჭიროა Ammu-Nation-ში ცეცხლსასროლი იარაღისთვის' : 'მართვის მოწმობები და სხვა ლიცენზიები';
+    const blocked = weapons && state.blockers && state.blockers.length;
+    el('body').innerHTML =
+      (!state.hasId ? '<div class="warn">ჯერ აიღეთ პირადობის მოწმობა მეზობელ ფანჯარასთან — მის გარეშე ლიცენზია არ გაიცემა.</div>' : '') +
+      (blocked ? '<div class="warn">ნებართვა ვერ გაიცემა: ' + state.blockers.map(esc).join('; ') + '.</div>' : '') +
+      '<div class="list">' + state.licenses.map(l =>
+        '<div class="lic' + (l.owned ? ' owned' : '') + '"><div class="meta">' + esc(l.label) +
+          (l.owned ? '<span>გაცემულია ' + esc(l.issued) + '</span>' : '') + '</div>' +
+          (l.owned ? '<span class="ok">✓ გაქვთ</span>'
+            : '<span class="amt">' + fmt(l.price) + '</span><button data-lic="' + esc(l.type) + '"' +
+              (!state.hasId || blocked || l.price > state.money ? ' disabled' : '') + '>აღება</button>') +
+        '</div>').join('') + '</div>' +
+      '<div class="hint">ლიცენზიები ჩანს თქვენს პირადობის მოწმობაზე (ინვენტარი → მოწმობა). პოლიციას შეუძლია შეამოწმოს (/licenses) და ჩამოგართვათ.</div>';
+    el('body').querySelectorAll('[data-lic]').forEach(b => { b.onclick = () => trigger('cityhall:ui:license', b.getAttribute('data-lic')); });
+    el('foot').innerHTML = '<div class="total">ბალანსი: <b>' + fmt(state.money) + '</b></div>';
+  }
+
+  function renderClerk() {
+    const card = state.card;
+    el('title').textContent = 'პირადობის მოწმობა';
+    el('subtitle').textContent = card ? 'განახლება / დაკარგულის აღდგენა' : 'ახალი მოწმობის გაცემა';
+    const value = (key) => card ? esc(card[key]) : '';
+    el('body').innerHTML =
+      (card ? cardHtml(card) + '<div class="hint">' + (state.hasItem ? 'მოწმობა ინვენტარშია.' : '⚠ მოწმობა ინვენტარში არ გაქვთ — აღდგენა ახალს გასცემს.') +
+        ' განახლებისას ნომერი იგივე რჩება, ძველი ბარათი ჩანაცვლდება.</div>' : '') +
+      '<div class="form">' +
+        '<div class="field"><label>სახელი</label><input id="first" maxlength="20" value="' + value('first') + '" placeholder="Giorgi"></div>' +
+        '<div class="field"><label>გვარი</label><input id="last" maxlength="20" value="' + value('last') + '" placeholder="Beridze"></div>' +
+        '<div class="field wide"><label>დაბადების თარიღი</label><input id="dob" type="date" value="' + value('dob') + '"></div>' +
+      '</div>' +
+      '<div class="error" id="error"></div>' +
+      '<div class="hint">სახელი და გვარი: 2-20 ასო (ქართული ან ლათინური). ასაკი ' + state.minAge + '-' + state.maxAge + '. სქესი აიღება პერსონაჟიდან. ' +
+        'მოწმობას აჩვენებთ ინვენტარიდან (I) — ნახავენ 3 მეტრში მყოფები.</div>';
+    el('foot').innerHTML =
+      '<div class="total">საფასური: <b>' + fmt(state.fee) + '</b></div><div class="spacer"></div>' +
+      '<button class="primary" id="issue"' + (state.fee > state.money ? ' disabled' : '') + '>' + (card ? 'განახლება' : 'გაცემა') + '</button>';
+    el('issue').onclick = () => {
+      const first = el('first').value.trim(), last = el('last').value.trim(), dob = el('dob').value;
+      if (!NAME_RE.test(first) || !NAME_RE.test(last)) { el('error').textContent = 'შეამოწმეთ სახელი და გვარი.'; return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) { el('error').textContent = 'მიუთითეთ დაბადების თარიღი.'; return; }
+      el('error').textContent = '';
+      trigger('cityhall:ui:issue', first, last, dob);
+    };
+  }
+
+  window.setCityhall = function (next) {
+    state = next;
+    el('money').textContent = fmt(state.money);
+    if (state.mode === 'desk') renderDesk();
+    else if (state.mode === 'licenses') renderLicenses();
+    else renderClerk();
+  };
+
+  if (RAGE) mp.trigger('cityhall:ui:ready');
+  else if (location.hash === '#licenses') {
+    window.setCityhall({ mode: 'licenses', counter: 'licenses', money: 6000, hasId: true, blockers: [], licenses: [
+      { type: 'driving', label: 'მართვის მოწმობა (B — მსუბუქი ავტომობილი)', price: 500, owned: true, issued: '2026-09-30' },
+      { type: 'pilot', label: 'პილოტის ლიცენზია', price: 5000, owned: false },
+      { type: 'business', label: 'ბიზნესის ლიცენზია', price: 10000, owned: false } ] });
+  } else if (location.hash === '#desk') {
+    window.setCityhall({ mode: 'desk', money: 1200, taxRate: 0.05, total: 1700, fines: [
+      { index: 0, amount: 500, reason: 'სიჩქარის გადაჭარბება', by: 'Officer', ts: Date.now() },
+      { index: 1, amount: 1200, reason: 'საზოგადოებრივი წესრიგის დარღვევა', by: 'Minister', ts: Date.now() }
+    ] });
+  } else {
+    window.setCityhall({ mode: 'id', money: 5000, fee: 200, sex: 'M', minAge: 16, maxAge: 100, hasItem: false,
+      card: { number: 'GE-000012', first: 'Giorgi', last: 'Beridze', dob: '1996-04-12', sex: 'M', issued: '2026-09-30' } });
+  }
+</script>
+</body>
+</html>

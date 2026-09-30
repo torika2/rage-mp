@@ -74,12 +74,63 @@ global.vehAdopt = function (player, vehicle, modelName, fuel) {
     save();
 };
 
-// Re-spawn the saved car into the world when the owner joins.
+// ---- House garages (packages/houses): the personal car can be parked away instead of left in the world ----
+// Stores the owner's live car: saves its state, flags the record as garaged and removes it from the world.
+global.vehGarageStore = function (player, garageId) {
+    const vehicle = player.myCar;
+    const record = store[keyOf(player)];
+    if (!vehicle || !mp.vehicles.exists(vehicle) || !record) return false;
+    persist(player);
+    record.garage = garageId;
+    save();
+    try { vehicle.destroy(); } catch (e) {}
+    player.myCar = null;
+    return true;
+};
+// Brings the garaged car out at a position (the house's garage spot).
+global.vehGarageTake = function (player, position, heading) {
+    const record = store[keyOf(player)];
+    if (!record || record.garage === undefined || record.garage === null || !record.model) return null;
+    if (player.myCar && mp.vehicles.exists(player.myCar)) return null;
+    let vehicle;
+    try {
+        vehicle = mp.vehicles.new(record.model, new mp.Vector3(position.x, position.y, position.z), {
+            heading: heading || 0, dimension: 0, numberPlate: record.plate || undefined
+        });
+    } catch (e) { return null; }
+    if (!vehicle) return null;
+    delete record.garage;
+    record.x = position.x; record.y = position.y; record.z = position.z; record.heading = heading || 0; record.dim = 0;
+    const fuel = (typeof record.fuel === 'number') ? record.fuel : FUEL_MAX;
+    try { vehicle.setVariable('veh:fuel', fuel); } catch (e) {}
+    player.myCar = vehicle;
+    save();
+    return vehicle;
+};
+// Which garage (house id) the player's car is parked in, or null.
+global.vehGaragedAt = function (player) {
+    const record = store[keyOf(player)];
+    return record && record.garage !== undefined && record.garage !== null ? record.garage : null;
+};
+// A garage was taken away (house sold/evicted): put the car back into the world at `position`.
+global.vehGarageRelease = function (key, position, heading) {
+    const record = store[key];
+    if (!record || record.garage === undefined || record.garage === null) return;
+    delete record.garage;
+    record.x = position.x; record.y = position.y; record.z = position.z; record.heading = heading || 0; record.dim = 0;
+    save();
+};
+
+// Re-spawn the saved car into the world when the owner joins (unless it's parked in a garage).
 function restore(player) {
     if (player.vehRestored) return;
     player.vehRestored = true;
     const record = store[keyOf(player)];
     if (!record || !record.model) return;
+    if (record.garage !== undefined && record.garage !== null) {
+        player.outputChatBox('!{#8ed17a}[მანქანა] !{#ffffff}თქვენი მანქანა სახლის ავტოფარეხშია.');
+        return;
+    }
     if (player.myCar && mp.vehicles.exists(player.myCar)) return; // already has one
     let vehicle;
     try {

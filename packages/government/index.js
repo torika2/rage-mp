@@ -99,12 +99,63 @@ function adminMayManage(actor, target) {
 // ---- Shared treasury API for shops/markets (tax revenue flows here) ----
 global.govTaxRate = () => data.taxRate;
 global.govTreasury = () => data.treasury;
+// Takes money out of the treasury (e.g. house sell-back). False if the treasury can't cover it.
+global.govTakeFromTreasury = (amount) => {
+    const n = Math.floor(Number(amount));
+    if (!Number.isFinite(n) || n <= 0 || data.treasury < n) return false;
+    data.treasury -= n;
+    save();
+    return true;
+};
 global.govAddToTreasury = (amount) => {
     const n = Math.floor(Number(amount));
     if (!Number.isFinite(n) || n <= 0) return;
     data.treasury += n;
     save();
 };
+
+// ---- Unpaid fines: whatever a /fine couldn't collect on the spot, payable at the City Hall desk ----
+if (!data.unpaidFines || typeof data.unpaidFines !== 'object') data.unpaidFines = {};
+function unpaidOf(player) {
+    const key = accountKey(player);
+    return key && Array.isArray(data.unpaidFines[key]) ? data.unpaidFines[key] : [];
+}
+global.govUnpaidFines = (player) => unpaidOf(player).map((fine, index) => ({ index, amount: fine.amount, reason: fine.reason, by: fine.by, ts: fine.ts }));
+// Pays one unpaid fine (index) or all of them (index = -1) from cash into the treasury.
+global.govPayFines = (player, index) => {
+    const key = accountKey(player);
+    const list = unpaidOf(player);
+    if (!key || !list.length) return { ok: false, reason: 'none' };
+    const picked = index === -1 ? list.slice() : (list[index] ? [list[index]] : []);
+    if (!picked.length) return { ok: false, reason: 'none' };
+    const total = picked.reduce((sum, fine) => sum + fine.amount, 0);
+    if (global.getMoney(player) < total) return { ok: false, reason: 'money', total };
+    global.setMoney(player, global.getMoney(player) - total);
+    data.treasury += total;
+    data.unpaidFines[key] = index === -1 ? [] : list.filter((_, i) => i !== index);
+    if (!data.unpaidFines[key].length) delete data.unpaidFines[key];
+    save();
+    return { ok: true, total };
+};
+
+// ---- Shared rank/duty API for packages/cityhall ----
+function toggleDuty(player) {
+    if (!hasCapability(player, 'duty')) { tell(player, 'თქვენ არ ხართ მთავრობის წარმომადგენელი.'); return null; }
+    // Officials clock in at the City Hall duty point (packages/cityhall); admins can do it anywhere.
+    if (!isAdmin(player) && typeof global.cityhallAtDuty === 'function' && !global.cityhallAtDuty(player)) {
+        tell(player, 'მორიგეობაზე გასასვლელად მიდით მერიაში (რუკაზე მერიის ნიშანი).');
+        return null;
+    }
+    const nowOn = !onDuty(player);
+    player.setVariable('gov:duty', nowOn);
+    tell(player, nowOn ? `თქვენ ხართ მორიგეობაზე, როგორც ${labelOf(rankOf(player))}.` : 'თქვენ გამოხვედით მორიგეობიდან.');
+    return nowOn;
+}
+global.govRankOf = rankOf;
+global.govRankLabel = (player) => labelOf(rankOf(player));
+global.govOnDuty = onDuty;
+global.govToggleDuty = toggleDuty;
+global.govIsAdmin = isAdmin;
 
 mp.events.add('playerJoin', (player) => player.setVariable('gov:duty', false));
 
@@ -117,12 +168,7 @@ mp.events.addCommand('gov', (player) => {
     tell(player, 'მართვა: /ghire <id>, /gpromote <id> <რანგი>, /gdemote <id> <რანგი>, /gfire <id>, /granks.');
 });
 
-mp.events.addCommand('gduty', (player) => {
-    if (!hasCapability(player, 'duty')) return tell(player, 'თქვენ არ ხართ მთავრობის წარმომადგენელი.');
-    const nowOn = !onDuty(player);
-    player.setVariable('gov:duty', nowOn);
-    tell(player, nowOn ? `თქვენ ხართ მორიგეობაზე, როგორც ${labelOf(rankOf(player))}.` : 'თქვენ გამოხვედით მორიგეობიდან.');
-});
+mp.events.addCommand('gduty', (player) => { toggleDuty(player); });
 
 mp.events.addCommand('gannounce', (player, message) => {
     if (!requireCapability(player, 'announce')) return;
@@ -172,9 +218,17 @@ mp.events.addCommand('fine', (player, full, id, amountText) => {
     const collected = Math.min(amount, balance);
     global.setMoney(target, balance - collected);
     data.treasury += collected;
+    // The part they couldn't pay stays on record, payable at the City Hall desk.
+    const owed = amount - collected;
+    const targetKey = accountKey(target);
+    if (owed > 0 && targetKey) {
+        if (!Array.isArray(data.unpaidFines[targetKey])) data.unpaidFines[targetKey] = [];
+        data.unpaidFines[targetKey].push({ amount: owed, reason, by: player.name, ts: Date.now() });
+    }
     save();
-    tell(player, `დაჯარიმდა ${target.name} $${amount}-ით (ამოღებულია $${collected}). მიზეზი: ${reason}.`);
-    tell(target, `თქვენ დაგაჯარიმათ ${labelOf(rankOf(player))} ${player.name}-მ $${amount}-ით. მიზეზი: ${reason}. გადახდილია $${collected}.`);
+    tell(player, `დაჯარიმდა ${target.name} $${amount}-ით (ამოღებულია $${collected}${owed > 0 ? `, დავალიანება $${owed}` : ''}). მიზეზი: ${reason}.`);
+    tell(target, `თქვენ დაგაჯარიმათ ${labelOf(rankOf(player))} ${player.name}-მ $${amount}-ით. მიზეზი: ${reason}. გადახდილია $${collected}.` +
+        (owed > 0 ? ` დარჩენილი $${owed} გადაიხადეთ მერიაში.` : ''));
 });
 
 mp.events.addCommand('treasury', (player) => {

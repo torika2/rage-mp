@@ -99,9 +99,16 @@ function buyAmmo(player, id, boxes) {
     tell(player, `შეიძინეთ ${ammo.label} ×${ammo.rounds * n} $${cost.total}-ად${cost.tax ? ` (მ.შ. $${cost.tax} გადასახადი)` : ''}. დაემატა ინვენტარში (I). ბალანსი: $${global.getMoney(player)}.`);
 }
 
+const REQUIRE_WEAPON_PERMIT = true; // set false to sell firearms without the City Hall permit
 function buyWeapon(player, key, qty) {
     if (!atShop(player)) return tell(player, 'ყიდვისთვის მიდით იარაღის მაღაზიაში (რუკაზე იარაღის ნიშანი).');
     const id = String(key || '').toLowerCase();
+    // Firearms and their ammo need the weapon permit from City Hall (packages/cityhall) — law #4.
+    // Melee weapons and armour don't.
+    const firearm = AMMO[id] || (WEAPONS[id] && WEAPONS[id].rounds);
+    if (REQUIRE_WEAPON_PERMIT && firearm && typeof global.licenseHas === 'function' && !global.licenseHas(player, 'weapon')) {
+        return tell(player, 'ცეცხლსასროლი იარაღისთვის საჭიროა იარაღის ტარების ნებართვა — აიღეთ მერიაში (City Hall).');
+    }
     if (AMMO[id]) return buyAmmo(player, id, qty);
     const item = WEAPONS[id];
     if (!item) return tell(player, 'უცნობი იარაღი. სია: /guns.');

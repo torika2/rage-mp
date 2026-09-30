@@ -130,6 +130,7 @@
             <div class="gear-slot" data-equip="mask"><span class="gear-orb"></span><span>ნიღაბი</span></div>
             <div class="gear-slot" data-equip="top"><span class="gear-orb"></span><span>ზედა ტანსაცმელი</span></div>
             <div class="gear-slot" data-equip="undershirt"><span class="gear-orb"></span><span>მაისური</span></div>
+            <div class="gear-slot" data-equip="decal"><span class="gear-orb"></span><span>ემბლემა</span></div>
             <div class="gear-slot" data-equip="pants"><span class="gear-orb"></span><span>შარვალი</span></div>
             <div class="gear-slot" data-equip="shoes"><span class="gear-orb"></span><span>ფეხსაცმელი</span></div>
           </div>
@@ -138,6 +139,7 @@
           </div>
           <div class="gear-col gear-col-right">
             <div class="gear-slot" data-equip="glasses"><span class="gear-orb"></span><span>სათვალე</span></div>
+            <div class="gear-slot" data-equip="ears"><span class="gear-orb"></span><span>საყურე</span></div>
             <div class="gear-slot" data-equip="vest"><span class="gear-orb"></span><span>ჟილეტი</span></div>
             <div class="gear-slot" data-equip="watch"><span class="gear-orb"></span><span>საათი</span></div>
             <div class="gear-slot" data-equip="neck"><span class="gear-orb"></span><span>აქსესუარი</span></div>
@@ -234,11 +236,12 @@
   };
   const INV_ICONS = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹' };
   // Clothing item emoji, keyed by category (item id is cloth_<cat>_<d>_<t>).
-  const CLOTH_ICONS = { top:'👕', undershirt:'👔', torso:'🧥', pants:'👖', shoes:'👟', bag:'🎒', mask:'🎭', neck:'📿', hat:'🧢', glasses:'🕶️', watch:'⌚', bracelet:'💍' };
+  const CLOTH_ICONS = { top:'👕', undershirt:'👔', torso:'🧥', pants:'👖', shoes:'👟', bag:'🎒', mask:'🎭', neck:'📿', hat:'🧢', glasses:'🕶️', ears:'💎', watch:'⌚', bracelet:'💍', decal:'🏷️' };
   const clothCatOf = (id) => (String(id).indexOf('cloth_') === 0 ? String(id).split('_')[1] : null);
   const iconFor = (id) => {
     const cat = clothCatOf(id);
     if (cat) return CLOTH_ICONS[cat] || '👕';
+    if (String(id).indexOf('idcard_') === 0) return '🪪';
     const img = WEAPON_IMG[id] || (String(id).startsWith('ammo_') ? 'ammo' : null);
     return img ? '<img class="inv-wicon" src="../shop/icons/' + img + '.svg" alt="">' : (INV_ICONS[id] || '📦');
   };

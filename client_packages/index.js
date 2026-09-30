@@ -17,6 +17,19 @@ const CFG = {
     hudHz: 20                 // HUD refresh rate (updates/sec)
 };
 
+// GTA's in-world fonts (drawText, 3D labels) have no Georgian glyphs — Georgian shows as □□□.
+// Anything drawn with the game font goes through worldText(): Georgian letters -> Latin
+// (national transliteration). CEF pages (panels, chat) render Georgian fine and don't need this.
+const GEO_LATIN = {
+    'ა': 'a', 'ბ': 'b', 'გ': 'g', 'დ': 'd', 'ე': 'e', 'ვ': 'v', 'ზ': 'z', 'თ': 't', 'ი': 'i', 'კ': 'k',
+    'ლ': 'l', 'მ': 'm', 'ნ': 'n', 'ო': 'o', 'პ': 'p', 'ჟ': 'zh', 'რ': 'r', 'ს': 's', 'ტ': 't', 'უ': 'u',
+    'ფ': 'p', 'ქ': 'k', 'ღ': 'gh', 'ყ': 'q', 'შ': 'sh', 'ჩ': 'ch', 'ც': 'ts', 'ძ': 'dz', 'წ': 'ts', 'ჭ': 'ch',
+    'ხ': 'kh', 'ჯ': 'j', 'ჰ': 'h'
+};
+function worldText(text) {
+    return String(text == null ? '' : text).replace(/[\u10D0-\u10FF]/g, ch => GEO_LATIN[ch] || '').replace(/[—…]/g, ch => (ch === '—' ? '-' : '...'));
+}
+
 // Tiered fuel. eff = fuel-burn (higher burns faster / less range).
 // power = engine power multiplier (>=1 only; SET_VEHICLE_ENGINE_POWER_MULTIPLIER
 // ignores values <1, so Regular is the 1.0 baseline and higher grades add power/speed).
@@ -92,6 +105,20 @@ CLOTH_STORES.forEach(p => {
         { name: 'ტანსაცმლის მაღაზია', scale: 0.8, color: 47, shortRange: true });
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
         { color: [180, 120, 210, 140], visible: true });
+});
+
+// Barber shops (Herr Kutz, Bob Mulét, O'Sheas, ...) — blips only (visual). Server (packages/barber)
+// enforces where you can get a haircut; keep coords in sync with SHOP_LOCATIONS there.
+const BARBER_SHOPS = [
+    [-814.31, -183.82, 37.57], [136.83, -1708.37, 29.29], [-1282.60, -1116.76, 6.99],
+    [1931.51, 3729.67, 32.84], [1212.84, -472.92, 66.21], [-32.89, -152.32, 57.08],
+    [-278.08, 6228.46, 31.70]
+];
+BARBER_SHOPS.forEach(p => {
+    mp.blips.new(71, new mp.Vector3(p[0], p[1], p[2]),
+        { name: 'სალონი (ვარცხნილობა)', scale: 0.8, color: 4, shortRange: true });
+    mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
+        { color: [120, 200, 210, 140], visible: true });
 });
 
 // ATMs — blips only (visual). Server (packages/bank) enforces the ATM range; keep coords in sync
@@ -288,6 +315,10 @@ function nearestShopMode(pos) {
     for (const p of CLOTH_STORES) {
         const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
         if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'clothing';
+    }
+    for (const p of BARBER_SHOPS) {
+        const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
+        if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'barber';
     }
     for (const p of ATM_LOCATIONS) {
         const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
@@ -668,17 +699,20 @@ let clothingTopArms = { def: 0, nude: 15, map: {} }; // arms (comp 3) matching f
 let clothingSelected = null;
 let clothingCart = [];      // [{ cat, d, t, label, price }] — items queued for checkout
 let clothingReturn = null;  // where to teleport the player back to on close
+let clothingValid = {};     // { key: [drawable, ...] } — drawables that exist and render for this ped
+let clothingTexCache = {};  // { 'key:drawable': [texture, ...] } — valid textures per drawable
+let clothingGender = 'm';   // 'm' | 'f' — picks the GTA Online name table in the shop page
 // A clean, prop-free spot to stand in while dressing, so store objects never hide the character.
 const DRESSING_SPOT = { x: -1447.805, y: -242.122, z: 49.80, heading: -15.6 };
 // Which body zone to frame the camera on for each category, so the change is clearly visible.
 const CLOTH_ZONE = {
-    hat: 'head', glasses: 'head', mask: 'head',
-    top: 'upper', undershirt: 'upper', torso: 'upper', neck: 'upper', watch: 'upper', bracelet: 'upper', bag: 'upper',
+    hat: 'head', glasses: 'head', mask: 'head', ears: 'head',
+    top: 'upper', undershirt: 'upper', torso: 'upper', neck: 'upper', decal: 'upper', watch: 'upper', bracelet: 'upper', bag: 'upper',
     pants: 'lower', shoes: 'shoes'
 };
 
 function openClothingUI() {
-    if (clothingBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser) return;
+    if (clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser) return;
     const me = mp.players.local;
     let heading = 0; try { heading = me.getHeading(); } catch (e) {}
     clothingReturn = { x: me.position.x, y: me.position.y, z: me.position.z, heading };
@@ -725,6 +759,49 @@ function textureCount(cat, drawable) {
             : Math.max(1, me.getNumberOfPropTextureVariations(cat.id, drawable));
     } catch (e) { return 1; }
 }
+// IS_PED_COMPONENT_VARIATION_VALID: skips empty/placeholder slots so nothing renders invisible or
+// with a missing (checkerboard) texture. Props have no such native; every counted texture is used.
+function componentValid(compId, drawable, texture) {
+    const me = mp.players.local;
+    try {
+        if (typeof me.isComponentVariationValid === 'function') return !!me.isComponentVariationValid(compId, drawable, texture);
+        return !!mp.game.invoke('0xE825F6B6CEA7671D', me.handle, compId, drawable, texture);
+    } catch (e) { return true; }
+}
+function validTextures(cat, drawable) {
+    if (drawable < 0) return [0];
+    const cacheKey = cat.key + ':' + drawable;
+    if (clothingTexCache[cacheKey]) return clothingTexCache[cacheKey];
+    const count = textureCount(cat, drawable);
+    let list = [];
+    for (let t = 0; t < count; t++) if (cat.kind !== 'comp' || componentValid(cat.id, drawable, t)) list.push(t);
+    if (!list.length) list = [0];
+    clothingTexCache[cacheKey] = list;
+    return list;
+}
+// Every drawable the game has for this category (all GTA Online/DLC items installed), minus invalid ones.
+function buildValidDrawables(cat, current) {
+    const count = drawableCount(cat);
+    const none = cat.kind === 'prop' ? [-1] : [];
+    let list = none.slice();
+    for (let d = 0; d < count; d++) if (cat.kind !== 'comp' || componentValid(cat.id, d, 0)) list.push(d);
+    // Validity native missing/misbehaving -> don't lock the shop; offer every counted drawable.
+    if (list.length === none.length) { list = none.slice(); for (let d = 0; d < count; d++) list.push(d); }
+    if (list.indexOf(current) < 0) { list.push(current); list.sort((a, b) => a - b); }
+    return list;
+}
+// Arms (comp 3) for a top: bare arms for the "none" top, else GTA's matching torso from the server
+// table (per texture when it differs), else the default. Mirrors packages/inventory armsForTop().
+function topArmsFor(drawable, texture) {
+    if (drawable === clothingNude.top) return [clothingTopArms.nude != null ? clothingTopArms.nude : 15, 0];
+    const entry = clothingTopArms.map ? clothingTopArms.map[drawable] : null;
+    if (Array.isArray(entry)) {
+        if (typeof entry[0] === 'number') return entry;
+        const byTexture = entry[texture] || entry.find(item => Array.isArray(item));
+        if (byTexture) return byTexture;
+    }
+    return [clothingTopArms.def != null ? clothingTopArms.def : 0, 0];
+}
 function readCurrent(cat) {
     const me = mp.players.local;
     try {
@@ -738,12 +815,8 @@ function applyPreview(cat, sel) {
         if (cat.kind === 'comp') {
             me.setComponentVariation(cat.id, Math.max(0, sel.drawable), Math.max(0, sel.texture), 0);
             if (cat.key === 'top') { // match the arms (comp 3) so sleeves don't clip while previewing
-                const bareTop = clothingNude.top;
-                const arms = (sel.drawable === bareTop)
-                    ? (clothingTopArms.nude != null ? clothingTopArms.nude : 15)
-                    : (clothingTopArms.map && clothingTopArms.map[sel.drawable] != null ? clothingTopArms.map[sel.drawable]
-                        : (clothingTopArms.def != null ? clothingTopArms.def : 0));
-                me.setComponentVariation(3, Math.max(0, arms), 0, 0);
+                const arms = topArmsFor(sel.drawable, sel.texture);
+                me.setComponentVariation(3, Math.max(0, arms[0]), Math.max(0, arms[1]), 0);
             }
         } else if (sel.drawable < 0) me.clearProp(cat.id);
         else me.setPropIndex(cat.id, sel.drawable, Math.max(0, sel.texture), true);
@@ -765,10 +838,11 @@ function buildCat(key) {
     const cat = clothingCats[key];
     const sel = clothingPreview[key];
     const price = catPrice(cat, sel.drawable);
+    const valid = clothingValid[key] || [];
     return {
         key, label: cat.label, kind: cat.kind,
-        drawable: sel.drawable, count: drawableCount(cat),
-        texture: sel.texture, texCount: textureCount(cat, sel.drawable),
+        drawable: sel.drawable, position: valid.indexOf(sel.drawable), count: valid.length,
+        texture: sel.texture, textures: validTextures(cat, sel.drawable),
         price: price.total, tax: price.tax,
         worn: !!clothingWorn[key]
     };
@@ -776,14 +850,15 @@ function buildCat(key) {
 function pushCart() {
     if (!clothingBrowser) return;
     const total = clothingCart.reduce((sum, item) => sum + item.price, 0);
-    const view = clothingCart.map(item => ({ label: item.label, price: item.price }));
+    const view = clothingCart.map(item => ({ label: item.label, price: item.price, cat: item.cat, d: item.d, t: item.t }));
     clothingBrowser.execute('window.setCart(' + JSON.stringify(view) + ', ' + total + ')');
 }
 function pushClothingData() {
     if (!clothingBrowser) return;
     const categories = clothingOrder.map(buildCat);
     clothingBrowser.execute('window.setClothingData(' + JSON.stringify({
-        money: clothingMoney, taxRate: clothingTaxRate, selected: clothingSelected, order: clothingOrder, categories
+        money: clothingMoney, taxRate: clothingTaxRate, selected: clothingSelected, order: clothingOrder, categories,
+        gender: clothingGender
     }) + ')');
 }
 function pushCategory(key) {
@@ -798,6 +873,8 @@ mp.events.add('clothing:state', (json) => {
     clothingWorn = data.worn || {};
     clothingNude = data.nude || {};
     clothingTopArms = data.topArms || { def: 0, nude: 15, map: {} };
+    clothingGender = data.gender === 'f' ? 'f' : 'm';
+    clothingTexCache = {}; clothingValid = {};
     clothingCats = {}; clothingOrder = [];
     (data.categories || []).forEach(cat => { clothingCats[cat.key] = cat; clothingOrder.push(cat.key); });
     // Snapshot the current (synced) look, then start previewing from there.
@@ -806,6 +883,7 @@ mp.events.add('clothing:state', (json) => {
         const current = readCurrent(clothingCats[key]);
         clothingOriginal[key] = { drawable: current.drawable, texture: current.texture };
         clothingPreview[key] = { drawable: current.drawable, texture: current.texture };
+        clothingValid[key] = buildValidDrawables(clothingCats[key], current.drawable);
     });
     clothingSelected = clothingOrder[0] || null;
     if (clothingSelected) applyPedCamZone(CLOTH_ZONE[clothingSelected] || 'full');
@@ -821,21 +899,21 @@ mp.events.add('clothing:ui:select', (key) => {
 mp.events.add('clothing:ui:nav', (key, deltaDrawable) => {
     if (!clothingCats || !clothingCats[key]) return;
     const cat = clothingCats[key];
-    const count = drawableCount(cat);
-    const min = cat.kind === 'prop' ? -1 : 0;   // props can be "none" (-1)
-    const range = count - min;
-    if (range <= 0) return;
-    let next = clothingPreview[key].drawable + Number(deltaDrawable);
-    next = ((next - min) % range + range) % range + min; // wrap around
-    clothingPreview[key] = { drawable: next, texture: 0 };
+    const valid = clothingValid[key] || [];   // props start with "none" (-1)
+    const n = valid.length;
+    if (!n) return;
+    const position = Math.max(0, valid.indexOf(clothingPreview[key].drawable));
+    const next = valid[((position + Number(deltaDrawable)) % n + n) % n]; // wrap around
+    clothingPreview[key] = { drawable: next, texture: validTextures(cat, next)[0] };
     applyPreview(cat, clothingPreview[key]);
     pushCategory(key);
 });
 mp.events.add('clothing:ui:tex', (key, texIndex) => {
     if (!clothingCats || !clothingCats[key]) return;
     const cat = clothingCats[key];
-    const max = textureCount(cat, clothingPreview[key].drawable);
-    clothingPreview[key].texture = Math.max(0, Math.min(max - 1, Number(texIndex)));
+    const texture = Number(texIndex);
+    if (validTextures(cat, clothingPreview[key].drawable).indexOf(texture) < 0) return; // only real textures
+    clothingPreview[key].texture = texture;
     applyPreview(cat, clothingPreview[key]);
     pushCategory(key);
 });
@@ -876,7 +954,8 @@ mp.events.add('clothing:unequipResult', (json) => {
     if (result.ok && clothingCats && clothingCats[key]) {
         // Reflect the removal on the preview ped and make it the look kept on close.
         const cat = clothingCats[key];
-        clothingPreview[key] = { drawable: cat.kind === 'prop' ? -1 : 0, texture: 0 };
+        // Same bare value the server strips the slot to (e.g. top 15), not drawable 0 (a T-shirt).
+        clothingPreview[key] = { drawable: cat.kind === 'prop' ? -1 : (clothingNude[key] != null ? clothingNude[key] : 0), texture: 0 };
         clothingOriginal[key] = { drawable: clothingPreview[key].drawable, texture: clothingPreview[key].texture };
         applyPreview(cat, clothingPreview[key]);
     }
@@ -898,6 +977,733 @@ mp.events.add('clothing:ui:rotate', (deltaPixels) => rotatePedPreview(Number(del
 mp.events.add('inventory:selfProp', (propId, drawable, texture) => {
     const me = mp.players.local;
     try { if (Number(drawable) < 0) me.clearProp(Number(propId)); else me.setPropIndex(Number(propId), Number(drawable), Number(texture) || 0, true); } catch (e) {}
+});
+
+// ---------- CEF barber shop (hair salon) ----------
+// Same layout as the clothing store: categories on the left (hair, beard, eyebrows, their colours,
+// eye colour), the picker on the right, a cart + checkout at the bottom. Style lists are the GTA
+// Online barber/creator lists (named, in the game's order). Try-on is local; the server prices the
+// change, charges, syncs and saves it. E asks the server first (range check + checkout session),
+// because the preview happens at DRESSING_SPOT, away from the salon.
+// Hair tint and head overlays only render on a ped with head blend data — the server sends the
+// blend it applies, and the preview sets the same one locally.
+let barberBrowser = null;
+let barberPending = false;  // E pressed, waiting for the server to confirm we're at a salon
+let barberState = null;     // { money, taxRate, prices, limits, blend }
+let barberOriginal = null;  // look when the UI opened: { d, c, h, b, bc, e, ec, eye } (see packages/barber)
+let barberSel = null;       // current try-on (same shape)
+let barberCart = {};        // { catKey: value } — changes queued for checkout
+let barberCats = [];        // BARBER_CATS available to this ped (no beard for female)
+let barberLists = {};       // { hair|beard|eyebrows|eyes: [{ v, name }] }
+let barberSelected = 'hair';
+let barberReturn = null;    // where to teleport the player back to on close
+const HAIR_COMPONENT = 2;
+const OVERLAY_BEARD = 1, OVERLAY_EYEBROWS = 2, OVERLAY_NONE = 255;
+// field = key in the look; kind 'list' = named picker (list = barberLists key), 'color' = hair palette.
+const BARBER_CATS = [
+    { key: 'hair',         label: 'ვარცხნილობა',    field: 'd',   kind: 'list', list: 'hair' },
+    { key: 'hairColor',    label: 'თმის ფერი',      field: 'c',   kind: 'color' },
+    { key: 'highlight',    label: 'ელფერი',         field: 'h',   kind: 'color' },
+    { key: 'beard',        label: 'წვერი',          field: 'b',   kind: 'list', list: 'beard', male: true },
+    { key: 'beardColor',   label: 'წვერის ფერი',    field: 'bc',  kind: 'color', male: true },
+    { key: 'eyebrows',     label: 'წარბები',        field: 'e',   kind: 'list', list: 'eyebrows' },
+    { key: 'eyebrowColor', label: 'წარბების ფერი',  field: 'ec',  kind: 'color' },
+    { key: 'eyes',         label: 'თვალის ფერი',    field: 'eye', kind: 'list', list: 'eyes' }
+];
+// GTA Online barber hairstyles, by freemode hair drawable. Gaps (male 23 / female 24 = night-vision
+// placeholder, and the fade/overlay duplicates in between) are deliberately not offered. Drawables
+// above the last named one (newer DLC) are appended as "სტილი #N" if the game has them.
+const GTAO_HAIR = {
+    male: {
+        0: 'Close Shave', 1: 'Buzzcut', 2: 'Faux Hawk', 3: 'Hipster', 4: 'Side Parting', 5: 'Shorter Cut',
+        6: 'Biker', 7: 'Ponytail', 8: 'Cornrows', 9: 'Slicked', 10: 'Short Brushed', 11: 'Spikey',
+        12: 'Caesar', 13: 'Chopped', 14: 'Dreads', 15: 'Long Hair', 16: 'Shaggy Curls', 17: 'Surfer Dude',
+        18: 'Short Side Part', 19: 'High Slicked Sides', 20: 'Long Slicked', 21: 'Hipster Youth', 22: 'Mullet',
+        24: 'Classic Cornrows', 25: 'Palm Cornrows', 26: 'Lightning Cornrows', 27: 'Whipped Cornrows',
+        28: 'Zig Zag Cornrows', 29: 'Snail Cornrows', 30: 'Hightop', 31: 'Loose Swept Back',
+        32: 'Undercut Swept Back', 33: 'Undercut Swept Side', 34: 'Spiked Mohawk', 35: 'Mod', 36: 'Layered Mod',
+        72: 'Flattop', 73: 'Military Buzzcut'
+    },
+    female: {
+        0: 'Close Shave', 1: 'Short', 2: 'Layered Bob', 3: 'Pigtails', 4: 'Ponytail', 5: 'Braided Mohawk',
+        6: 'Braids', 7: 'Bob', 8: 'Faux Hawk', 9: 'French Twist', 10: 'Long Bob', 11: 'Loose Tied',
+        12: 'Pixie', 13: 'Shaved Bangs', 14: 'Top Knot', 15: 'Wavy Bob', 16: 'Messy Bun', 17: 'Pin Up Girl',
+        18: 'Tight Bun', 19: 'Twisted Bob', 20: 'Flapper Bob', 21: 'Big Bangs', 22: 'Braided Top Knot', 23: 'Mullet',
+        25: 'Pinched Cornrows', 26: 'Leaf Cornrows', 27: 'Zig Zag Cornrows', 28: 'Pigtail Bangs', 29: 'Wave Braids',
+        30: 'Coil Braids', 31: 'Rolled Quiff', 32: 'Loose Swept Back', 33: 'Undercut Swept Back',
+        34: 'Undercut Swept Side', 35: 'Spiked Mohawk', 36: 'Bandana and Braid', 37: 'Layered Mod', 38: 'Skinbyrd',
+        76: 'Neat Bun', 77: 'Short Bob'
+    }
+};
+// GTA Online facial hair (head overlay 1), eyebrows (overlay 2) and eye colours, by index.
+const GTAO_BEARDS = [
+    'Light Stubble', 'Balbo', 'Circle Beard', 'Goatee', 'Chin', 'Chin Fuzz', 'Pencil Chin Strap', 'Scruffy',
+    'Musketeer', 'Mustache', 'Trimmed Beard', 'Stubble', 'Thin Circle Beard', 'Horseshoe', "Pencil and 'Chops",
+    'Chin Strap Beard', 'Balbo and Sideburns', 'Mutton Chops', 'Scruffy Beard', 'Curly', 'Curly & Deep Stranger',
+    'Handlebar', 'Faustic', 'Otto & Patch', 'Otto & Full Stranger', 'Light Franz', 'The Hampstead', 'The Ambrose',
+    'Lincoln Curtain'
+];
+const GTAO_EYEBROWS = [
+    'Balanced', 'Fashion', 'Cleopatra', 'Quizzical', 'Femme', 'Seductive', 'Pinched', 'Chola', 'Triomphe',
+    'Carefree', 'Curvaceous', 'Rodent', 'Double Tram', 'Thin', 'Penciled', 'Mother Plucker', 'Straight and Narrow',
+    'Natural', 'Fuzzy', 'Unkempt', 'Caterpillar', 'Regular', 'Mediterranean', 'Groomed', 'Bushels', 'Feathered',
+    'Prickly', 'Monobrow', 'Winged', 'Triple Tram', 'Arched Tram', 'Cutouts', 'Fade Away', 'Solo Tram'
+];
+const GTAO_EYES = [
+    'Green', 'Emerald', 'Light Blue', 'Ocean Blue', 'Light Brown', 'Dark Brown', 'Hazel', 'Dark Gray',
+    'Light Gray', 'Pink', 'Yellow', 'Purple', 'Blackout', 'Shades of Gray', 'Tequila Sunrise', 'Atomic',
+    'Warp', 'ECola', 'Space Ranger', 'Ying Yang', 'Bullseye', 'Lizard', 'Dragon', 'Extra Terrestrial',
+    'Goat', 'Smiley', 'Possessed', 'Demon', 'Infected', 'Alien', 'Undead', 'Zombie'
+];
+
+function isFemalePed() {
+    return (mp.players.local.model >>> 0) === (mp.game.joaat('mp_f_freemode_01') >>> 0);
+}
+function hairStyleList(currentDrawable) {
+    const me = mp.players.local;
+    let count = 1;
+    try { count = Math.max(1, me.getNumberOfDrawableVariations(HAIR_COMPONENT)); } catch (e) {}
+    const names = isFemalePed() ? GTAO_HAIR.female : GTAO_HAIR.male;
+    const ids = Object.keys(names).map(Number);
+    const lastNamed = Math.max.apply(null, ids);
+    const list = ids.filter(d => d < count).map(d => ({ v: d, name: names[d] }));
+    for (let d = lastNamed + 1; d < count; d++) list.push({ v: d, name: 'სტილი #' + (d + 1) });
+    if (!list.some(s => s.v === currentDrawable)) list.unshift({ v: currentDrawable, name: 'მიმდინარე' });
+    return list;
+}
+// Named list for an overlay/eye picker; `none` adds "არცერთი" (-1) first.
+function namedList(names, limit, none) {
+    const list = none ? [{ v: -1, name: 'არცერთი' }] : [];
+    for (let i = 0; i < limit; i++) list.push({ v: i, name: names[i] || ('#' + (i + 1)) });
+    return list;
+}
+// RGB for a hair tint, so the palette shows real colours. The native's return shape differs between
+// client builds; returns null (numbered chip) if it can't be read.
+function hairRgb(index) {
+    try {
+        const res = mp.game.ped.getHairRgbColor(index, 0, 0, 0);
+        let r, g, b;
+        if (Array.isArray(res)) { [r, g, b] = res.length > 3 ? res.slice(1) : res; }
+        else if (res && typeof res === 'object') {
+            r = res.r != null ? res.r : res.outR; g = res.g != null ? res.g : res.outG; b = res.b != null ? res.b : res.outB;
+        }
+        if ([r, g, b].every(v => typeof v === 'number' && v >= 0 && v <= 255)) {
+            return '#' + [r, g, b].map(v => ('0' + Math.round(v).toString(16)).slice(-2)).join('');
+        }
+    } catch (e) {}
+    return null;
+}
+function applyHeadBlend() {
+    const blend = barberState && barberState.blend;
+    if (!blend) return;
+    try { mp.players.local.setHeadBlendData(blend[0], blend[1], blend[2], blend[3], blend[4], blend[5], blend[6], blend[7], blend[8], false); } catch (e) {}
+}
+function applyOverlay(overlayId, index, color) {
+    const me = mp.players.local;
+    const value = index < 0 ? OVERLAY_NONE : index;
+    try { me.setHeadOverlay(overlayId, value, 1.0, color, color); } catch (e) {}
+    try { me.setHeadOverlayColor(overlayId, 1, color, color); } catch (e) {} // colour type 1 = hair palette
+}
+function applyLookPreview(look) {
+    const me = mp.players.local;
+    try { me.setComponentVariation(HAIR_COMPONENT, look.d, 0, 0); } catch (e) {}
+    try { me.setHairColor(look.c, look.h); } catch (e) {}
+    applyOverlay(OVERLAY_BEARD, look.b, look.bc);
+    applyOverlay(OVERLAY_EYEBROWS, look.e, look.ec);
+    try { me.setEyeColor(look.eye); } catch (e) {}
+}
+function barberCat(key) { return barberCats.find(c => c.key === key) || null; }
+function barberLinePrice(cat) {
+    const base = barberState.prices[cat.field] || 0;
+    return { base, total: base + Math.round(base * Math.max(0, barberState.taxRate)) };
+}
+// The look checkout would buy: cart entries over the original (un-carted try-ons aren't bought).
+function barberCartLook() {
+    const look = Object.assign({}, barberOriginal);
+    barberCats.forEach(cat => { if (barberCart[cat.key] != null) look[cat.field] = barberCart[cat.key]; });
+    return look;
+}
+function barberValueLabel(cat, value) {
+    if (cat.kind === 'color') return '#' + (value + 1);
+    const entry = (barberLists[cat.list] || []).find(item => item.v === value);
+    return entry ? entry.name : ('#' + (value + 1));
+}
+// Everything the page renders. Mirrors packages/barber quote(): tax is taken on the summed base.
+function barberView() {
+    const cats = barberCats.map(cat => {
+        const value = barberSel[cat.field];
+        const list = cat.kind === 'list' ? barberLists[cat.list] : null;
+        return {
+            key: cat.key, label: cat.label, kind: cat.kind, list: cat.list || null, price: barberLinePrice(cat).total,
+            value, valueLabel: barberValueLabel(cat, value),
+            index: list ? list.findIndex(item => item.v === value) : value, count: list ? list.length : barberState.limits.colors,
+            changed: value !== barberOriginal[cat.field], inCart: barberCart[cat.key] != null
+        };
+    });
+    const inCart = barberCats.filter(cat => barberCart[cat.key] != null);
+    const cart = inCart.map(cat => ({
+        key: cat.key, label: cat.label + ': ' + barberValueLabel(cat, barberCart[cat.key]), price: barberLinePrice(cat).total
+    }));
+    const base = inCart.reduce((sum, cat) => sum + barberLinePrice(cat).base, 0);
+    const tax = Math.round(base * Math.max(0, barberState.taxRate));
+    return { money: barberState.money, selected: barberSelected, cats, cart, total: base + tax, tax };
+}
+function pushBarber() {
+    if (barberBrowser) barberBrowser.execute('window.updateBarber(' + JSON.stringify(barberView()) + ')');
+}
+
+function requestBarberUI() {
+    if (barberBrowser || barberPending || anyModalOpen()) return;
+    barberPending = true;
+    setTimeout(() => { barberPending = false; }, 3000); // server never answered -> allow retry
+    mp.events.callRemote('barber:requestState');
+}
+mp.events.add('barber:state', (json) => {
+    if (!barberPending) return; // only answer our own E press
+    barberPending = false;
+    const data = JSON.parse(json);
+    if (!data.open || barberBrowser || anyModalOpen()) return;
+    const limits = Object.assign({ colors: 64, beards: 29, eyebrows: 34, eyes: 32 }, data.limits || {});
+    try { const native = mp.game.ped.getNumHairColors(); if (native > 0) limits.colors = Math.min(limits.colors, native); } catch (e) {}
+    barberState = { money: data.money || 0, taxRate: data.taxRate || 0, prices: data.prices || {}, limits, blend: data.blend || null };
+    barberOriginal = Object.assign({ d: 0, c: 0, h: 0, b: -1, bc: 0, e: 0, ec: 0, eye: 0 }, data.current || {});
+    barberSel = Object.assign({}, barberOriginal);
+    barberCart = {};
+    barberSelected = 'hair';
+    const female = isFemalePed();
+    barberCats = BARBER_CATS.filter(cat => !(cat.male && female));
+    barberLists = {
+        hair: hairStyleList(barberOriginal.d),
+        beard: namedList(GTAO_BEARDS, limits.beards, true),
+        eyebrows: namedList(GTAO_EYEBROWS, limits.eyebrows, true),
+        eyes: namedList(GTAO_EYES, limits.eyes, false)
+    };
+
+    const me = mp.players.local;
+    let heading = 0; try { heading = me.getHeading(); } catch (e) {}
+    barberReturn = { x: me.position.x, y: me.position.y, z: me.position.z, heading };
+    try { me.position = new mp.Vector3(DRESSING_SPOT.x, DRESSING_SPOT.y, DRESSING_SPOT.z); } catch (e) {}
+    try { me.setHeading(DRESSING_SPOT.heading); } catch (e) {}
+    applyHeadBlend();
+    applyLookPreview(barberSel);
+    startPedPreview();
+    applyPedCamZone('head');
+    barberBrowser = mp.browsers.new('package://ui/barber/index.html');
+    mp.gui.cursor.show(true, true);
+});
+function closeBarberUI() {
+    if (!barberBrowser) return;
+    if (barberOriginal) applyLookPreview(barberOriginal); // drop an un-bought try-on
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    barberBrowser.destroy();
+    barberBrowser = null;
+    stopPedPreview();
+    if (barberReturn) { // teleport back to the salon
+        const me = mp.players.local;
+        try { me.position = new mp.Vector3(barberReturn.x, barberReturn.y, barberReturn.z); } catch (e) {}
+        try { me.setHeading(barberReturn.heading); } catch (e) {}
+        barberReturn = null;
+    }
+    barberState = null; barberOriginal = null; barberSel = null; barberCart = {};
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('barber:ui:ready', () => {
+    if (!barberBrowser || !barberState) return;
+    const palette = [];
+    for (let i = 0; i < barberState.limits.colors; i++) palette.push(hairRgb(i));
+    barberBrowser.execute('window.setBarberData(' + JSON.stringify({
+        palette, lists: barberLists, view: barberView()
+    }) + ')');
+});
+mp.events.add('barber:ui:select', (key) => {
+    if (!barberSel || !barberCat(key)) return;
+    barberSelected = key;
+    pushBarber();
+});
+// Step through a category (wraps), like ‹ › in the clothing store.
+mp.events.add('barber:ui:nav', (key, delta) => {
+    const cat = barberCat(key);
+    if (!barberSel || !cat) return;
+    if (cat.kind === 'list') {
+        const list = barberLists[cat.list];
+        const n = list.length;
+        const position = Math.max(0, list.findIndex(item => item.v === barberSel[cat.field]));
+        barberSel[cat.field] = list[((position + Number(delta)) % n + n) % n].v;
+    } else {
+        const n = barberState.limits.colors;
+        barberSel[cat.field] = ((barberSel[cat.field] + Number(delta)) % n + n) % n;
+    }
+    applyLookPreview(barberSel);
+    pushBarber();
+});
+// Pick a value directly: an entry from a named list, or a palette colour.
+mp.events.add('barber:ui:pick', (key, value) => {
+    const cat = barberCat(key);
+    if (!barberSel || !cat) return;
+    value = Math.floor(Number(value));
+    if (cat.kind === 'list') { if (!barberLists[cat.list].some(item => item.v === value)) return; }
+    else value = Math.max(0, Math.min(barberState.limits.colors - 1, value || 0));
+    barberSel[cat.field] = value;
+    applyLookPreview(barberSel);
+    pushBarber();
+});
+mp.events.add('barber:ui:add', (key) => {
+    const cat = barberCat(key);
+    if (!barberSel || !cat) return;
+    const value = barberSel[cat.field];
+    if (value === barberOriginal[cat.field]) delete barberCart[cat.key]; // back to what you have = nothing to buy
+    else barberCart[cat.key] = value; // one line per category; re-adding replaces it
+    pushBarber();
+});
+// Put this category's try-on back to the current (bought) look.
+mp.events.add('barber:ui:revert', (key) => {
+    const cat = barberCat(key);
+    if (!barberSel || !cat) return;
+    barberSel[cat.field] = barberOriginal[cat.field];
+    applyLookPreview(barberSel);
+    pushBarber();
+});
+mp.events.add('barber:ui:cartRemove', (key) => {
+    if (!barberSel || !barberCat(key)) return;
+    delete barberCart[key];
+    pushBarber();
+});
+mp.events.add('barber:ui:checkout', () => {
+    if (!barberSel || !Object.keys(barberCart).length) return;
+    const look = barberCartLook();
+    barberSel = Object.assign({}, look); // show exactly what's being paid for
+    applyLookPreview(barberSel);
+    mp.events.callRemote('barber:buy', JSON.stringify(look));
+});
+mp.events.add('barber:result', (json) => {
+    const result = JSON.parse(json);
+    if (!barberState) return;
+    barberState.money = result.money != null ? result.money : barberState.money;
+    if (result.ok) {
+        if (result.current) barberOriginal = result.current; // bought look is the one kept on close
+        closeBarberUI();
+        return;
+    }
+    pushBarber(); // failed (can't afford): keep the salon open, refresh the balance
+});
+mp.events.add('barber:ui:close', closeBarberUI);
+mp.events.add('barber:ui:rotate', (deltaPixels) => rotatePedPreview(Number(deltaPixels) * 0.5));
+
+// ---------- City Hall (Rockford Hills) — packages/cityhall ----------
+// The server sends the points (entrance/duty/desk/clerk/spawn), which admins move in-game with
+// /cityhall set. Here: blip, ground markers, the ID clerk NPC, the E prompts, the desk/ID panel
+// and the ID card shown to nearby players.
+let cityhallPoints = null;
+let cityhallBlip = null;
+let cityhallMarkers = [];
+let cityhallNpcs = [];      // [{ key, ped, label }]
+let cityhallBrowser = null;
+let cityhallCardBrowser = null;
+let cityhallCardTimer = null;
+const CITYHALL_RANGE = 2.0; // prompt radius (server accepts 3.0)
+// NPC counters: point key -> ped model + the name floating above them.
+const CITYHALL_NPCS = {
+    clerk:    { model: 'a_f_y_business_02', title: 'ID Cards' },
+    licenses: { model: 'a_m_y_business_02', title: 'Licenses' },
+    weapons:  { model: 's_m_y_cop_01',      title: 'Weapon Permit' },
+    desk:     { model: 'a_f_y_business_01', title: 'Cashier - Fines & Taxes' }
+};
+// E interactions: which point, the prompt text, the server event (+ args) it calls.
+const CITYHALL_MODES = {
+    duty:     { prompt: 'Government duty', event: 'cityhall:duty' },
+    desk:     { prompt: 'Fines & taxes', event: 'cityhall:desk:open' },
+    clerk:    { prompt: 'ID card', event: 'cityhall:id:open' },
+    licenses: { prompt: 'Licenses (driving, boat, pilot...)', event: 'cityhall:lic:open', args: ['licenses'] },
+    weapons:  { prompt: 'Weapon permit', event: 'cityhall:lic:open', args: ['weapons'] }
+};
+
+function nearestCityhallMode(pos) {
+    if (!cityhallPoints) return null;
+    for (const key of Object.keys(CITYHALL_MODES)) {
+        const pt = cityhallPoints[key];
+        // NPCs stand behind their counter; players talk to them from ~1m in front.
+        if (pt && isNearPosition(pos, pt, CITYHALL_NPCS[key] ? CITYHALL_RANGE + 0.8 : CITYHALL_RANGE)) return key;
+    }
+    return null;
+}
+function buildCityhall() {
+    try { if (cityhallBlip) cityhallBlip.destroy(); } catch (e) {}
+    cityhallMarkers.forEach(marker => { try { marker.destroy(); } catch (e) {} });
+    cityhallMarkers = [];
+    cityhallNpcs.forEach(npc => { try { npc.ped.destroy(); } catch (e) {} try { if (npc.label) npc.label.destroy(); } catch (e) {} });
+    cityhallNpcs = [];
+    const pts = cityhallPoints;
+    if (!pts) return;
+    const at = (pt, dz) => new mp.Vector3(pt.x, pt.y, pt.z + (dz || 0));
+    cityhallBlip = mp.blips.new(419, at(pts.entrance), { name: 'მერია (City Hall)', scale: 0.9, color: 3, shortRange: false });
+    cityhallMarkers.push(mp.markers.new(1, at(pts.entrance, -1.0), 1.4, { color: [75, 156, 224, 110], visible: true }));
+    cityhallMarkers.push(mp.markers.new(27, at(pts.duty, -0.95), 1.2, { color: [75, 156, 224, 150], visible: true }));
+    // Counter NPCs: frozen, invincible, ignore everything. Client-side, so every player spawns their own.
+    Object.keys(CITYHALL_NPCS).forEach(key => {
+        const pt = pts[key];
+        if (!pt) return;
+        const info = CITYHALL_NPCS[key];
+        let ped = null, label = null;
+        const ground = groundZAt(pt.x, pt.y, pt.z);
+        const spot = new mp.Vector3(pt.x, pt.y, ground !== null ? ground + 1.0 : pt.z);
+        try { ped = mp.peds.new(mp.game.joaat(info.model), spot, pt.h || 0, 0); } catch (e) {}
+        try {
+            label = mp.labels.new(worldText(info.title) + '\n~b~[E]', new mp.Vector3(spot.x, spot.y, spot.z + 1.15),
+                { los: false, font: 4, drawDistance: 12, color: [255, 255, 255, 230], dimension: 0 });
+        } catch (e) {}
+        if (ped) cityhallNpcs.push({ key, ped, label });
+        cityhallMarkers.push(mp.markers.new(27, at(pt, -0.95), 0.9, { color: [75, 156, 224, 120], visible: true }));
+    });
+}
+// Ground height under a point (searching from a bit above it), or null if the area isn't loaded yet.
+function groundZAt(x, y, z) {
+    try {
+        const res = mp.game.gameplay.getGroundZFor3dCoord(x, y, z + 3.0, 0.0, false);
+        if (Array.isArray(res)) return res[0] ? res[1] : null;
+        if (typeof res === 'number' && res !== 0) return res;
+    } catch (e) {}
+    return null;
+}
+// Peds created before they stream in can't take natives yet; keep them still once they exist.
+setInterval(() => {
+    cityhallNpcs.forEach(npc => {
+        const ped = npc.ped;
+        if (!ped || !ped.handle) return;
+        try {
+            ped.freezePosition(true);
+            ped.setInvincible(true);
+            ped.setBlockingOfNonTemporaryEvents(true);
+            ped.setCanRagdoll(false);
+        } catch (e) {}
+    });
+}, 2000);
+mp.events.add('cityhall:points', (json) => {
+    try { cityhallPoints = JSON.parse(json); } catch (e) { return; }
+    buildCityhall();
+});
+
+// ---- Desk / ID panel ----
+let cityhallState = null;
+function openCityhallUI(state) {
+    cityhallState = state;
+    if (cityhallBrowser) { cityhallBrowser.execute('window.setCityhall(' + JSON.stringify(state) + ')'); return; }
+    if (anyModalOpen()) return;
+    cityhallBrowser = mp.browsers.new('package://ui/cityhall/index.html');
+    mp.gui.cursor.show(true, true);
+}
+function closeCityhallUI() {
+    if (!cityhallBrowser) return;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    cityhallBrowser.destroy();
+    cityhallBrowser = null;
+    cityhallState = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('cityhall:ui', (json) => { try { openCityhallUI(JSON.parse(json)); } catch (e) {} });
+mp.events.add('cityhall:ui:ready', () => {
+    if (cityhallBrowser && cityhallState) cityhallBrowser.execute('window.setCityhall(' + JSON.stringify(cityhallState) + ')');
+});
+mp.events.add('cityhall:ui:close', closeCityhallUI);
+mp.events.add('cityhall:ui:pay', (index) => mp.events.callRemote('cityhall:desk:pay', Number(index)));
+mp.events.add('cityhall:ui:license', (type) => mp.events.callRemote('cityhall:lic:buy', String(type)));
+mp.events.add('cityhall:ui:issue', (first, last, dob) => mp.events.callRemote('cityhall:id:issue', String(first), String(last), String(dob)));
+
+// ---- ID card shown to you (yours or someone else's): small card, no cursor, hides after 8s ----
+function hideIdCard() {
+    if (cityhallCardTimer) { clearTimeout(cityhallCardTimer); cityhallCardTimer = null; }
+    if (cityhallCardBrowser) { try { cityhallCardBrowser.destroy(); } catch (e) {} cityhallCardBrowser = null; }
+}
+mp.events.add('cityhall:showId', (json) => {
+    hideIdCard();
+    cityhallCardBrowser = mp.browsers.new('package://ui/cityhall/idcard.html#' + encodeURIComponent(json));
+    cityhallCardTimer = setTimeout(hideIdCard, 8000);
+});
+
+// ---------- Houses — packages/houses ----------
+// Real map doors: every client locks/unlocks each house's front door object to match the server,
+// re-applied while nearby (door state resets when the door streams out and back in).
+let housesList = [];        // public views from the server (per player: `mine` flags)
+let housesBlips = [];
+let housesMarkers = [];
+let housesBrowser = null;
+let housesState = null;
+let houseInside = null;     // { id, exit } while inside an interior house copy
+let houseExitMarker = null;
+let housesHighlight = false; // /houses toggle: for-sale houses big + visible on the minimap from anywhere
+const HOUSE_DOOR_RANGE = 2.0;    // prompt radius (server accepts 2.5)
+const HOUSE_POINT_RANGE = 2.0;
+const HOUSE_GARAGE_RANGE = 4.5;  // driving in (server accepts 5.0)
+const HOUSE_DOOR_SYNC_RANGE = 80;
+
+function setDoorLocked(door, locked) {
+    try {
+        if (mp.game.object && typeof mp.game.object.doorControl === 'function') {
+            mp.game.object.doorControl(door.model, door.x, door.y, door.z, locked, 0.0, 0.0, 0.0);
+        } else {
+            mp.game.invoke('0x9B12F9A24FABEDB0', door.model, door.x, door.y, door.z, locked, 0.0, false); // SET_STATE_OF_CLOSEST_DOOR_OF_TYPE
+        }
+    } catch (e) {}
+}
+function syncHouseDoors(onlyNear) {
+    const me = mp.players.local.position;
+    housesList.forEach(house => {
+        if (!house.doorModel) return;
+        if (onlyNear && !isNearPosition(me, house.doorModel, HOUSE_DOOR_SYNC_RANGE)) return;
+        setDoorLocked(house.doorModel, !!house.locked);
+    });
+}
+setInterval(() => syncHouseDoors(true), 1500);
+
+function buildHouses() {
+    housesBlips.forEach(blip => { try { blip.destroy(); } catch (e) {} });
+    housesMarkers.forEach(marker => { try { marker.destroy(); } catch (e) {} });
+    housesBlips = []; housesMarkers = [];
+    const at = (pt, dz) => new mp.Vector3(pt.x, pt.y, pt.z + (dz || 0));
+    // Apartment buildings: one blip + marker per entrance (blue if you own a unit, green if any is for sale).
+    const buildings = {};
+    housesList.forEach(house => {
+        if (!house.building) return;
+        const b = buildings[house.building] || (buildings[house.building] = { name: house.buildingName, door: house.door, free: 0, mine: false });
+        if (house.forSale) b.free++;
+        if (house.mine) b.mine = true;
+    });
+    Object.values(buildings).forEach(b => {
+        housesBlips.push(mp.blips.new(475, at(b.door), {
+            name: b.mine ? 'ჩემი ბინა — ' + b.name : b.name + (b.free ? ' — იყიდება ' + b.free + ' ბინა' : ' — ყველა ბინა გაყიდულია'),
+            scale: b.mine ? 0.9 : 0.75, color: b.mine ? 3 : (b.free ? 2 : 4), shortRange: !b.mine && !(housesHighlight && b.free)
+        }));
+        housesMarkers.push(mp.markers.new(27, at(b.door, -0.95), 1.2, { color: b.mine ? [90, 169, 255, 140] : [111, 207, 151, 140], visible: true }));
+    });
+    housesList.forEach(house => {
+        if (house.building) {
+            // Units share the entrance (handled above); only their own chest/garage markers below.
+        } else if (house.forSale) {
+            housesBlips.push(mp.blips.new(40, at(house.door), {
+                name: 'იყიდება: ' + house.name + ' ($' + house.price + ')',
+                scale: housesHighlight ? 0.9 : 0.7, color: 2, shortRange: !housesHighlight
+            }));
+        } else if (house.mine) {
+            housesBlips.push(mp.blips.new(40, at(house.door), { name: 'ჩემი სახლი', scale: 0.9, color: 3, shortRange: false }));
+        } else {
+            // Sold to someone else: still on the map, small and grey.
+            housesBlips.push(mp.blips.new(40, at(house.door), { name: 'გაყიდულია: ' + house.name, scale: 0.55, color: 40, shortRange: true }));
+        }
+        if (!house.building && (house.forSale || house.mine)) {
+            housesMarkers.push(mp.markers.new(27, at(house.door, -0.95), 1.0, { color: house.mine ? [90, 169, 255, 140] : [111, 207, 151, 140], visible: true }));
+        }
+        if (house.mine && house.chest) housesMarkers.push(mp.markers.new(27, at(house.chest, -0.95), 0.9, { color: [242, 193, 92, 140], visible: true, dimension: house.chest.dim || 0 }));
+        if (house.mine && house.garage) housesMarkers.push(mp.markers.new(1, at(house.garage, -1.0), 3.0, { color: [90, 169, 255, 70], visible: true }));
+    });
+}
+mp.events.add('houses:list', (json) => {
+    try { housesList = JSON.parse(json) || []; } catch (e) { return; }
+    buildHouses();
+    syncHouseDoors(false);
+});
+// One house changed (bought / locked / sold): merge it in and redraw.
+mp.events.add('houses:update', (json) => {
+    let house;
+    try { house = JSON.parse(json); } catch (e) { return; }
+    if (!house || house.id === undefined) return;
+    const index = housesList.findIndex(h => h.id === house.id);
+    if (index >= 0) housesList[index] = house; else housesList.push(house);
+    buildHouses();
+    if (house.doorModel) setDoorLocked(house.doorModel, !!house.locked);
+});
+
+// Entered an interior house (or an admin /house itp): load its interior style, mark the exit.
+mp.events.add('houses:entered', (json) => {
+    let info;
+    try { info = JSON.parse(json); } catch (e) { return; }
+    if (info.ipl) {
+        // Styles at one location are mutually exclusive: unload the others, then load this one.
+        (info.iplGroup || []).forEach(name => { if (name !== info.ipl) { try { mp.game.streaming.removeIpl(name); } catch (e) {} } });
+        try { mp.game.streaming.requestIpl(info.ipl); } catch (e) {}
+    }
+    try { if (houseExitMarker) houseExitMarker.destroy(); } catch (e) {}
+    houseExitMarker = null;
+    houseInside = info.exit ? { id: info.id, exit: info.exit } : null;
+    if (houseInside) {
+        houseExitMarker = mp.markers.new(27, new mp.Vector3(info.exit.x, info.exit.y, info.exit.z - 0.95), 1.0,
+            { color: [111, 207, 151, 140], visible: true, dimension: mp.players.local.dimension });
+    }
+});
+mp.events.add('houses:left', () => {
+    houseInside = null;
+    try { if (houseExitMarker) houseExitMarker.destroy(); } catch (e) {}
+    houseExitMarker = null;
+});
+mp.events.add('houses:ui:hide', () => closeHousesUI());
+
+// What E would do right now: { id, event, prompt } or null.
+function nearestHouseAction(me) {
+    const pos = me.position;
+    const vehicle = me.vehicle;
+    const dim = Number(me.dimension) || 0;
+    if (houseInside && !vehicle && isNearPosition(pos, houseInside.exit, HOUSE_DOOR_RANGE)) {
+        return { id: houseInside.id, event: 'houses:exit', prompt: 'Exit' };
+    }
+    for (const house of housesList) {
+        if (vehicle) {
+            if (house.mine && house.garage && isNearPosition(pos, house.garage, HOUSE_GARAGE_RANGE)) {
+                let driver = false;
+                try { driver = vehicle.getPedInSeat(-1) === me.handle; } catch (e) {}
+                if (driver) return { id: house.id, event: 'houses:garage', prompt: 'Park in garage' };
+            }
+            continue;
+        }
+        if (dim === 0 && house.building && isNearPosition(pos, house.door, HOUSE_DOOR_RANGE)) {
+            const units = housesList.filter(h => h.building === house.building);
+            const free = units.filter(h => h.forSale).length;
+            const mine = units.some(h => h.mine);
+            return { id: house.id, event: 'houses:door', prompt: house.buildingName + (mine ? ' - my apartment' : '') + (free ? ' - ' + free + ' for sale' : '') };
+        }
+        if (dim === 0 && isNearPosition(pos, house.door, HOUSE_DOOR_RANGE)) {
+            const prompt = house.forSale ? house.name + ' - for sale $' + house.price
+                : house.mine ? 'My house' + (house.locked ? ' (locked)' : '') : house.name + ' - ' + house.ownerName;
+            return { id: house.id, event: 'houses:door', prompt };
+        }
+        if (house.mine && house.chest && dim === (house.chest.dim || 0) && isNearPosition(pos, house.chest, HOUSE_POINT_RANGE)) return { id: house.id, event: 'houses:chest', prompt: 'Storage' };
+        if (house.mine && house.garage && dim === 0 && isNearPosition(pos, house.garage, HOUSE_POINT_RANGE)) return { id: house.id, event: 'houses:garage', prompt: 'Garage - take car out' };
+    }
+    return null;
+}
+
+// Admin /house add|setdoor: find the door object the camera is looking at (within 6 m).
+mp.events.add('houses:pickDoor', () => {
+    let result = null;
+    try {
+        const from = mp.game.cam.getGameplayCamCoord();
+        const rot = mp.game.cam.getGameplayCamRot(2);
+        const yaw = rot.z * Math.PI / 180, pitch = rot.x * Math.PI / 180;
+        const dir = { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.cos(yaw) * Math.cos(pitch), z: Math.sin(pitch) };
+        const reach = 6 + 3; // camera sits ~3 m behind the player
+        const to = new mp.Vector3(from.x + dir.x * reach, from.y + dir.y * reach, from.z + dir.z * reach);
+        const hit = mp.raycasting.testPointToPoint(from, to, mp.players.local, 1 | 16);
+        const handle = hit && (typeof hit.entity === 'number' ? hit.entity : (hit.entity && hit.entity.handle));
+        if (handle) {
+            const model = mp.game.invoke('0x9F47B058362C84B5', handle) >>> 0; // GET_ENTITY_MODEL
+            let coords = hit.position;
+            try { const c = mp.game.invokeVector('0x3FEF770D40960D5A', handle, false); if (c && (c.x || c.y)) coords = c; } catch (e) {} // GET_ENTITY_COORDS
+            if (model) result = { model, x: coords.x, y: coords.y, z: coords.z };
+        }
+    } catch (e) {}
+    notify(result ? 'კარი ნაპოვნია (model ' + result.model + ').' : 'კარი ვერ ვიპოვე — შეხედეთ კარს ახლოდან.');
+    mp.events.callRemote('houses:doorPicked', JSON.stringify(result));
+});
+
+// ---- Door / chest panel ----
+function openHousesUI(state) {
+    housesState = state;
+    if (housesBrowser) { housesBrowser.execute('window.setHouse(' + JSON.stringify(state) + ')'); return; }
+    if (anyModalOpen()) return;
+    housesBrowser = mp.browsers.new('package://ui/houses/index.html');
+    mp.gui.cursor.show(true, true);
+}
+function closeHousesUI() {
+    if (!housesBrowser) return;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    housesBrowser.destroy();
+    housesBrowser = null;
+    housesState = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('houses:ui', (json) => { try { openHousesUI(JSON.parse(json)); } catch (e) {} });
+mp.events.add('houses:ui:ready', () => { if (housesBrowser && housesState) housesBrowser.execute('window.setHouse(' + JSON.stringify(housesState) + ')'); });
+mp.events.add('houses:ui:close', closeHousesUI);
+mp.events.add('houses:ui:action', (action, id) => {
+    const allowed = { buy: 'houses:buy', lock: 'houses:lock', sell: 'houses:sell', spawn: 'houses:spawnToggle', enter: 'houses:enter', unit: 'houses:unit', back: 'houses:door' };
+    if (allowed[action]) mp.events.callRemote(allowed[action], Number(id));
+});
+// ---- /houses: real-estate listing (built here from housesList — nothing extra from the server) ----
+function marketState() {
+    const me = mp.players.local.position;
+    const rows = housesList.filter(h => h.forSale).map(h => ({
+        id: h.id, name: h.building ? h.name : h.name, building: h.buildingName || null, price: h.price,
+        interior: h.interior, x: h.door.x, y: h.door.y,
+        distance: Math.round(Math.hypot(me.x - h.door.x, me.y - h.door.y))
+    })).sort((a, b) => a.distance - b.distance);
+    return { mode: 'market', highlight: housesHighlight, rows, money: getMoney() };
+}
+mp.events.add('houses:market', () => openHousesUI(marketState()));
+mp.events.add('houses:ui:gps', (x, y) => {
+    try { mp.game.ui.setNewWaypoint(Number(x), Number(y)); } catch (e) {}
+    notify('GPS: მარშრუტი დაყენდა სახლამდე.');
+});
+mp.events.add('houses:ui:highlight', () => {
+    housesHighlight = !housesHighlight;
+    buildHouses();
+    notify(housesHighlight ? 'იყიდება სახლები მონიშნულია რუკაზე.' : 'მონიშვნა გამორთულია.');
+    if (housesBrowser && housesState && housesState.mode === 'market') openHousesUI(marketState());
+});
+
+mp.events.add('houses:ui:chest', (direction, id, itemId, qty) => {
+    mp.events.callRemote(direction === 'put' ? 'houses:chestPut' : 'houses:chestTake', Number(id), String(itemId), Number(qty));
+});
+
+// ---------- Demorgan (packages/demorgan): admin jail HUD + restrictions ----------
+// The server syncs 'demorgan:left' (seconds) every 2 s; between syncs we count down locally.
+let demorganLeft = 0, demorganSyncedAt = 0;
+// Demorgan (dimension 1) is an enclosed underground interior (the bunker), so the outside map isn't
+// visible from it. Here: the interior's furniture is switched on, the minimap is hidden, and ambient
+// NPCs / traffic are off while in Demorgan. Everything is restored on leaving.
+const DEMORGAN_DIMENSION = 1;
+// Entity sets (furniture / wall style) per interior; the bunker is a bare shell without them.
+const DEMORGAN_INTERIOR_SETS = {
+    bunker: ['Bunker_Style_A', 'standard_bunker_set', 'standard_security_set', 'Office_Upgrade_set', 'gun_wall_blocker']
+};
+let demorganIsolated = false;
+function loadDemorganInterior(area) {
+    const sets = DEMORGAN_INTERIOR_SETS[area.interior];
+    if (!sets) return;
+    try {
+        const interior = mp.game.interior.getInteriorAtCoords(area.x, area.y, area.z);
+        if (!interior) return;
+        sets.forEach(name => {
+            try {
+                if (typeof mp.game.interior.activateInteriorEntitySet === 'function') mp.game.interior.activateInteriorEntitySet(interior, name);
+                else mp.game.interior.enableInteriorProp(interior, name);
+            } catch (e) {}
+        });
+        mp.game.interior.refreshInterior(interior);
+    } catch (e) {}
+}
+function setDemorganIsolation(on, area) {
+    demorganIsolated = on;
+    try { mp.game.ui.displayRadar(!on); } catch (e) {}
+    if (on && area) {
+        loadDemorganInterior(area);
+        try { mp.game.gameplay.clearArea(area.x, area.y, area.z, 300, true, false, false, false); } catch (e) {}
+    }
+}
+function suppressAmbientThisFrame() {
+    try { mp.game.ped.setPedDensityMultiplierThisFrame(0); } catch (e) {}
+    try { mp.game.ped.setScenarioPedDensityMultiplierThisFrame(0, 0); } catch (e) {}
+    try { mp.game.vehicle.setVehicleDensityMultiplierThisFrame(0); } catch (e) {}
+    try { mp.game.vehicle.setRandomVehicleDensityMultiplierThisFrame(0); } catch (e) {}
+    try { mp.game.vehicle.setParkedVehicleDensityMultiplierThisFrame(0); } catch (e) {}
+}
+mp.events.add('render', () => {
+    const me = mp.players.local;
+    const area = me.getVariable('demorgan:area');
+    const inDemorgan = !!area && Number(me.dimension) === DEMORGAN_DIMENSION;
+    if (inDemorgan !== demorganIsolated) setDemorganIsolation(inDemorgan, area);
+    if (inDemorgan) suppressAmbientThisFrame();
+    const synced = Number(me.getVariable('demorgan:left')) || 0;
+    if (synced !== demorganLeft) { demorganLeft = synced; demorganSyncedAt = Date.now(); }
+    if (demorganLeft <= 0) return;
+    const left = Math.max(0, Math.ceil(demorganLeft - (Date.now() - demorganSyncedAt) / 1000));
+    // No weapons, no melee, no vehicles, no weapon wheel while serving the sentence.
+    [23, 24, 25, 37, 44, 140, 141, 142, 143, 257, 263, 264].forEach(control => mp.game.controls.disableControlAction(0, control, true));
+    try { mp.game.invoke('0xADF692B254977C0C', me.handle, WEAPON_UNARMED, true); } catch (e) {} // SET_CURRENT_PED_WEAPON
+    const reason = String(me.getVariable('demorgan:reason') || '');
+    mp.game.graphics.drawText('DEMORGAN  ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'), [0.5, 0.05], {
+        font: 4, color: [255, 105, 120, 235], outline: true, centre: true, scale: [0.7, 0.7]
+    });
+    if (reason) mp.game.graphics.drawText(worldText(reason), [0.5, 0.095], { font: 4, color: [255, 255, 255, 200], outline: true, centre: true, scale: [0.4, 0.4] });
 });
 
 // ---------- Director Mode (super admin) ----------
@@ -1070,7 +1876,7 @@ function setPhone(out) {
     }
 }
 function anyModalOpen() {
-    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || parkEditing);
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || parkEditing);
 }
 mp.keys.bind(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
 mp.keys.bind(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
@@ -1143,7 +1949,7 @@ suppressAmbient();
 // ---------- CEF bank / ATM ----------
 let bankBrowser = null;
 function openBankUI() {
-    if (bankBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser || clothingBrowser || directorBrowser) return;
+    if (bankBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || directorBrowser) return;
     bankBrowser = mp.browsers.new('package://ui/bank/index.html');
     mp.gui.cursor.show(true, true);
 }
@@ -1469,15 +2275,20 @@ function findNearDrop() {
 }
 
 mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
-    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || parkingBrowser || parkEditing) return;
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing) return;
     if (fuelUIOpen) return;
+    const house = nearestHouseAction(mp.players.local);
+    if (house) { mp.events.callRemote(house.event, house.id); return; }
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
     const drop = findNearDrop();
     if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }
     if (parkNearby) { openParkingUI(); return; } // stand in a parking slot, press E to rent/park
     if (!mp.players.local.vehicle) {
+        const cityhall = nearestCityhallMode(mp.players.local.position);
+        if (cityhall) { mp.events.callRemote(CITYHALL_MODES[cityhall].event, ...(CITYHALL_MODES[cityhall].args || [])); return; }
         const mode = nearestShopMode(mp.players.local.position);
         if (mode === 'clothing') openClothingUI();
+        else if (mode === 'barber') requestBarberUI();
         else if (mode === 'atm') openBankUI();
         else if (mode) openShopUI(mode);
     }
@@ -1488,6 +2299,9 @@ mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
     else if (fuelUIOpen) closeFuelUI();
     else if (shopBrowser) closeShopUI();               // closes shop + its paired inventory
     else if (clothingBrowser) closeClothingUI();
+    else if (barberBrowser) closeBarberUI();
+    else if (cityhallBrowser) closeCityhallUI();
+    else if (housesBrowser) closeHousesUI();
     else if (directorBrowser) closeDirector();
     else if (bankBrowser) closeBankUI();
     else if (parkingBrowser) closeParkingUI();
@@ -1499,11 +2313,25 @@ mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
 
 // "Press E to shop" prompt when on foot at an Ammu-Nation / 24-7 marker.
 mp.events.add('render', () => {
-    if (shopBrowser || clothingBrowser || bankBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
+    if (shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || bankBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
+    const house = nearestHouseAction(mp.players.local);
+    if (house) {
+        mp.game.graphics.drawText(worldText('Press E  (' + house.prompt + ')'), [0.5, 0.86], {
+            font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
+        });
+        return;
+    }
     if (mp.players.local.vehicle) return;
+    const cityhall = nearestCityhallMode(mp.players.local.position);
+    if (cityhall) {
+        mp.game.graphics.drawText(worldText('Press E  (' + CITYHALL_MODES[cityhall].prompt + ')'), [0.5, 0.86], {
+            font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
+        });
+        return;
+    }
     const mode = nearestShopMode(mp.players.local.position);
     if (!mode) return;
-    const label = mode === 'weapons' ? 'Ammu-Nation' : mode === 'clothing' ? 'Clothing Store' : mode === 'atm' ? 'ATM' : '24/7 Market';
+    const label = mode === 'weapons' ? 'Ammu-Nation' : mode === 'clothing' ? 'Clothing Store' : mode === 'barber' ? 'Barber Shop' : mode === 'atm' ? 'ATM' : '24/7 Market';
     const prompt = mode === 'atm' ? 'Press E for ATM' : 'Press E to shop  (' + label + ')';
     mp.game.graphics.drawText(prompt, [0.5, 0.86], {
         font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
@@ -1620,12 +2448,12 @@ mp.events.add('render', () => {
 }));
 
 mp.keys.bind(0x49, false, () => { // I - inventory
-    if (chatting || vehicleMenuBrowser) return;
+    if (chatting || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return; // City Hall form has text inputs
     if (inventoryBrowser) closeInventoryUI();
     else if (!adminBrowser && !fuelUIOpen) openInventoryUI();
 });
 mp.keys.bind(0x47, false, () => { // G - vehicle interaction menu
-    if (chatting) return;
+    if (chatting || cityhallBrowser || housesBrowser) return;
     if (vehicleMenuBrowser) closeVehicleMenu();
     else if (pendingVehicleMenuVehicle) closeVehicleMenu();
     else if (mp.players.local.vehicle) openVehicleMenu(mp.players.local.vehicle);
@@ -1661,7 +2489,7 @@ mp.events.add('chat:hasTeam', (value) => {
 });
 
 function openChat() {
-    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser) return;
+    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return;
     chatting = true;
     mp.gui.cursor.show(true, true);
     if (chatBrowser) chatBrowser.execute(
@@ -1698,7 +2526,7 @@ mp.events.add('voice:setMuted', (value) => {
 });
 
 mp.keys.bind(0x42, true, () => {  // B held -> talk
-    if (voiceBanned || chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser) return;
+    if (voiceBanned || chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return;
     voiceTalking = true;
     if (mp.voiceChat) mp.voiceChat.muted = false;
 });
@@ -1765,7 +2593,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -1929,7 +2757,11 @@ mp.events.add('entityStreamIn', entity => {
 });
 mp.events.add('playerDeath', () => setFlyEnabled(false));
 
-// (fly is toggled via the /fly command now — B is push-to-talk voice)
+// (B is push-to-talk voice.) N toggles flight while in admin mode; the server re-checks admin mode.
+mp.keys.bind(0x4E, false, () => { // N — admin fly on/off
+    if (!adminModeEnabled || chatting || anyModalOpen()) return;
+    mp.events.callRemote('admin:fly:toggle');
+});
 
 mp.keys.bind(0x77, false, () => {
     if (chatting) return;
@@ -1973,7 +2805,8 @@ mp.events.add('render', () => {
     const length = Math.hypot(forward, strafe, vertical);
     if (length === 0) return;
 
-    const speed = mp.game.controls.isControlPressed(0, 21) ? 80 : 20;
+    // m/s: normal 60, Shift = fast 250, Alt = slow 10 for precise positioning.
+    const speed = mp.game.controls.isControlPressed(0, 21) ? 250 : (mp.game.controls.isControlPressed(0, 19) ? 10 : 60);
     const forwardX = -Math.sin(yaw) * Math.cos(pitch);
     const forwardY = Math.cos(yaw) * Math.cos(pitch);
     const forwardZ = Math.sin(pitch);
@@ -2000,7 +2833,7 @@ function closeAdminPanel(notifyServer) {
     if (notifyServer) mp.events.callRemote('admin:panel:closed');
 }
 
-function requestAdminAction(action, id, duration, amount) {
+function requestAdminAction(action, id, duration, amount, reason) {
     if (!adminBrowser) return;
     const playerId = Number(id);
     const durationSeconds = Number(duration);
@@ -2010,7 +2843,8 @@ function requestAdminAction(action, id, duration, amount) {
         action: String(action),
         id: playerId,
         duration: Number.isSafeInteger(durationSeconds) ? durationSeconds : null,
-        amount: Number.isSafeInteger(moneyAmount) ? moneyAmount : null
+        amount: Number.isSafeInteger(moneyAmount) ? moneyAmount : null,
+        reason: String(reason || '').slice(0, 100)
     }));
 }
 
@@ -2158,6 +2992,16 @@ mp.events.add('admin:panel:fly', () => {
 });
 mp.events.add('admin:panel:unban', socialClub => {
     if (adminBrowser) mp.events.callRemote('admin:panel:unban', String(socialClub));
+});
+// Commands tab: the page asks for the list, the server answers with it; Run sends the typed command.
+mp.events.add('admin:panel:commandsRequest', () => {
+    if (adminBrowser) mp.events.callRemote('admin:panel:commands');
+});
+mp.events.add('admin:panel:commands', json => {
+    if (adminBrowser) adminBrowser.execute('window.setCommands(' + JSON.stringify(String(json)) + ')');
+});
+mp.events.add('admin:panel:run', text => {
+    if (adminBrowser) mp.events.callRemote('admin:panel:run', String(text));
 });
 mp.events.add('admin:panel:announce', message => {
     if (adminBrowser) mp.events.callRemote('admin:panel:announce', String(message));

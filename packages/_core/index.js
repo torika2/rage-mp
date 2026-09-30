@@ -25,6 +25,11 @@ global.runCommand = function (player, raw) {
     const name = (parts.shift() || '').toLowerCase();
     const handler = global.commandRegistry[name];
     if (!handler) { player.outputChatBox('!{#ff6b6b}უცნობი ბრძანება: /' + name); return true; }
+    // Other packages can block commands for a player (e.g. packages/demorgan while serving a sentence).
+    if (typeof global.commandGuard === 'function') {
+        const blocked = global.commandGuard(player, name);
+        if (blocked) { player.outputChatBox(blocked); return true; }
+    }
     try { handler(player, parts.join(' '), ...parts); }
     catch (e) { player.outputChatBox('!{#ff6b6b}ბრძანების შეცდომა.'); }
     return true;

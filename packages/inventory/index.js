@@ -75,16 +75,15 @@ global.invRegisterCloth = (cat, drawable, texture) => {
     const id = 'cloth_' + cat + '_' + Math.max(0, drawable) + '_' + Math.max(0, texture);
     return ensureClothDef(id) ? id : null;
 };
-// A top (component 11) needs a matching arms variant (component 3) or the sleeves clip. GTA hides
-// the correct pairing in metadata scripts can't read, so we set arms ourselves when a top is worn:
-// look the top's drawable up here, else fall back to DEFAULT_ARMS. Build this map over time using the
-// /arms command (wear a top, try arms indices until it fits, then add "<topDrawable>: <armsDrawable>").
+// A top (component 11) needs a matching arms variant (component 3) or the sleeves clip. The pairing
+// comes from packages/clothing (GTA's shop data per model/top/texture + admin /armsfit overrides);
+// tops with no known pairing fall back to DEFAULT_ARMS. Returns [armsDrawable, armsTexture].
 const ARMS_COMPONENT = 3;
 const DEFAULT_ARMS = 0;
-const TOP_ARMS = {
-    // 47: 3, 15: 15, ...
-};
-function armsForTop(drawable) { return (drawable in TOP_ARMS) ? TOP_ARMS[drawable] : DEFAULT_ARMS; }
+function armsForTop(player, drawable, texture) {
+    const torso = (typeof global.clothingTorsoFor === 'function') ? global.clothingTorsoFor(player, drawable, texture) : null;
+    return torso || [DEFAULT_ARMS, 0];
+}
 
 // Put a clothing look on the ped (server-side setClothes -> syncs). Props are also echoed to the
 // wearer's own client, since server-side props don't sync on every RAGE:MP build.
@@ -94,7 +93,10 @@ function applyCloth(player, cat, drawable, texture) {
     try {
         if (c.kind === 'comp') {
             player.setClothes(c.id, Math.max(0, drawable), Math.max(0, texture), 0);
-            if (cat === 'top') { try { player.setClothes(ARMS_COMPONENT, armsForTop(Math.max(0, drawable)), 0, 0); } catch (e) {} }
+            if (cat === 'top') {
+                const arms = armsForTop(player, Math.max(0, drawable), Math.max(0, texture));
+                try { player.setClothes(ARMS_COMPONENT, arms[0], arms[1], 0); } catch (e) {}
+            }
             return;
         }
         if (drawable < 0) player.setProp(c.id, -1, 0);
@@ -110,8 +112,8 @@ const FREEMODE_FEMALE = mp.joaat('mp_f_freemode_01');
 // body/skin/face stay the default character. Component 3 (arms) uses the nude-skin variant so an
 // unequipped upper body shows bare skin, not a default t-shirt. Tweak indices if a value looks off.
 const NUDE_BY_COMP = {
-    male:   { 1: 0, 3: 15, 4: 21, 5: 0, 6: 34, 7: 0, 8: 15, 11: 15 },
-    female: { 1: 0, 3: 15, 4: 15, 5: 0, 6: 35, 7: 0, 8: 15, 11: 15 }
+    male:   { 1: 0, 3: 15, 4: 21, 5: 0, 6: 34, 7: 0, 8: 15, 10: 0, 11: 15 },
+    female: { 1: 0, 3: 15, 4: 15, 5: 0, 6: 35, 7: 0, 8: 15, 10: 0, 11: 15 }
 };
 const NUDE_PROPS = [0, 1, 2, 6, 7]; // hat, glasses, ears, watch, bracelet — cleared by default
 function nudeComp(player) { return (Number(player.model) === FREEMODE_FEMALE) ? NUDE_BY_COMP.female : NUDE_BY_COMP.male; }
@@ -528,6 +530,9 @@ function useItem(player, id, index) {
         toggleWeapon(player, id, owned); pushData(player); return;
     }
     if (def.type === 'clothing') { equipCloth(player, id, owned); return; }
+    // Items registered by other packages with their own behaviour (e.g. the ID card from
+    // packages/cityhall shows itself to nearby players). They are not used up.
+    if (typeof def.onUse === 'function') { try { def.onUse(player, id, owned); } catch (e) {} return; }
     if (def.type === 'armor') {
         // Armour goes into the ჟილეტი (vest) equipment slot instead of being used up.
         const eq = getEquip(player);
@@ -735,6 +740,20 @@ setInterval(() => {
 // ---- Shared API for other packages (market, future shops) ----
 global.invAddItem = (player, id, qty) => { const ok = addItem(player, id, qty); if (ok) pushData(player); return ok; };
 global.invHasSpace = (player, id, qty) => hasSpace(player, id, qty);
+global.invCountItem = (player, id) => countItem(getInv(player), id);
+// Everything in the personal grid + quick bar, merged per item id: [{ id, label, qty, inHand }].
+global.invList = (player) => {
+    const merged = {};
+    getInv(player).forEach(stack => {
+        if (!stack || stack.qty <= 0) return;
+        const entry = merged[stack.id] || (merged[stack.id] = { id: stack.id, label: (ITEM_DEFS[stack.id] && ITEM_DEFS[stack.id].label) || stack.id, qty: 0, inHand: false });
+        entry.qty += stack.qty;
+        if (player.invEquippedStack === stack) entry.inHand = true;
+    });
+    return Object.values(merged);
+};
+global.invItemExists = (id) => !!(ITEM_DEFS[id] || ensureClothDef(id));
+global.invRemoveItem = (player, id, qty) => { removeCount(player, id, Math.max(0, Math.floor(Number(qty) || 0))); pushData(player); };
 // Clothing worn/unequip API used by the clothing store so it can take pieces off into the inventory.
 global.invUnequipCloth = (player, cat) => unequipCloth(player, String(cat), -1);
 global.invWornClothing = (player) => {
@@ -750,7 +769,10 @@ global.invNudeLook = (player) => {
     return out;
 };
 // Lets the clothing shop preview arms correctly while browsing tops.
-global.invTopArms = (player) => ({ def: DEFAULT_ARMS, nude: nudeValueForComp(player, ARMS_COMPONENT), map: TOP_ARMS });
+global.invTopArms = (player) => ({
+    def: DEFAULT_ARMS, nude: nudeValueForComp(player, ARMS_COMPONENT),
+    map: (typeof global.clothingTorsoMap === 'function') ? global.clothingTorsoMap(player) : {}
+});
 // Re-apply the bare base + equipped clothing (e.g. after a Director-mode model change).
 global.invRestoreLook = (player) => restoreEquipped(player);
 global.invItemLabel = (id) => (ITEM_DEFS[id] && ITEM_DEFS[id].label) || id;

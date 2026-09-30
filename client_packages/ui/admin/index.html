@@ -19,10 +19,11 @@
     font-family: "Segoe UI", Roboto, system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; color: var(--text); }
-  body { background: rgba(4, 7, 11, .58); display: grid; place-items: center; }
+  html, body { width: 100%; height: 100%; margin: 0; color: var(--text); }
+  html { overflow: hidden; }
+  body { background: rgba(4, 7, 11, .58); display: grid; place-items: center; overflow: auto; }
   .shell {
-    width: min(1160px, 94vw); height: min(790px, 90vh); display: flex; flex-direction: column;
+    width: min(1160px, 94vw); height: min(790px, 90vh); min-height: 420px; display: flex; flex-direction: column;
     background: var(--bg); border: 1px solid var(--line); border-radius: 18px;
     box-shadow: 0 28px 90px #000a; overflow: hidden;
   }
@@ -39,14 +40,16 @@
   button:disabled { opacity:.35; cursor:not-allowed; transform:none; }
   .close { width:36px; height:36px; padding:0; font-size:19px; }
   main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 310px; }
-  .players { min-width:0; display:flex; flex-direction:column; padding:18px 20px; }
-  .toolbar { display:flex; gap:10px; margin-bottom:14px; }
+  .players { min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; padding:18px 20px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  .toolbar .search { min-width:200px; }
+  .id-actions { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .id-actions button { padding:8px 6px; font-size:12px; }
+  .id-actions .danger { color:var(--red); }
   .search { flex:1; min-width:0; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px 12px; outline:none; }
-  .search:focus, .announce:focus, .duration:focus, .money-amount:focus { border-color:#ffb42e99; }
-  .duration { color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px; }
-  .money-amount { width:120px; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px; }
+  .search:focus, .announce:focus { border-color:#ffb42e99; }
   .announce.unban-input { min-height:42px; resize:none; }
-  .list-wrap { flex:1; overflow:auto; border:1px solid var(--line); border-radius:12px; }
+  .list-wrap { flex:1; min-height:0; overflow:auto; border:1px solid var(--line); border-radius:12px; }
   table { width:100%; border-collapse:collapse; font-size:13px; }
   th { position:sticky; top:0; z-index:1; text-align:left; color:var(--muted); background:#171d25; font-size:11px; text-transform:uppercase; letter-spacing:.7px; }
   th, td { padding:12px 11px; border-bottom:1px solid var(--line); }
@@ -59,7 +62,7 @@
   .actions { display:flex; gap:5px; flex-wrap:wrap; }
   .actions button { padding:6px 8px; font-size:11px; }
   .actions .danger { color:var(--red); }
-  .side { border-left:1px solid var(--line); padding:20px; background:#ffffff03; overflow:auto; }
+  .side { min-height:0; border-left:1px solid var(--line); padding:20px; background:#ffffff03; overflow-y:auto; overscroll-behavior:contain; }
   .section-title { margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:16px; }
   .announce { width:100%; min-height:94px; resize:vertical; color:var(--text); background:#11171e; border:1px solid var(--line); border-radius:9px; padding:10px; outline:none; }
@@ -70,14 +73,46 @@
   .confirm-backdrop[hidden] { display:none; }
   .confirm-dialog { width:min(380px, 100%); padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 55px #000b; }
   .confirm-dialog p { margin:0 0 18px; line-height:1.5; }
+  .form-dialog h3 { margin:0 0 14px; font-size:16px; }
+  .form-row { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; color:var(--muted); font-size:12px; }
+  .form-row input { color:var(--text); background:#11171e; border:1px solid var(--line); border-radius:9px; padding:10px 12px; outline:none; font:inherit; font-size:14px; }
+  .form-row input:focus { border-color:#ffb42e99; }
+  .form-row[hidden] { display:none; }
+  .form-who { margin:-4px 0 10px; min-height:16px; }
+  .form-presets { display:flex; flex-wrap:wrap; gap:6px; margin:-2px 0 12px; }
+  .form-presets button { padding:5px 9px; font-size:11px; }
+  .form-error { color:var(--red); font-size:12px; min-height:16px; margin-bottom:8px; }
   .confirm-actions { display:flex; justify-content:flex-end; gap:8px; }
   .confirm-actions .accept { background:var(--accent); border-color:var(--accent); color:#211707; font-weight:700; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; }
+  .tab { padding:8px 16px; border-radius:9px; background:transparent; color:var(--muted); font-weight:600; }
+  .tab.on { background:#ffb42e1c; border-color:#ffb42e80; color:var(--accent); }
+  .view { flex:1; min-height:0; display:flex; flex-direction:column; }
+  .view[hidden] { display:none; }
+  .cmd-list { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; border:1px solid var(--line); border-radius:12px; padding:6px 12px 12px; }
+  .cmd-group { margin:14px 0 6px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.8px; }
+  .cmd { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 12px; align-items:center; padding:9px 10px; border:1px solid var(--line); border-radius:10px; background:var(--panel); margin-bottom:6px; }
+  .cmd-name { font-family:Consolas, monospace; font-size:13px; font-weight:700; color:var(--accent); }
+  .cmd-name span { color:var(--muted); font-weight:400; margin-left:6px; }
+  .cmd-desc { color:var(--muted); font-size:12px; margin-top:3px; }
+  .cmd-run { display:flex; gap:6px; align-items:center; }
+  .cmd-run select, .cmd-run input { color:var(--text); background:#11171e; border:1px solid var(--line); border-radius:8px; padding:7px 9px; outline:none; font-size:12px; }
+  .cmd-run input { width:190px; }
+  .cmd-run select { max-width:150px; }
+  .cmd-run button { padding:7px 12px; font-size:12px; background:#ffb42e; border-color:#ffb42e; color:#211707; font-weight:700; }
+  .raw { display:flex; gap:8px; margin-top:10px; }
+  .raw input { flex:1; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px 12px; outline:none; font-family:Consolas, monospace; }
+  .raw button { background:#ffb42e; border-color:#ffb42e; color:#211707; font-weight:700; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#ffffff26; border-radius:6px; border:2px solid transparent; background-clip:padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background:#ffb42e80; background-clip:padding-box; }
   footer { border-top:1px solid var(--line); padding:11px 20px; display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
   kbd { padding:2px 5px; color:var(--text); border:1px solid var(--line); border-radius:4px; background:var(--panel); }
   @media (max-width:850px) {
     .shell { width:96vw; height:94vh; }
-    main { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; }
-    .side { border-left:0; border-top:1px solid var(--line); padding:12px 18px; }
+    main { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) minmax(0,40%); }
+    .side { border-left:0; border-top:1px solid var(--line); padding:12px 18px; overflow-y:auto; }
     .card { margin:0; }
     .section-title, .hint, footer .right { display:none; }
     .list-wrap { overflow:auto; }
@@ -100,24 +135,25 @@
   </header>
   <main>
     <section class="players">
+      <div class="tabs">
+        <button class="tab on" data-tab="playersView">Players</button>
+        <button class="tab" data-tab="commandsView">Commands</button>
+      </div>
+      <div class="view" id="playersView">
       <div class="toolbar">
         <input id="search" class="search" placeholder="Filter by player name or ID…" autocomplete="off">
-        <select id="moderationDuration" class="duration" aria-label="Mute or ban duration">
-          <option value="300">5 minutes</option>
-          <option value="1800">30 minutes</option>
-          <option value="3600">1 hour</option>
-          <option value="21600">6 hours</option>
-          <option value="86400">1 day</option>
-          <option value="604800">7 days</option>
-          <option value="0">Permanent</option>
-        </select>
-        <input id="moneyAmount" class="money-amount" type="number" min="1" max="1000000" step="1" value="1000" aria-label="Money to add">
       </div>
       <div class="list-wrap">
         <table>
           <thead><tr><th>Player</th><th>Health</th><th>World</th><th>Actions</th></tr></thead>
           <tbody id="rows"><tr><td colspan="4" class="muted">Requesting player list…</td></tr></tbody>
         </table>
+      </div>
+      </div>
+      <div class="view" id="commandsView" hidden>
+        <div class="toolbar"><input id="cmdSearch" class="search" placeholder="Search commands…" autocomplete="off"></div>
+        <div class="cmd-list" id="cmdList"><div class="muted">Loading commands…</div></div>
+        <div class="raw"><input id="rawCmd" placeholder="/any command with arguments…" autocomplete="off"><button id="rawRun">Run</button></div>
       </div>
     </section>
     <aside class="side">
@@ -126,10 +162,24 @@
         <button id="adminMode" class="send" aria-pressed="false">Enable Admin Mode</button>
         <div id="adminModeStatus" class="hint" role="status">Admin actions are off.</div>
       </div>
+      <h2 class="section-title">Player actions</h2>
+      <div class="card">
+<div class="id-actions">
+          <button data-id-action="ban" class="danger">Ban</button>
+          <button data-id-action="mute" class="danger">Mute</button>
+          <button data-id-action="unmute">Unmute</button>
+          <button data-id-action="addMoney">Give money</button>
+          <button data-id-action="demorgan" class="danger">Demorgan</button>
+          <button data-id-action="undemorgan">Release DM</button>
+          <button data-id-action="kick" class="danger">Kick</button>
+          <button data-id-action="kill" class="danger">Kill</button>
+        </div>
+        <div class="hint" style="margin-top:8px">Each button asks for the player <b>ID</b> and the <b>time</b> (or amount). Mute blocks the player's text <b>and</b> voice chat.</div>
+      </div>
       <h2 class="section-title">Admin flight</h2>
       <div class="card">
         <button id="fly" class="send">Enable fly mode</button>
-        <div id="flyStatus" class="hint" role="status">WASD moves, Space rises, Ctrl descends, Shift speeds up. Press B to toggle flight.</div>
+        <div id="flyStatus" class="hint" role="status">WASD moves, Space rises, Ctrl descends, Shift speeds up. Press N to toggle flight.</div>
       </div>
       <h2 class="section-title">Unban account</h2>
       <div class="card">
@@ -158,6 +208,27 @@
       <button id="actionConfirmAccept" class="accept" type="button">Confirm</button>
     </div>
   </section>
+</div>
+<div id="actionForm" class="confirm-backdrop" hidden>
+  <form class="confirm-dialog form-dialog" role="dialog" aria-modal="true" aria-labelledby="formTitle" autocomplete="off">
+    <h3 id="formTitle">Ban</h3>
+    <label class="form-row">Player ID
+      <input id="formId" inputmode="numeric" maxlength="6" placeholder="e.g. 12">
+    </label>
+    <div id="formWho" class="hint form-who"></div>
+    <label class="form-row" id="formValueRow"><span id="formValueLabel">Time (minutes)</span>
+      <input id="formValue" type="number" step="1">
+    </label>
+    <div id="formPresets" class="form-presets"></div>
+    <label class="form-row" id="formReasonRow">Reason (optional)
+      <input id="formReason" maxlength="100" placeholder="e.g. deathmatch">
+    </label>
+    <div id="formError" class="form-error"></div>
+    <div class="confirm-actions">
+      <button type="button" id="formCancel">Cancel</button>
+      <button type="submit" class="accept" id="formSubmit">Confirm</button>
+    </div>
+  </form>
 </div>
 <script>
   const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
@@ -212,15 +283,14 @@
     adminModeStatus.textContent = adminMode ? 'Admin actions are enabled.' : 'Admin actions are off.';
     flyButton.textContent = flying ? 'Disable fly mode' : 'Enable fly mode';
     flyButton.disabled = !adminMode || Boolean(self && self.inVehicle && !flying);
-    document.getElementById('moderationDuration').disabled = !adminMode;
-    document.getElementById('moneyAmount').disabled = !adminMode;
+    document.querySelectorAll('[data-id-action]').forEach(button => { button.disabled = !adminMode; });
     document.getElementById('unbanAccount').disabled = !adminMode;
     document.getElementById('unban').disabled = !adminMode;
     document.getElementById('announcement').disabled = !adminMode;
     document.getElementById('send').disabled = !adminMode;
     flyStatus.textContent = self && self.inVehicle && !flying
       ? 'Exit your vehicle before enabling flight.'
-      : `${flying ? 'Flight is on' : 'Flight is off'} · WASD moves, Space rises, Ctrl descends, Shift speeds up. Press B to toggle flight.`;
+      : `${flying ? 'Flight is on' : 'Flight is off'} · WASD moves, Space rises, Ctrl descends, Shift speeds up. Press N to toggle flight.`;
     rows.replaceChildren();
     if (!visible.length) {
       const row = document.createElement('tr');
@@ -241,7 +311,7 @@
       name.textContent = player.name;
       const id = document.createElement('div');
       id.className = 'muted';
-      id.textContent = `ID ${player.id}${player.inVehicle ? ' · in vehicle' : ''}`;
+      id.textContent = `ID ${player.id}${player.inVehicle ? ' · in vehicle' : ''}${player.demorgan ? ` · Demorgan: ${player.demorganMinutes} min left` : ''}`;
       identity.append(name, id);
 
       const health = document.createElement('td');
@@ -249,7 +319,9 @@
       health.textContent = player.health <= 0 ? 'Unconscious' : `${player.health} HP`;
 
       const world = document.createElement('td');
-      world.textContent = `Dimension ${player.dimension}`;
+      const dim = Number(player.dimension) || 0;
+      world.textContent = dim === 0 ? 'Dimension 0 · main' : dim === 1 ? 'Dimension 1 · Demorgan'
+        : dim >= 100000 ? `Dimension ${dim} · house #${dim - 100000}` : `Dimension ${dim}`;
 
       const actions = document.createElement('td');
       actions.className = 'actions';
@@ -257,19 +329,14 @@
         ['teleportTo', 'Go to', player.isSelf],
         ['bring', 'Bring', player.isSelf],
         ['heal', 'Heal', player.health <= 0],
-        ['revive', 'Revive', player.health > 0],
-        ['kill', 'Kill', player.isSelf || player.isAdmin],
-        ['addMoney', 'Give money', false],
-        ['kick', 'Kick', player.isSelf || player.isAdmin],
-        [player.muted ? 'unmute' : 'mute', player.muted ? 'Unmute' : 'Mute', player.isSelf || player.isAdmin],
-        ['ban', 'Ban', player.isSelf || player.isAdmin]
+        ['revive', 'Revive', player.health > 0]
       ].forEach(([action, label, disabled]) => {
         const button = document.createElement('button');
         button.textContent = label;
         button.disabled = disabled || !adminMode;
         button.dataset.action = action;
         button.dataset.id = player.id;
-        if (action === 'kill' || action === 'kick' || action === 'ban' || action === 'mute') button.className = 'danger';
+        if (action === 'kill' || action === 'kick' || action === 'ban' || action === 'mute' || action === 'demorgan') button.className = 'danger';
         actions.appendChild(button);
       });
 
@@ -281,7 +348,82 @@
   window.setPlayers = value => {
     players = Array.isArray(value) ? value : [];
     render();
+    renderCommands();
   };
+
+  // ---- Commands tab ----
+  let commands = [];
+  const cmdList = document.getElementById('cmdList');
+  const cmdSearch = document.getElementById('cmdSearch');
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+  function runCommand(text) {
+    text = String(text || '').trim().replace(/^\/+/, '');
+    if (!text) return;
+    if (RAGE) mp.trigger('admin:panel:run', text);
+    else window.showNotice('Would run: /' + text);
+  }
+  function renderCommands() {
+    if (!commands.length) return;
+    const query = cmdSearch.value.trim().toLowerCase();
+    const shown = commands.filter(c => !query || (c.cmd + ' ' + (c.args || '') + ' ' + (c.desc || '') + ' ' + c.group).toLowerCase().includes(query));
+    const keepFocus = document.activeElement && document.activeElement.closest && document.activeElement.closest('.cmd');
+    if (keepFocus) return; // don't wipe what the admin is typing when the player list refreshes
+    const options = players.map(p => '<option value="' + p.id + '">' + esc(p.name) + ' (' + p.id + ')</option>').join('');
+    let html = '', group = null;
+    shown.forEach((c, index) => {
+      if (c.group !== group) { group = c.group; html += '<div class="cmd-group">' + esc(group) + '</div>'; }
+      const rest = c.target ? String(c.args || '').replace(/^<id>\s*/, '') : (c.args || '');
+      html += '<div class="cmd" data-i="' + commands.indexOf(c) + '">' +
+        '<div><div class="cmd-name">/' + esc(c.cmd) + (c.args ? '<span>' + esc(c.args) + '</span>' : '') + '</div>' +
+          (c.desc ? '<div class="cmd-desc">' + esc(c.desc) + '</div>' : '') + '</div>' +
+        '<div class="cmd-run">' +
+          (c.target ? '<select aria-label="Player">' + (options || '<option value="">no players</option>') + '</select>' : '') +
+          (rest || !c.target && c.args !== undefined && c.args !== '' ? '<input placeholder="' + esc(rest || c.args) + '" aria-label="Arguments">' : '') +
+          (c.group === 'Other' ? '<input placeholder="arguments (optional)" aria-label="Arguments">' : '') +
+          '<button>Run</button></div></div>';
+    });
+    cmdList.innerHTML = html || '<div class="muted">No matching commands.</div>';
+  }
+  cmdList.addEventListener('click', event => {
+    const button = event.target.closest('.cmd-run button');
+    if (!button) return;
+    const row = button.closest('.cmd');
+    const c = commands[Number(row.dataset.i)];
+    const select = row.querySelector('select');
+    const input = row.querySelector('input');
+    if (c.target && (!select || !select.value)) { window.showNotice('No player selected.'); return; }
+    const parts = [c.cmd];
+    if (select) parts.push(select.value);
+    if (input && input.value.trim()) parts.push(input.value.trim());
+    runCommand(parts.join(' '));
+    if (input) input.value = '';
+  });
+  cmdList.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && event.target.matches('.cmd-run input')) {
+      event.preventDefault();
+      event.target.closest('.cmd').querySelector('.cmd-run button').click();
+    }
+  });
+  cmdSearch.addEventListener('input', renderCommands);
+  document.getElementById('rawRun').onclick = () => {
+    const input = document.getElementById('rawCmd');
+    runCommand(input.value);
+    input.value = '';
+  };
+  document.getElementById('rawCmd').addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); document.getElementById('rawRun').click(); }
+  });
+  window.setCommands = json => {
+    try { commands = JSON.parse(json) || []; } catch (e) { commands = []; }
+    renderCommands();
+  };
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === tab));
+      document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== tab.dataset.tab; });
+      if (tab.dataset.tab === 'commandsView' && !commands.length && RAGE) mp.trigger('admin:panel:commandsRequest');
+    };
+  });
   window.showNotice = message => {
     notice.textContent = String(message || '');
     setTimeout(() => { notice.textContent = ''; }, 3500);
@@ -296,26 +438,115 @@
   rows.addEventListener('click', event => {
     const button = event.target.closest('button[data-action]');
     if (!button || button.disabled || !RAGE) return;
-    const action = button.dataset.action;
-    const id = Number(button.dataset.id);
+    runPlayerAction(button.dataset.action, Number(button.dataset.id));
+  });
+
+  // Ban / Mute / Give money / Demorgan (and Unmute / Release DM from the card) open a form asking for the
+  // player ID and the time (minutes) or amount. Row buttons pre-fill the ID. Kick / Kill just confirm.
+  const FORM_ACTIONS = {
+    ban:        { title: 'Ban player',        value: 'Time (minutes) — 0 = permanent', min: 0, max: 525600, def: 60, presets: [[30, '30 min'], [60, '1 h'], [360, '6 h'], [1440, '1 day'], [10080, '7 days'], [0, 'Permanent']] },
+    mute:       { title: 'Mute text + voice', value: 'Time (minutes) — 0 = permanent', min: 0, max: 525600, def: 30, presets: [[5, '5 min'], [15, '15 min'], [30, '30 min'], [60, '1 h'], [1440, '1 day'], [0, 'Permanent']] },
+    demorgan:   { title: 'Send to Demorgan',  value: 'Time (minutes)', min: 1, max: 1440, def: 30, reason: true, presets: [[10, '10 min'], [30, '30 min'], [60, '1 h'], [180, '3 h'], [720, '12 h'], [1440, '24 h']] },
+    addMoney:   { title: 'Give money',        value: 'Amount ($)', min: 1, max: 1000000, def: 1000, presets: [[1000, '$1k'], [5000, '$5k'], [10000, '$10k'], [50000, '$50k'], [100000, '$100k']] },
+    unmute:     { title: 'Unmute player' },
+    undemorgan: { title: 'Release from Demorgan' },
+    kick:       { title: 'Kick player' },
+    kill:       { title: 'Kill player' }
+  };
+  const form = document.getElementById('actionForm');
+  const formId = document.getElementById('formId');
+  const formValue = document.getElementById('formValue');
+  const formReason = document.getElementById('formReason');
+  const formError = document.getElementById('formError');
+  let formAction = null;
+  const minutesText = (m) => {
+    if (m === 0) return 'permanently';
+    const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), r = m % 60;
+    return 'for ' + [d && d + 'd', h && h + 'h', r && r + ' min'].filter(Boolean).join(' ');
+  };
+  function formWho() {
+    const text = formId.value.trim();
+    const target = /^\d+$/.test(text) ? players.find(p => p.id === Number(text)) : null;
+    const who = document.getElementById('formWho');
+    who.textContent = !text ? 'Type the player ID (see the list).'
+      : target ? `${target.name}${target.isAdmin ? ' · admin' : ''}${target.muted ? ' · muted' : ''}${target.demorgan ? ` · Demorgan ${target.demorganMinutes} min left` : ''}`
+      : 'No online player with that ID.';
+    who.style.color = text && !target ? 'var(--red)' : '';
+    return target;
+  }
+  function openActionForm(action, presetId) {
+    const cfg = FORM_ACTIONS[action];
+    formAction = action;
+    document.getElementById('formTitle').textContent = cfg.title;
+    formId.value = presetId !== undefined && presetId !== null ? String(presetId) : '';
+    document.getElementById('formValueRow').hidden = !cfg.value;
+    document.getElementById('formReasonRow').hidden = !cfg.reason;
+    const presets = document.getElementById('formPresets');
+    presets.innerHTML = '';
+    presets.hidden = !cfg.presets;
+    if (cfg.value) {
+      document.getElementById('formValueLabel').textContent = cfg.value;
+      formValue.min = cfg.min; formValue.max = cfg.max; formValue.value = cfg.def;
+      (cfg.presets || []).forEach(([value, label]) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = label;
+        b.onclick = () => { formValue.value = value; };
+        presets.appendChild(b);
+      });
+    }
+    formReason.value = '';
+    formError.textContent = '';
+    formWho();
+    previousFocus = document.activeElement;
+    form.hidden = false;
+    (formId.value ? (cfg.value ? formValue : document.getElementById('formSubmit')) : formId).focus();
+  }
+  function closeActionForm() {
+    form.hidden = true;
+    formAction = null;
+    if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+  }
+  formId.addEventListener('input', formWho);
+  document.getElementById('formCancel').onclick = closeActionForm;
+  form.addEventListener('click', event => { if (event.target === form) closeActionForm(); });
+  form.querySelector('form').addEventListener('submit', event => {
+    event.preventDefault();
+    const cfg = FORM_ACTIONS[formAction];
+    const target = formWho();
+    if (!target) { formError.textContent = 'Enter the ID of an online player.'; return; }
+    let value = null;
+    if (cfg.value) {
+      value = Number(formValue.value);
+      if (!Number.isSafeInteger(value) || value < cfg.min || value > cfg.max) {
+        formError.textContent = `${cfg.value.split(' — ')[0]}: whole number ${cfg.min}–${cfg.max.toLocaleString()}.`;
+        return;
+      }
+    }
+    const action = formAction;
+    const reason = formReason.value.trim();
+    closeActionForm();
+    if (!RAGE) { window.showNotice(`Would ${action} ID ${target.id}${value !== null ? ' · ' + value : ''}`); return; }
+    const seconds = (action === 'ban' || action === 'mute' || action === 'demorgan') ? value * 60 : 0;
+    const amount = action === 'addMoney' ? value : 0;
+    mp.trigger('admin:panel:action', action, target.id, seconds, amount, reason);
+    window.showNotice(action === 'addMoney' ? `Giving $${value.toLocaleString()} to ${target.name}…`
+      : value !== null ? `${cfg.title}: ${target.name} ${action === 'demorgan' ? 'for ' + value + ' min' : minutesText(value)}…`
+      : `${cfg.title}: ${target.name}…`);
+  });
+
+  // Row buttons: form actions open the form with that player's ID; kick / kill confirm; the rest run directly.
+  function runPlayerAction(action, id) {
+    if (FORM_ACTIONS[action] && FORM_ACTIONS[action].value) { openActionForm(action, id); return; }
+    if (!RAGE) { window.showNotice(`Would run ${action} on ID ${id}.`); return; }
     const targetName = players.find(p => p.id === id)?.name || 'this player';
-    const duration = Number(document.getElementById('moderationDuration').value);
-    const moneyAmount = Number(document.getElementById('moneyAmount').value);
-    if (action === 'addMoney' && (!Number.isSafeInteger(moneyAmount) || moneyAmount < 1 || moneyAmount > 1000000)) {
-      window.showNotice('Enter a whole number between 1 and 1,000,000.');
-      return;
-    }
-    let confirmation = '';
-    if (action === 'kick') confirmation = `Kick ${targetName}?`;
-    if (action === 'ban') confirmation = `Ban ${targetName} ${duration === 0 ? 'permanently' : `for ${document.getElementById('moderationDuration').selectedOptions[0].text}`}?`;
-    if (action === 'kill') confirmation = `Kill ${targetName}?`;
-    if (action === 'addMoney') confirmation = `Add $${moneyAmount.toLocaleString()} to ${targetName}?`;
-    const submitAction = () => mp.trigger('admin:panel:action', action, id, duration, moneyAmount);
-    if (confirmation) {
-      showActionConfirmation(confirmation, submitAction);
-      return;
-    }
+    const submitAction = () => mp.trigger('admin:panel:action', action, id, 0, 0, '');
+    if (action === 'kick') { showActionConfirmation(`Kick ${targetName}?`, submitAction); return; }
+    if (action === 'kill') { showActionConfirmation(`Kill ${targetName}?`, submitAction); return; }
     submitAction();
+  }
+  // Right-hand card: always ask for the ID (and time / amount).
+  document.querySelectorAll('[data-id-action]').forEach(button => {
+    button.onclick = () => openActionForm(button.dataset.idAction);
   });
   search.addEventListener('input', render);
   document.getElementById('refresh').onclick = () => {
@@ -354,6 +585,12 @@
         first.focus();
       }
     }
+    if (event.key === 'Escape' && !form.hidden) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeActionForm();
+      return;
+    }
     if (event.key === 'Escape' && !actionConfirm.hidden) {
       event.preventDefault();
       event.stopPropagation();
@@ -371,8 +608,15 @@
   });
 
   window.onload = () => {
-    if (RAGE) mp.trigger('admin:panel:ready');
-    else window.setPlayers([
+    if (RAGE) { mp.trigger('admin:panel:ready'); mp.trigger('admin:panel:commandsRequest'); }
+    else window.setCommands(JSON.stringify([
+      { group: 'General', cmd: 'pos', desc: 'Show your coordinates and heading' },
+      { group: 'General', cmd: 'tp', args: '<x> <y> <z>', desc: 'Teleport to coordinates' },
+      { group: 'Government', cmd: 'fine', args: '<id> <amount> [reason]', target: true, desc: 'Fine a player' },
+      { group: 'Houses', cmd: 'house add', args: '<price> <interior|walkin> [name]', desc: 'Put the house at your position up for sale' },
+      { group: 'Other', cmd: 'somecmd', args: '', desc: '' }
+    ]));
+    if (!RAGE) window.setPlayers([
       { id: 1, name: 'Sample Player', health: 100, dimension: 0, inVehicle: false, isSelf: true, isAdmin: true, adminMode: false },
       { id: 2, name: 'Example Patient', health: 0, dimension: 0, inVehicle: false, isSelf: false, isAdmin: false, muted: false }
     ]);
