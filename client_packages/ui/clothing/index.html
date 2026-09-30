@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ტანსაცმლის მაღაზია</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c;
+    --gold-soft: rgba(242, 193, 92, .48);
+    --accent: #c07ad0;
+    --text: #f3f0e8;
+    --muted: #aaa79e;
+    --line: rgba(255, 255, 255, .12);
+    --panel: linear-gradient(180deg, #131518, #0e1012);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { color: var(--text); background: transparent; user-select: none; }
+  button { color: inherit; font: inherit; cursor: pointer; }
+  .veil { position: absolute; inset: 0; display: flex; justify-content: flex-end; animation: appear .18s ease-out; }
+  .shop { width: min(760px, 44vw); height: 100%; display: grid; grid-template-rows: 62px minmax(0, 1fr) auto; background: var(--panel); border-left: 1px solid var(--gold-soft); box-shadow: -18px 0 40px rgba(0, 0, 0, .45); animation: slide .22s ease-out; }
+  .head { display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+  .title { display: flex; flex-direction: column; }
+  .title h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .title span { color: var(--muted); font-size: 11px; }
+  .spacer { flex: 1; }
+  .money { color: var(--gold); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .close { width: 34px; height: 34px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--muted); font-size: 18px; }
+  .close:hover { color: var(--gold); border-color: var(--gold-soft); }
+  .body { min-height: 0; display: grid; grid-template-columns: minmax(180px, .8fr) minmax(280px, 1.2fr); }
+  .cats { overflow: auto; padding: 14px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+  .cat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid transparent; border-radius: 10px; background: rgba(255, 255, 255, .03); color: var(--text); font-size: 13px; text-align: left; }
+  .cat:hover { background: rgba(255, 255, 255, .06); }
+  .cat.on { border-color: var(--gold-soft); background: rgba(242, 193, 92, .1); color: var(--gold); }
+  .cat .cat-price { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .detail { overflow: auto; padding: 22px; display: flex; flex-direction: column; gap: 22px; }
+  .detail h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .picker { display: grid; gap: 8px; }
+  .picker-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .stepper { display: grid; grid-template-columns: 46px 1fr 46px; align-items: center; gap: 8px; }
+  .stepper button { height: 46px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); font-size: 20px; border-radius: 10px; }
+  .stepper button:hover { border-color: var(--gold-soft); color: var(--gold); }
+  .stepper .value { height: 46px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, .25); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; background: rgba(255, 255, 255, .08); font-size: 10px; display: grid; place-items: center; color: var(--muted); }
+  .swatch.on { border-color: var(--gold); color: var(--text); }
+  .price-row { display: flex; align-items: baseline; gap: 10px; }
+  .price-row .p { color: var(--gold); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .price-row .tax { color: var(--muted); font-size: 11px; }
+  .actions { margin-top: auto; display: flex; gap: 10px; }
+  .add { flex: 1; padding: 13px; border: 1px solid var(--gold); border-radius: 10px; background: rgba(242, 193, 92, .14); color: var(--gold); font-weight: 700; font-size: 14px; }
+  .add:hover { background: rgba(242, 193, 92, .24); }
+  .remove { flex: 0 0 auto; padding: 13px 18px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .04); color: var(--muted); font-size: 13px; }
+  .remove:hover { border-color: #ff6978; color: #ff6978; }
+  .hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .empty { margin: auto; color: var(--muted); font-size: 13px; }
+  /* Cart footer */
+  .cart { border-top: 1px solid var(--gold-soft); padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; background: rgba(0, 0, 0, .25); }
+  .cart-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .cart-head b { color: var(--accent); }
+  .cart-list { max-height: 148px; overflow: auto; display: flex; flex-direction: column; gap: 5px; }
+  .cart-empty { color: var(--muted); font-size: 12px; padding: 4px 0; }
+  .cart-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .03); font-size: 12px; }
+  .cart-item .ci-price { margin-left: auto; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .cart-item .ci-del { width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
+  .cart-item .ci-del:hover { border-color: #ff6978; color: #ff6978; }
+  .checkout { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
+  .checkout .total { font-size: 13px; color: var(--muted); }
+  .checkout .total b { color: var(--gold); font-size: 18px; font-variant-numeric: tabular-nums; }
+  .checkout button { padding: 12px 20px; border: 1px solid var(--gold); border-radius: 10px; background: rgba(242, 193, 92, .16); color: var(--gold); font-weight: 700; font-size: 14px; }
+  .checkout button:hover { background: rgba(242, 193, 92, .28); }
+  .checkout button:disabled { opacity: .4; cursor: not-allowed; }
+  @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slide { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="veil">
+  <main class="shop">
+    <header class="head">
+      <div class="title"><h1>ტანსაცმლის მაღაზია</h1><span>მოირგე, დაამატე კალათაში, იყიდე</span></div>
+      <div class="spacer"></div>
+      <div class="money" id="money">$0</div>
+      <button class="close" id="close" title="დახურვა (Esc)">×</button>
+    </header>
+    <div class="body">
+      <div class="cats" id="cats"></div>
+      <div class="detail" id="detail"><div class="empty">იტვირთება…</div></div>
+    </div>
+    <div class="cart">
+      <div class="cart-head">კალათა · <b id="cartCount">0</b> ნივთი</div>
+      <div class="cart-list" id="cartList"><div class="cart-empty">კალათა ცარიელია</div></div>
+      <div class="checkout">
+        <div class="total">სულ: <b id="cartTotal">$0</b></div>
+        <button id="checkout" disabled>ყიდვა</button>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+
+  let state = null; // { money, taxRate, selected, order, categories:{} }
+
+  el('close').onclick = () => trigger('clothing:ui:close');
+  el('checkout').onclick = () => trigger('clothing:ui:checkout');
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); trigger('clothing:ui:close'); }
+  });
+
+  // Drag anywhere over the ped (outside the panel) to spin the character.
+  let dragging = false, lastX = 0;
+  document.addEventListener('mousedown', (event) => {
+    if (event.target.closest('.shop')) return;
+    dragging = true; lastX = event.clientX; document.body.style.cursor = 'ew-resize';
+  });
+  document.addEventListener('mousemove', (event) => {
+    if (!dragging) return;
+    const deltaX = event.clientX - lastX; lastX = event.clientX;
+    if (deltaX) trigger('clothing:ui:rotate', deltaX);
+  });
+  document.addEventListener('mouseup', () => { dragging = false; document.body.style.cursor = ''; });
+
+  function renderCats() {
+    const cats = el('cats');
+    cats.innerHTML = '';
+    state.order.forEach(key => {
+      const category = state.categories[key];
+      const button = document.createElement('button');
+      button.className = 'cat' + (key === state.selected ? ' on' : '');
+      button.innerHTML = '<span>' + category.label + '</span><span class="cat-price">' + fmt(category.price) + '</span>';
+      button.onclick = () => trigger('clothing:ui:select', key);
+      cats.appendChild(button);
+    });
+  }
+
+  function renderDetail() {
+    const detail = el('detail');
+    const category = state.categories[state.selected];
+    if (!category) { detail.innerHTML = '<div class="empty">აირჩიეთ კატეგორია</div>'; return; }
+    let swatches = '';
+    if (category.texCount > 1) {
+      for (let index = 0; index < category.texCount; index++) {
+        swatches += '<button class="swatch' + (index === category.texture ? ' on' : '') + '" data-tex="' + index + '">' + (index + 1) + '</button>';
+      }
+    }
+    detail.innerHTML =
+      '<h2>' + category.label + '</h2>' +
+      '<div class="picker"><div class="picker-label">მოდელი</div><div class="stepper">' +
+        '<button data-nav="-1">‹</button><div class="value">' + (category.drawable + 1) + ' / ' + category.count + '</div><button data-nav="1">›</button>' +
+      '</div></div>' +
+      (swatches ? '<div class="picker"><div class="picker-label">ფერი</div><div class="swatches">' + swatches + '</div></div>' : '') +
+      '<div class="price-row"><span class="p">' + fmt(category.price) + '</span>' +
+        (category.tax ? '<span class="tax">მ.შ. ' + fmt(category.tax) + ' გადასახადი</span>' : '') + '</div>' +
+      '<div class="actions">' +
+        '<button class="add" id="add">＋ კალათაში დამატება</button>' +
+        '<button class="remove" id="none">' + (category.worn ? 'მოხსნა' : 'არცერთი') + '</button>' +
+      '</div>' +
+      '<div class="hint">‹ › — მოდელის შეცვლა · ფერის ღილაკები — ტექსტურა · ხასიათს ათრევ ბრუნავს პერსონაჟი. ყიდვის შემდეგ ნივთი ჩნდება ინვენტარში (I). ' +
+        (category.worn ? '„მოხსნა“ — ნივთი ინვენტარში დაბრუნდება.' : '„არცერთი“ — ამ ნაწილს არაფერს აცმევს.') + '</div>';
+
+    detail.querySelectorAll('[data-nav]').forEach(b => {
+      b.onclick = () => trigger('clothing:ui:nav', state.selected, parseInt(b.getAttribute('data-nav'), 10), 0);
+    });
+    detail.querySelectorAll('[data-tex]').forEach(b => {
+      b.onclick = () => trigger('clothing:ui:tex', state.selected, parseInt(b.getAttribute('data-tex'), 10));
+    });
+    el('add').onclick = () => trigger('clothing:ui:add', state.selected);
+    el('none').onclick = () => trigger('clothing:ui:none', state.selected);
+  }
+
+  // ---- Called by the client ----
+  window.setClothingData = function (data) {
+    state = { money: data.money, taxRate: data.taxRate, selected: data.selected, order: data.order, categories: {} };
+    (data.categories || []).forEach(c => { state.categories[c.key] = c; });
+    el('money').textContent = fmt(state.money);
+    renderCats();
+    renderDetail();
+  };
+  window.updateCategory = function (category) {
+    if (!state) return;
+    state.categories[category.key] = category;
+    renderCats();
+    if (category.key === state.selected) renderDetail();
+  };
+  window.setSelected = function (key) { if (state) { state.selected = key; renderCats(); renderDetail(); } };
+  window.setMoney = function (value) { if (state) state.money = value; el('money').textContent = fmt(value); };
+  window.setCart = function (items, total) {
+    items = items || [];
+    el('cartCount').textContent = items.length;
+    el('cartTotal').textContent = fmt(total);
+    el('checkout').disabled = items.length === 0;
+    el('checkout').textContent = items.length ? 'ყიდვა ' + fmt(total) : 'ყიდვა';
+    const list = el('cartList');
+    if (!items.length) { list.innerHTML = '<div class="cart-empty">კალათა ცარიელია</div>'; return; }
+    list.innerHTML = '';
+    items.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'cart-item';
+      row.innerHTML = '<span>' + item.label + '</span><span class="ci-price">' + fmt(item.price) + '</span><button class="ci-del" data-i="' + index + '">×</button>';
+      row.querySelector('.ci-del').onclick = () => trigger('clothing:ui:cartRemove', index);
+      list.appendChild(row);
+    });
+  };
+
+  if (RAGE) mp.trigger('clothing:ui:ready');
+  else {
+    window.setClothingData({ money: 5000, taxRate: .1, selected: 'top', order: ['top', 'pants', 'hat'], categories: [
+      { key: 'top', label: 'ზედა ტანსაცმელი', drawable: 4, count: 120, texture: 1, texCount: 6, price: 198, tax: 18, worn: true },
+      { key: 'pants', label: 'შარვალი', drawable: 0, count: 110, texture: 0, texCount: 4, price: 132, tax: 12 },
+      { key: 'hat', label: 'ქუდი', drawable: 2, count: 30, texture: 0, texCount: 1, price: 51, tax: 5 }
+    ]});
+    window.setCart([{ label: 'ზედა ტანსაცმელი #5', price: 198 }], 198);
+  }
+</script>
+</body>
+</html>

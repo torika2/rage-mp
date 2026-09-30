@@ -100,6 +100,7 @@ mp.events.addCommand('car', (player, _, name) => {
         dimension: player.dimension
     });
     player.myCar = car;
+    if (typeof global.vehOnSpawn === 'function') global.vehOnSpawn(player, car, name); // persist this car
     player.putIntoVehicle(car, 0);
     player.outputChatBox(`!{#8ed17a}გამოძახდა: ${name}`);
 });
@@ -130,6 +131,7 @@ mp.events.addCommand('dv', (player) => {
     if (player.myCar && mp.vehicles.exists(player.myCar)) {
         player.myCar.destroy();
         player.myCar = null;
+        if (typeof global.vehForget === 'function') global.vehForget(player); // stop persisting it
         player.outputChatBox('მანქანა წაიშალა.');
     } else player.outputChatBox('მანქანა არ გაქვს.');
 });
@@ -137,7 +139,17 @@ mp.events.addCommand('dv', (player) => {
 // clean up when a player leaves
 mp.events.add('playerQuit', (player) => {
     vehicleMenuActionAt.delete(player.id);
+    if (typeof global.vehPersist === 'function') global.vehPersist(player); // save its final spot & fuel first
     if (player.myCar && mp.vehicles.exists(player.myCar)) player.myCar.destroy();
+});
+
+// /arms <index> - set the ped's arms (clothing component 3) to test which value fits a worn top,
+// then add that "<topDrawable>: <armsIndex>" to TOP_ARMS in packages/inventory.
+mp.events.addCommand('arms', (player, _, num) => {
+    const value = parseInt(num);
+    if (Number.isNaN(value)) return player.outputChatBox('!{#ffb42e}გამოყენება: /arms <index>');
+    try { player.setClothes(3, value, 0, 0); } catch (e) {}
+    player.outputChatBox(`!{#8ed17a}arms (component 3) = ${value}`);
 });
 
 // /livery <number> - change car livery/wrap

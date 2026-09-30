@@ -46,6 +46,7 @@ function warn(player, label, before, after) {
 setInterval(() => {
     mp.players.forEach(player => {
         if (!mp.players.exists(player) || Number(player.health) <= 0) return; // dead: no drain
+        if (player.getVariable('admin:mode') === true) return; // admin mode: no hunger/thirst drain or starvation
         const n = getNeeds(player);
         const hunger = clamp(n.hunger - HUNGER_DRAIN);
         const thirst = clamp(n.thirst - THIRST_DRAIN);

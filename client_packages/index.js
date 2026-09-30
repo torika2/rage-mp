@@ -73,10 +73,42 @@ const MARKET_STORES = [
     [-3038.70, 585.90, 7.91]
 ];
 MARKET_STORES.forEach(p => {
-    mp.blips.new(59, new mp.Vector3(p[0], p[1], p[2]),
+    mp.blips.new(52, new mp.Vector3(p[0], p[1], p[2]),
         { name: '24/7 მაღაზია', scale: 0.7, color: 2, shortRange: true });
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
         { color: [90, 200, 130, 140], visible: true });
+});
+
+// Clothing stores — blips only (visual). Server (packages/clothing) enforces where you can buy;
+// keep coords in sync with STORE_LOCATIONS there.
+const CLOTH_STORES = [
+    [72.30, -1399.10, 29.38], [-703.80, -152.20, 37.42], [-165.00, -302.00, 39.73],
+    [-1193.40, -772.30, 17.32], [-1447.80, -242.50, 49.82], [425.20, -806.50, 29.49],
+    [123.60, -219.50, 54.56], [613.10, 2762.60, 42.09], [1696.50, 4829.30, 42.06],
+    [-3172.50, 1048.10, 20.86], [11.60, 6514.20, 31.88]
+];
+CLOTH_STORES.forEach(p => {
+    mp.blips.new(73, new mp.Vector3(p[0], p[1], p[2]),
+        { name: 'ტანსაცმლის მაღაზია', scale: 0.8, color: 47, shortRange: true });
+    mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
+        { color: [180, 120, 210, 140], visible: true });
+});
+
+// ATMs — blips only (visual). Server (packages/bank) enforces the ATM range; keep coords in sync
+// with ATM_LOCATIONS there.
+const ATM_LOCATIONS = [
+    [-56.82, -92.09, 57.78], [-2072.42, -317.50, 13.33], [-1414.52, -212.93, 46.52],
+    [-1205.00, -324.90, 37.94], [-821.61, -1081.90, 11.13], [-537.91, -854.60, 29.24],
+    [-357.42, -49.61, 49.04], [-284.90, 6224.28, 31.49], [-260.92, -14.30, 49.28],
+    [-201.92, -860.70, 30.22], [24.24, -946.30, 29.36], [89.12, 2.50, 68.31],
+    [112.53, -776.90, 31.42], [129.40, -1292.40, 29.28], [147.32, 232.41, 106.29],
+    [155.00, 6642.30, 31.90], [240.80, 223.30, 106.35], [285.50, 143.50, 104.57],
+    [288.90, -1282.50, 29.66], [295.90, -895.60, 29.22], [1077.70, -776.90, 58.22],
+    [1167.00, 2708.90, 38.01], [1822.60, 3683.10, 34.28], [3011.80, 5940.00, 34.79]
+];
+ATM_LOCATIONS.forEach(p => {
+    mp.blips.new(277, new mp.Vector3(p[0], p[1], p[2]),
+        { name: 'ბანკომატი (ATM)', scale: 0.6, color: 2, shortRange: true });
 });
 
 // On-foot interaction range for shops. Must be <= the server's SHOP_RANGE so anyone
@@ -90,6 +122,14 @@ function nearestShopMode(pos) {
     for (const p of MARKET_STORES) {
         const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
         if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'market';
+    }
+    for (const p of CLOTH_STORES) {
+        const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
+        if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'clothing';
+    }
+    for (const p of ATM_LOCATIONS) {
+        const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
+        if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'atm';
     }
     return null;
 }
@@ -149,8 +189,22 @@ let suppressPauseUntil = 0;
 let pendingDrain = false; // "empty tank first" chosen for the in-flight purchase
 
 function getFuel(veh) {
-    if (fuelByVeh[veh.remoteId] === undefined) fuelByVeh[veh.remoteId] = CFG.fuelMax;
+    if (fuelByVeh[veh.remoteId] === undefined) {
+        // Seed from the server's persisted/synced value if there is one (e.g. a restored car).
+        let synced;
+        try { synced = veh.getVariable('veh:fuel'); } catch (e) {}
+        fuelByVeh[veh.remoteId] = (typeof synced === 'number') ? synced : CFG.fuelMax;
+    }
     return fuelByVeh[veh.remoteId];
+}
+let lastFuelReport = 0;
+function reportFuelWhileDriving(veh, now) {
+    if (now - lastFuelReport < 10000) return; // throttle to every 10s
+    let driver = true;
+    try { driver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
+    if (!driver) return;
+    lastFuelReport = now;
+    mp.events.callRemote('vehicle:fuelReport', Math.round(getFuel(veh)));
 }
 function addFuel(veh, delta) {
     fuelByVeh[veh.remoteId] = Math.max(0, Math.min(CFG.fuelMax, getFuel(veh) + delta));
@@ -209,15 +263,86 @@ function openInventoryUI() {
     if (inventoryBrowser || chatting || fuelUIOpen || adminBrowser) return;
     inventoryBrowser = mp.browsers.new('package://ui/inventory/index.html');
     mp.gui.cursor.show(true, true);
+    startPedPreview();
 }
 
 function closeInventoryUI() {
     if (!inventoryBrowser) return;
+    stopPedPreview();
     suppressPauseUntil = Date.now() + 1500;
     blockPauseControls();
     inventoryBrowser.destroy();
     inventoryBrowser = null;
     mp.gui.cursor.show(false, false);
+}
+
+// ---- Live character preview inside the inventory paperdoll ----
+// A script camera points at the player's real ped while the centre of the inventory
+// UI is transparent, so the ped shows through and reflects whatever is worn — armour,
+// clothing, everything the game already draws on the character. Nudge these four
+// constants in-game if the framing is off (see docs/03-commands.md).
+let pedCam = null;
+let pedFrozen = false;
+let pedAnchor = null; // { x, y, z, heading } captured when the preview opens (ped is frozen)
+// Framing presets so you can actually see the part you are editing. dist = metres in front of the
+// ped; aimZ/camZ = vertical offsets from the ped root (head ≈ +0.6, chest ≈ +0.4, feet ≈ -0.8).
+const PED_CAM_ZONES = {
+    full:  { dist: 3.2, aimZ: 0.10, camZ: 0.35, fov: 42 },
+    head:  { dist: 1.4, aimZ: 0.62, camZ: 0.62, fov: 34 },
+    upper: { dist: 2.2, aimZ: 0.38, camZ: 0.45, fov: 38 },
+    lower: { dist: 2.0, aimZ: -0.35, camZ: -0.05, fov: 40 },
+    shoes: { dist: 1.7, aimZ: -0.75, camZ: -0.40, fov: 40 }
+};
+// Side offset as a FRACTION of the camera distance, so the ped keeps the same screen position at
+// every zoom (a fixed metre offset threw the ped off-screen when zoomed in on the head/feet).
+const PED_CAM = { sideFactor: -0.25 }; // negative = ped sits in the left area, beside the panel
+let pedRotation = 0; // extra heading applied by drag-to-rotate (0 = facing the camera)
+function startPedPreview() {
+    if (pedCam) return;
+    const me = mp.players.local;
+    if (!me) return;
+    try {
+        const pos = me.position;
+        let heading = 0;
+        try { heading = me.getHeading(); } catch (e) {}
+        pedAnchor = { x: pos.x, y: pos.y, z: pos.z, heading };
+        pedRotation = 0;
+        pedCam = mp.cameras.new('default', new mp.Vector3(pos.x, pos.y, pos.z + 0.5), new mp.Vector3(0, 0, 0), PED_CAM_ZONES.full.fov);
+        pedCam.setActive(true);
+        mp.game.cam.renderScriptCams(true, false, 0, true, false);
+        applyPedCamZone('full');
+        if (!me.vehicle) { me.freezePosition(true); pedFrozen = true; }
+    } catch (e) {
+        stopPedPreview();
+    }
+}
+// Re-aim the (frozen) ped camera at a body zone: 'full' | 'head' | 'upper' | 'lower' | 'shoes'.
+function applyPedCamZone(zone) {
+    const z = PED_CAM_ZONES[zone] || PED_CAM_ZONES.full;
+    if (!pedCam || !pedAnchor) return;
+    const rad = pedAnchor.heading * Math.PI / 180;
+    const forwardX = -Math.sin(rad), forwardY = Math.cos(rad); // direction the ped faces
+    const rightX = Math.cos(rad), rightY = Math.sin(rad);      // ped's right-hand side
+    const side = z.dist * PED_CAM.sideFactor; // scales with zoom -> ped stays in the same screen spot
+    try {
+        pedCam.setCoord(pedAnchor.x + forwardX * z.dist, pedAnchor.y + forwardY * z.dist, pedAnchor.z + z.camZ);
+        // Aim past the ped's shoulder so the ped renders in the left-hand window, beside the panel.
+        pedCam.pointAtCoord(pedAnchor.x + rightX * side, pedAnchor.y + rightY * side, pedAnchor.z + z.aimZ);
+        pedCam.setFov(z.fov);
+    } catch (e) {}
+}
+// Spin the (frozen) ped in place; the camera stays put, so you can inspect the back of items.
+function rotatePedPreview(deltaDegrees) {
+    if (!pedAnchor) return;
+    pedRotation = (pedRotation + deltaDegrees) % 360;
+    try { mp.players.local.setHeading(pedAnchor.heading + pedRotation); } catch (e) {}
+}
+function stopPedPreview() {
+    try { mp.game.cam.renderScriptCams(false, false, 0, true, false); } catch (e) {}
+    if (pedCam) { try { pedCam.destroy(); } catch (e) {} pedCam = null; }
+    if (pedAnchor) { try { mp.players.local.setHeading(pedAnchor.heading); } catch (e) {} } // undo drag-rotation
+    if (pedFrozen) { try { mp.players.local.freezePosition(false); } catch (e) {} pedFrozen = false; }
+    pedAnchor = null; pedRotation = 0;
 }
 
 function getCameraCoord() {
@@ -363,6 +488,375 @@ mp.events.add('shop:purchase', (key, qty) => {                        // Buy cli
     setTimeout(requestShopData, 200);                                // refresh balance after purchase
 });
 mp.events.add('shop:close', closeShopUI);
+
+// ---------- CEF clothing store (Binco / Ponsonbys) ----------
+// Browsing + live try-on happen on the client (only the client can read the ped's real drawable
+// counts and preview them). Money, pricing and persistence are server-authoritative. Previews are
+// local-only, so other players never see un-bought clothes; on close we revert to the synced look.
+let clothingBrowser = null;
+let clothingCats = null;   // { key: { key, kind, id, label, base, step } } from the server
+let clothingOrder = [];    // category keys in display order
+let clothingTaxRate = 0;
+let clothingMoney = 0;
+let clothingPreview = {};   // { key: { drawable, texture } } — current on-ped selection
+let clothingOriginal = {};  // { key: { drawable, texture } } — synced look when the UI opened
+let clothingWorn = {};      // { key: { id, label } } — pieces the player currently wears (from inventory)
+let clothingNude = {};      // { key: drawable } — the bare/none value per category (-1 for props)
+let clothingTopArms = { def: 0, nude: 15, map: {} }; // arms (comp 3) matching for tops, from the server
+let clothingSelected = null;
+let clothingCart = [];      // [{ cat, d, t, label, price }] — items queued for checkout
+let clothingReturn = null;  // where to teleport the player back to on close
+// A clean, prop-free spot to stand in while dressing, so store objects never hide the character.
+const DRESSING_SPOT = { x: -1447.805, y: -242.122, z: 49.80, heading: -15.6 };
+// Which body zone to frame the camera on for each category, so the change is clearly visible.
+const CLOTH_ZONE = {
+    hat: 'head', glasses: 'head', mask: 'head',
+    top: 'upper', undershirt: 'upper', torso: 'upper', neck: 'upper', watch: 'upper', bracelet: 'upper', bag: 'upper',
+    pants: 'lower', shoes: 'shoes'
+};
+
+function openClothingUI() {
+    if (clothingBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser) return;
+    const me = mp.players.local;
+    let heading = 0; try { heading = me.getHeading(); } catch (e) {}
+    clothingReturn = { x: me.position.x, y: me.position.y, z: me.position.z, heading };
+    try { me.position = new mp.Vector3(DRESSING_SPOT.x, DRESSING_SPOT.y, DRESSING_SPOT.z); } catch (e) {}
+    try { me.setHeading(DRESSING_SPOT.heading); } catch (e) {}
+    clothingCart = [];
+    startPedPreview(); // anchors the camera at the dressing spot
+    clothingBrowser = mp.browsers.new('package://ui/clothing/index.html');
+    mp.gui.cursor.show(true, true);
+}
+function closeClothingUI() {
+    if (!clothingBrowser) return;
+    revertClothingPreview();
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    clothingBrowser.destroy();
+    clothingBrowser = null;
+    stopPedPreview();
+    if (clothingReturn) { // teleport back to where the player pressed E
+        const me = mp.players.local;
+        try { me.position = new mp.Vector3(clothingReturn.x, clothingReturn.y, clothingReturn.z); } catch (e) {}
+        try { me.setHeading(clothingReturn.heading); } catch (e) {}
+        clothingReturn = null;
+    }
+    clothingCats = null; clothingSelected = null; clothingCart = [];
+    mp.gui.cursor.show(false, false);
+}
+
+// ---- Native helpers for the local ped's clothing variations ----
+function drawableCount(cat) {
+    const me = mp.players.local;
+    try {
+        return cat.kind === 'comp'
+            ? Math.max(1, me.getNumberOfDrawableVariations(cat.id))
+            : Math.max(0, me.getNumberOfPropDrawableVariations(cat.id));
+    } catch (e) { return 1; }
+}
+function textureCount(cat, drawable) {
+    const me = mp.players.local;
+    if (drawable < 0) return 1;
+    try {
+        return cat.kind === 'comp'
+            ? Math.max(1, me.getNumberOfTextureVariations(cat.id, drawable))
+            : Math.max(1, me.getNumberOfPropTextureVariations(cat.id, drawable));
+    } catch (e) { return 1; }
+}
+function readCurrent(cat) {
+    const me = mp.players.local;
+    try {
+        if (cat.kind === 'comp') return { drawable: me.getDrawableVariation(cat.id), texture: me.getTextureVariation(cat.id) };
+        return { drawable: me.getPropIndex(cat.id), texture: me.getPropTextureIndex(cat.id) };
+    } catch (e) { return { drawable: cat.kind === 'comp' ? 0 : -1, texture: 0 }; }
+}
+function applyPreview(cat, sel) {
+    const me = mp.players.local;
+    try {
+        if (cat.kind === 'comp') {
+            me.setComponentVariation(cat.id, Math.max(0, sel.drawable), Math.max(0, sel.texture), 0);
+            if (cat.key === 'top') { // match the arms (comp 3) so sleeves don't clip while previewing
+                const bareTop = clothingNude.top;
+                const arms = (sel.drawable === bareTop)
+                    ? (clothingTopArms.nude != null ? clothingTopArms.nude : 15)
+                    : (clothingTopArms.map && clothingTopArms.map[sel.drawable] != null ? clothingTopArms.map[sel.drawable]
+                        : (clothingTopArms.def != null ? clothingTopArms.def : 0));
+                me.setComponentVariation(3, Math.max(0, arms), 0, 0);
+            }
+        } else if (sel.drawable < 0) me.clearProp(cat.id);
+        else me.setPropIndex(cat.id, sel.drawable, Math.max(0, sel.texture), true);
+    } catch (e) {}
+}
+function revertClothingPreview() {
+    if (!clothingCats) return;
+    clothingOrder.forEach(key => applyPreview(clothingCats[key], clothingOriginal[key] || readCurrent(clothingCats[key])));
+}
+
+// Price mirrors packages/clothing priced(): base+drawable*step, then + government tax.
+function catPrice(cat, drawable) {
+    if (drawable < 0) return { base: 0, tax: 0, total: 0 };
+    const base = Math.round(cat.base + Math.max(0, drawable) * cat.step);
+    const tax = Math.round(base * Math.max(0, clothingTaxRate));
+    return { base, tax, total: base + tax };
+}
+function buildCat(key) {
+    const cat = clothingCats[key];
+    const sel = clothingPreview[key];
+    const price = catPrice(cat, sel.drawable);
+    return {
+        key, label: cat.label, kind: cat.kind,
+        drawable: sel.drawable, count: drawableCount(cat),
+        texture: sel.texture, texCount: textureCount(cat, sel.drawable),
+        price: price.total, tax: price.tax,
+        worn: !!clothingWorn[key]
+    };
+}
+function pushCart() {
+    if (!clothingBrowser) return;
+    const total = clothingCart.reduce((sum, item) => sum + item.price, 0);
+    const view = clothingCart.map(item => ({ label: item.label, price: item.price }));
+    clothingBrowser.execute('window.setCart(' + JSON.stringify(view) + ', ' + total + ')');
+}
+function pushClothingData() {
+    if (!clothingBrowser) return;
+    const categories = clothingOrder.map(buildCat);
+    clothingBrowser.execute('window.setClothingData(' + JSON.stringify({
+        money: clothingMoney, taxRate: clothingTaxRate, selected: clothingSelected, order: clothingOrder, categories
+    }) + ')');
+}
+function pushCategory(key) {
+    if (clothingBrowser) clothingBrowser.execute('window.updateCategory(' + JSON.stringify(buildCat(key)) + ')');
+}
+
+mp.events.add('clothing:ui:ready', () => mp.events.callRemote('clothing:requestState'));
+mp.events.add('clothing:state', (json) => {
+    const data = JSON.parse(json);
+    clothingMoney = data.money || 0;
+    clothingTaxRate = data.taxRate || 0;
+    clothingWorn = data.worn || {};
+    clothingNude = data.nude || {};
+    clothingTopArms = data.topArms || { def: 0, nude: 15, map: {} };
+    clothingCats = {}; clothingOrder = [];
+    (data.categories || []).forEach(cat => { clothingCats[cat.key] = cat; clothingOrder.push(cat.key); });
+    // Snapshot the current (synced) look, then start previewing from there.
+    clothingOriginal = {}; clothingPreview = {};
+    clothingOrder.forEach(key => {
+        const current = readCurrent(clothingCats[key]);
+        clothingOriginal[key] = { drawable: current.drawable, texture: current.texture };
+        clothingPreview[key] = { drawable: current.drawable, texture: current.texture };
+    });
+    clothingSelected = clothingOrder[0] || null;
+    if (clothingSelected) applyPedCamZone(CLOTH_ZONE[clothingSelected] || 'full');
+    pushClothingData();
+    pushCart();
+});
+mp.events.add('clothing:ui:select', (key) => {
+    if (!clothingCats || !clothingCats[key]) return;
+    clothingSelected = key;
+    applyPedCamZone(CLOTH_ZONE[key] || 'full');
+    if (clothingBrowser) clothingBrowser.execute('window.setSelected(' + JSON.stringify(key) + ')');
+});
+mp.events.add('clothing:ui:nav', (key, deltaDrawable) => {
+    if (!clothingCats || !clothingCats[key]) return;
+    const cat = clothingCats[key];
+    const count = drawableCount(cat);
+    const min = cat.kind === 'prop' ? -1 : 0;   // props can be "none" (-1)
+    const range = count - min;
+    if (range <= 0) return;
+    let next = clothingPreview[key].drawable + Number(deltaDrawable);
+    next = ((next - min) % range + range) % range + min; // wrap around
+    clothingPreview[key] = { drawable: next, texture: 0 };
+    applyPreview(cat, clothingPreview[key]);
+    pushCategory(key);
+});
+mp.events.add('clothing:ui:tex', (key, texIndex) => {
+    if (!clothingCats || !clothingCats[key]) return;
+    const cat = clothingCats[key];
+    const max = textureCount(cat, clothingPreview[key].drawable);
+    clothingPreview[key].texture = Math.max(0, Math.min(max - 1, Number(texIndex)));
+    applyPreview(cat, clothingPreview[key]);
+    pushCategory(key);
+});
+mp.events.add('clothing:ui:add', (key) => {
+    if (!clothingCats || !clothingCats[key]) return;
+    const cat = clothingCats[key];
+    const sel = clothingPreview[key];
+    if (sel.drawable < 0) return; // "none" isn't a buyable item
+    const price = catPrice(cat, sel.drawable).total;
+    const label = cat.label + ' #' + (sel.drawable + 1) + (sel.texture ? '/' + (sel.texture + 1) : '');
+    clothingCart.push({ cat: key, d: sel.drawable, t: sel.texture, label, price });
+    pushCart();
+});
+mp.events.add('clothing:ui:cartRemove', (index) => {
+    index = Number(index);
+    if (index >= 0 && index < clothingCart.length) { clothingCart.splice(index, 1); pushCart(); }
+});
+mp.events.add('clothing:ui:checkout', () => {
+    if (!clothingCart.length) return;
+    mp.events.callRemote('clothing:buyCart', JSON.stringify(clothingCart.map(item => ({ cat: item.cat, d: item.d, t: item.t }))));
+});
+mp.events.add('clothing:ui:none', (key) => {
+    if (!clothingCats || !clothingCats[key]) return;
+    if (clothingWorn[key]) { mp.events.callRemote('clothing:unequip', key); return; } // worn -> take it off into inventory
+    // Nothing worn: just set this slot bare in the preview (and keep it bare on close).
+    const cat = clothingCats[key];
+    const bare = cat.kind === 'prop' ? -1 : (clothingNude[key] != null ? clothingNude[key] : 0);
+    clothingPreview[key] = { drawable: bare, texture: 0 };
+    clothingOriginal[key] = { drawable: bare, texture: 0 };
+    applyPreview(cat, clothingPreview[key]);
+    pushCategory(key);
+});
+mp.events.add('clothing:unequipResult', (json) => {
+    const result = JSON.parse(json);
+    clothingWorn = result.worn || {};
+    const key = result.cat;
+    if (result.full) { notify('ინვენტარი სავსეა — ვერ მოხსნით.'); }
+    if (result.ok && clothingCats && clothingCats[key]) {
+        // Reflect the removal on the preview ped and make it the look kept on close.
+        const cat = clothingCats[key];
+        clothingPreview[key] = { drawable: cat.kind === 'prop' ? -1 : 0, texture: 0 };
+        clothingOriginal[key] = { drawable: clothingPreview[key].drawable, texture: clothingPreview[key].texture };
+        applyPreview(cat, clothingPreview[key]);
+    }
+    if (key) pushCategory(key);
+});
+mp.events.add('clothing:cartResult', (json) => {
+    const result = JSON.parse(json);
+    clothingMoney = result.money != null ? result.money : clothingMoney;
+    if (result.ok) {
+        closeClothingUI(); // purchase done -> close the shop (reverts the try-on & teleports back)
+        return;
+    }
+    // Failed (can't afford / no room): keep the shop open, just refresh the balance.
+    if (clothingBrowser) clothingBrowser.execute('window.setMoney(' + clothingMoney + ')');
+});
+mp.events.add('clothing:ui:close', closeClothingUI);
+mp.events.add('clothing:ui:rotate', (deltaPixels) => rotatePedPreview(Number(deltaPixels) * 0.5)); // drag on the ped to spin it
+// Server (inventory) echo so the wearer always sees their own props (some builds don't sync server-side props).
+mp.events.add('inventory:selfProp', (propId, drawable, texture) => {
+    const me = mp.players.local;
+    try { if (Number(drawable) < 0) me.clearProp(Number(propId)); else me.setPropIndex(Number(propId), Number(drawable), Number(texture) || 0, true); } catch (e) {}
+});
+
+// ---------- Director Mode (super admin) ----------
+let directorBrowser = null;
+let noclip = false;
+function isSuperAdmin() { return mp.players.local.getVariable('director:super') === true; }
+function openDirector() {
+    // Authorization is enforced server-side (both /director and the F6 path go through the server),
+    // so we don't re-check the super-admin flag here — that caused Director to silently not open.
+    if (directorBrowser || adminBrowser) return;
+    directorBrowser = mp.browsers.new('package://ui/director/index.html');
+    mp.gui.cursor.show(true, true);
+}
+function closeDirector() {
+    if (!directorBrowser) return;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    directorBrowser.destroy();
+    directorBrowser = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('director:ui:toggle', () => (directorBrowser ? closeDirector() : openDirector()));
+mp.events.add('director:ui:ready', () => { if (directorBrowser) directorBrowser.execute('window.setNoclip(' + noclip + ')'); });
+mp.events.add('director:ui:close', closeDirector);
+mp.events.add('director:ui:time', (h, m) => mp.events.callRemote('director:setTime', Number(h), Number(m)));
+mp.events.add('director:ui:weather', (w) => mp.events.callRemote('director:setWeather', String(w)));
+mp.events.add('director:ui:model', (name) => mp.events.callRemote('director:setModel', String(name)));
+mp.events.add('director:ui:coords', (x, y, z) => mp.events.callRemote('director:teleport', Number(x), Number(y), Number(z)));
+mp.events.add('director:ui:waypoint', () => teleportToWaypoint());
+mp.events.add('director:ui:noclip', () => { toggleNoclip(); if (directorBrowser) directorBrowser.execute('window.setNoclip(' + noclip + ')'); });
+
+function teleportToWaypoint() {
+    const me = mp.players.local;
+    let blip = 0;
+    try { blip = mp.game.ui.getFirstBlipInfoId(8); } catch (e) {}
+    if (!blip || !mp.game.ui.doesBlipExist(blip)) { notify('არ არის მონიშნული waypoint.'); return; }
+    const coord = mp.game.ui.getBlipInfoIdCoord(blip);
+    me.position = new mp.Vector3(coord.x, coord.y, 100.0);
+    setTimeout(() => {
+        let gz = 0, ok = false;
+        try {
+            const res = mp.game.gameplay.getGroundZFor3dCoord(coord.x, coord.y, 1000.0, 0.0, false);
+            if (Array.isArray(res)) { ok = res[0]; gz = res[1]; } else if (typeof res === 'number') { ok = true; gz = res; }
+        } catch (e) {}
+        if (ok && gz) me.position = new mp.Vector3(coord.x, coord.y, gz + 1.0);
+    }, 400);
+}
+function toggleNoclip() {
+    noclip = !noclip;
+    const me = mp.players.local;
+    try { me.freezePosition(noclip); } catch (e) {}
+    try { me.setInvincible(noclip); } catch (e) {}
+    if (!noclip) { try { me.setCollision(true, true); } catch (e) {} }
+    notify(noclip ? 'Noclip ჩართულია (WASD, Space/Ctrl, Shift სწრაფად).' : 'Noclip გამორთულია.');
+}
+mp.events.add('render', () => {
+    if (!noclip) return;
+    const me = mp.players.local;
+    try { me.setCollision(false, false); } catch (e) {}
+    if (directorBrowser) return; // panel open: hold position, don't fly
+    const c = mp.game.controls;
+    const rot = mp.game.cam.getGameplayCamRot(2);
+    const yaw = rot.z * Math.PI / 180, pitch = rot.x * Math.PI / 180;
+    const cosP = Math.cos(pitch);
+    const fx = -Math.sin(yaw) * cosP, fy = Math.cos(yaw) * cosP, fz = Math.sin(pitch);
+    const rx = Math.cos(yaw), ry = Math.sin(yaw);
+    let dx = 0, dy = 0, dz = 0;
+    if (c.isControlPressed(0, 32)) { dx += fx; dy += fy; dz += fz; } // W
+    if (c.isControlPressed(0, 33)) { dx -= fx; dy -= fy; dz -= fz; } // S
+    if (c.isControlPressed(0, 34)) { dx -= rx; dy -= ry; }           // A
+    if (c.isControlPressed(0, 35)) { dx += rx; dy += ry; }           // D
+    if (c.isControlPressed(0, 22)) { dz += 1; }                      // Space up
+    if (c.isControlPressed(0, 36)) { dz -= 1; }                      // Ctrl down
+    const speed = c.isControlPressed(0, 21) ? 2.4 : 0.8;            // Shift = faster
+    if (dx || dy || dz) {
+        const pos = me.position;
+        me.position = new mp.Vector3(pos.x + dx * speed, pos.y + dy * speed, pos.z + dz * speed);
+    }
+});
+mp.keys.bind(0x75, false, () => { // F6 — open/close Director Mode (super admins only)
+    if (chatting || adminBrowser) return;
+    if (directorBrowser) { closeDirector(); return; }
+    mp.events.callRemote('director:open'); // server verifies super-admin, then opens the panel
+});
+
+// ---------- Phone: Up arrow takes it out, Down arrow puts it away ----------
+let phoneOut = false;
+const TASK_USE_MOBILE_PHONE = '0xBE472B6D2FE10B7C';
+function setPhone(out) {
+    if (out === phoneOut) return;
+    phoneOut = out;
+    try { mp.game.invoke(TASK_USE_MOBILE_PHONE, mp.players.local.handle, out); } catch (e) {}
+    notify(out ? 'ტელეფონი აღებულია (↓ დასამალად).' : 'ტელეფონი დაიმალა.');
+}
+function anyModalOpen() {
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser || fuelUIOpen);
+}
+mp.keys.bind(0x26, true, () => { if (!anyModalOpen()) setPhone(true); });  // Up arrow — take phone
+mp.keys.bind(0x28, true, () => { if (!chatting) setPhone(false); });        // Down arrow — put phone away
+
+// ---------- CEF bank / ATM ----------
+let bankBrowser = null;
+function openBankUI() {
+    if (bankBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser || clothingBrowser || directorBrowser) return;
+    bankBrowser = mp.browsers.new('package://ui/bank/index.html');
+    mp.gui.cursor.show(true, true);
+}
+function closeBankUI() {
+    if (!bankBrowser) return;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    bankBrowser.destroy();
+    bankBrowser = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('bank:ui:ready', () => mp.events.callRemote('bank:request'));
+mp.events.add('bank:data', (json) => { if (bankBrowser) bankBrowser.execute('window.setBankData(' + json + ')'); });
+mp.events.add('bank:ui:deposit', (amount) => mp.events.callRemote('bank:deposit', Number(amount)));
+mp.events.add('bank:ui:withdraw', (amount) => mp.events.callRemote('bank:withdraw', Number(amount)));
+mp.events.add('bank:ui:transfer', (target, amount) => mp.events.callRemote('bank:transfer', String(target), Number(amount)));
+mp.events.add('bank:ui:close', closeBankUI);
 
 function sendVehicleMenuState() {
     const vehicle = vehicleMenuVehicle;
@@ -671,14 +1165,16 @@ function findNearDrop() {
 }
 
 mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
-    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser) return;
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser) return;
     if (fuelUIOpen) return;
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
     const drop = findNearDrop();
     if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }
     if (!mp.players.local.vehicle) {
         const mode = nearestShopMode(mp.players.local.position);
-        if (mode) openShopUI(mode);
+        if (mode === 'clothing') openClothingUI();
+        else if (mode === 'atm') openBankUI();
+        else if (mode) openShopUI(mode);
     }
 });
 mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
@@ -686,18 +1182,22 @@ mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
     if (adminBrowser) closeAdminPanel(true);
     else if (fuelUIOpen) closeFuelUI();
     else if (shopBrowser) closeShopUI();               // closes shop + its paired inventory
+    else if (clothingBrowser) closeClothingUI();
+    else if (directorBrowser) closeDirector();
+    else if (bankBrowser) closeBankUI();
     else if (inventoryBrowser) closeInventoryUI();
     else if (vehicleMenuBrowser) closeVehicleMenu();
 });
 
 // "Press E to shop" prompt when on foot at an Ammu-Nation / 24-7 marker.
 mp.events.add('render', () => {
-    if (shopBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
+    if (shopBrowser || clothingBrowser || bankBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
     if (mp.players.local.vehicle) return;
     const mode = nearestShopMode(mp.players.local.position);
     if (!mode) return;
-    const label = mode === 'weapons' ? 'Ammu-Nation' : '24/7 Market';
-    mp.game.graphics.drawText('Press E to shop  (' + label + ')', [0.5, 0.86], {
+    const label = mode === 'weapons' ? 'Ammu-Nation' : mode === 'clothing' ? 'Clothing Store' : mode === 'atm' ? 'ATM' : '24/7 Market';
+    const prompt = mode === 'atm' ? 'Press E for ATM' : 'Press E to shop  (' + label + ')';
+    mp.game.graphics.drawText(prompt, [0.5, 0.86], {
         font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
     });
 });
@@ -957,7 +1457,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || directorBrowser || bankBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -1023,6 +1523,7 @@ mp.events.add('render', () => {
             fuel = addFuel(veh, -(CFG.fuelIdleDrain + CFG.fuelDriveDrain * rpm) * eff * dt);
             if (fuel <= 0) { veh.setEngineOn(false, true, true); engineOn = false; }
         }
+        reportFuelWhileDriving(veh, now); // persist fuel server-side so it survives relogs/restarts
 
         const octane = Math.round(octaneProfile(veh).rating); // blended octane rating
 
@@ -1213,7 +1714,10 @@ mp.events.add('admin:panel:open', () => {
 mp.events.add('admin:panel:hide', () => closeAdminPanel(false));
 mp.events.add('inventory:close', closeInventoryUI);
 // Inventory data flow: UI ready -> pull items; server pushes -> render; use/drop -> server.
-mp.events.add('inventory:uiReady', () => mp.events.callRemote('inventory:request'));
+mp.events.add('inventory:uiReady', () => {
+    mp.events.callRemote('inventory:request');
+    if (inventoryBrowser && pedCam) inventoryBrowser.execute('window.setPedLive && window.setPedLive(true)');
+});
 mp.events.add('inventory:data', (json) => { if (inventoryBrowser) inventoryBrowser.execute(`window.setInventory(${json})`); });
 mp.events.add('inventory:use', (id, index) => mp.events.callRemote('inventory:use', String(id), Number(index)));
 mp.events.add('inventory:drop', (id, index, amount) => mp.events.callRemote('inventory:drop', String(id), Number(index), Number(amount) || 0));

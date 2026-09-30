@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Director Mode</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c;
+    --accent: #c07ad0;
+    --text: #f3f0e8;
+    --muted: #aaa79e;
+    --line: rgba(255, 255, 255, .12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { color: var(--text); background: transparent; user-select: none; display: flex; align-items: center; justify-content: center; }
+  button, input { font: inherit; color: inherit; }
+  .panel { width: min(560px, 92vw); max-height: 92vh; overflow: auto; background: linear-gradient(180deg, #14121a, #0e0d12); border: 1px solid rgba(192, 122, 208, .5); border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, .55); animation: lift .18s ease-out; }
+  .head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .head h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .head .tag { font-size: 10px; color: var(--accent); border: 1px solid rgba(192, 122, 208, .5); border-radius: 6px; padding: 2px 6px; }
+  .head .spacer { flex: 1; }
+  .close { width: 32px; height: 32px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--muted); border-radius: 8px; font-size: 17px; cursor: pointer; }
+  .close:hover { color: var(--accent); border-color: var(--accent); }
+  .sec { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .sec:last-child { border-bottom: 0; }
+  .sec h2 { margin: 0 0 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input[type=text], input[type=number] { flex: 1; min-width: 60px; padding: 9px 10px; background: rgba(0, 0, 0, .3); border: 1px solid var(--line); border-radius: 8px; }
+  input:focus { outline: none; border-color: var(--accent); }
+  button.act { padding: 9px 14px; border: 1px solid rgba(242, 193, 92, .5); border-radius: 8px; background: rgba(242, 193, 92, .12); color: var(--gold); font-weight: 700; cursor: pointer; }
+  button.act:hover { background: rgba(242, 193, 92, .24); }
+  button.chip { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .04); color: var(--text); cursor: pointer; font-size: 12px; }
+  button.chip:hover { border-color: var(--accent); color: var(--accent); }
+  button.chip.ghost { color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .noclip-btn { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--text); cursor: pointer; font-weight: 700; }
+  .noclip-btn.on { border-color: #5fd19b; background: rgba(95, 209, 155, .16); color: #5fd19b; }
+  .hint { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  @keyframes lift { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="head"><h1>Director Mode</h1><span class="tag">SUPER ADMIN</span><div class="spacer"></div><button class="close" id="close">×</button></div>
+
+  <div class="sec">
+    <h2>მოდელი / სკინი</h2>
+    <div class="row">
+      <input type="text" id="model" placeholder="მაგ. a_m_y_hipster_01">
+      <button class="act" id="modelSet">დააყენე</button>
+      <button class="chip ghost" id="modelReset">reset</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="chip" data-model="a_m_y_business_01">Business</button>
+      <button class="chip" data-model="a_f_y_hipster_02">Hipster</button>
+      <button class="chip" data-model="s_m_y_cop_01">Cop</button>
+      <button class="chip" data-model="s_m_m_doctor_01">Doctor</button>
+      <button class="chip" data-model="u_m_y_zombie_01">Zombie</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>დრო</h2>
+    <div class="row">
+      <input type="number" id="hour" min="0" max="23" value="12" placeholder="სთ">
+      <input type="number" id="minute" min="0" max="59" value="0" placeholder="წთ">
+      <button class="act" id="timeSet">დააყენე</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="chip" data-time="7">დილა</button>
+      <button class="chip" data-time="12">დღე</button>
+      <button class="chip" data-time="19">საღამო</button>
+      <button class="chip" data-time="0">ღამე</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>ამინდი</h2>
+    <div class="grid" id="weather"></div>
+  </div>
+
+  <div class="sec">
+    <h2>ტელეპორტი</h2>
+    <div class="row">
+      <button class="act" id="wp">Waypoint-ზე</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input type="number" id="tx" placeholder="X" step="any">
+      <input type="number" id="ty" placeholder="Y" step="any">
+      <input type="number" id="tz" placeholder="Z" step="any">
+      <button class="act" id="tgo">Go</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Noclip</h2>
+    <button class="noclip-btn" id="noclip">Noclip: გამორთული</button>
+    <div class="hint">ჩართვის შემდეგ დახურე ეს პანელი (Esc) და იფრინე: WASD, Space/Ctrl სიმაღლე, Shift სწრაფად, თაგვით მიმართულება.</div>
+  </div>
+</div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const el = (id) => document.getElementById(id);
+
+  el('close').onclick = () => trigger('director:ui:close');
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); trigger('director:ui:close'); } });
+
+  el('modelSet').onclick = () => { const v = el('model').value.trim(); if (v) trigger('director:ui:model', v); };
+  el('modelReset').onclick = () => trigger('director:ui:model', 'reset');
+  document.querySelectorAll('[data-model]').forEach(b => b.onclick = () => trigger('director:ui:model', b.getAttribute('data-model')));
+
+  el('timeSet').onclick = () => trigger('director:ui:time', parseInt(el('hour').value) || 0, parseInt(el('minute').value) || 0);
+  document.querySelectorAll('[data-time]').forEach(b => b.onclick = () => { el('hour').value = b.getAttribute('data-time'); el('minute').value = 0; trigger('director:ui:time', parseInt(b.getAttribute('data-time')), 0); });
+
+  const WEATHERS = ['EXTRASUNNY', 'CLEAR', 'CLOUDS', 'OVERCAST', 'RAIN', 'THUNDER', 'FOGGY', 'SMOG', 'SNOWLIGHT', 'BLIZZARD', 'CLEARING', 'XMAS'];
+  const weatherBox = el('weather');
+  WEATHERS.forEach(w => { const b = document.createElement('button'); b.className = 'chip'; b.textContent = w; b.onclick = () => trigger('director:ui:weather', w); weatherBox.appendChild(b); });
+
+  el('wp').onclick = () => trigger('director:ui:waypoint');
+  el('tgo').onclick = () => {
+    const x = parseFloat(el('tx').value), y = parseFloat(el('ty').value), z = parseFloat(el('tz').value);
+    if (![x, y, z].some(Number.isNaN)) trigger('director:ui:coords', x, y, z);
+  };
+
+  el('noclip').onclick = () => trigger('director:ui:noclip');
+  window.setNoclip = (on) => {
+    const b = el('noclip');
+    b.classList.toggle('on', !!on);
+    b.textContent = 'Noclip: ' + (on ? 'ჩართული' : 'გამორთული');
+  };
+
+  if (RAGE) mp.trigger('director:ui:ready');
+</script>
+</body>
+</html>

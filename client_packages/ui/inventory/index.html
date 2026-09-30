@@ -36,11 +36,12 @@
     grid-template-rows: 58px minmax(0, 1fr);
     border-top: 1px solid rgba(242, 193, 92, .72);
     color: var(--text);
-    background: linear-gradient(112deg, rgba(16, 18, 20, .96), rgba(15, 17, 19, .96) 52%, rgba(18, 20, 22, .96));
+    /* No panel-wide background: the equipment column stays see-through so the live
+       ped can render behind it. Each other region paints its own backdrop below. */
     box-shadow: 0 0 24px rgba(242, 193, 92, .08);
     animation: lift .2s ease-out;
   }
-  .topbar { display: flex; align-items: center; gap: 24px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+  .topbar { display: flex; align-items: center; gap: 24px; padding: 0 22px; border-bottom: 1px solid var(--line); background: linear-gradient(112deg, #101214, #121416); }
   .key-label { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
   kbd { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid var(--gold-soft); color: var(--gold); background: rgba(242, 193, 92, .1); font-weight: 700; }
   .active-tab { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 2px solid var(--gold); color: var(--text); font-size: 14px; font-weight: 700; }
@@ -49,16 +50,21 @@
   .close:hover { color: var(--gold); border-color: var(--gold-soft); }
   .columns { min-height: 0; display: grid; grid-template-columns: minmax(230px, .78fr) minmax(360px, 1.08fr) minmax(310px, 1fr); }
   .column { min-width: 0; min-height: 0; padding: 22px 24px; }
-  .equipment { display: flex; flex-direction: column; border-right: 1px solid var(--line); }
-  .personal { overflow: auto; border-right: 1px solid var(--line); }
-  .storage { overflow: auto; }
+  .equipment { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: transparent; }
+  .personal { overflow: auto; border-right: 1px solid var(--line); background: linear-gradient(180deg, #101214, #0e1012); }
+  .storage { overflow: auto; background: linear-gradient(180deg, #101214, #0e1012); }
+  .equipment .section-head { text-shadow: 0 1px 4px rgba(0, 0, 0, .85); }
   .section-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
   h1, h2, p { margin: 0; }
   h1, h2 { font-size: 14px; font-weight: 700; }
   .sub { margin-top: 4px; color: var(--muted); font-size: 11px; }
   .capacity { color: var(--gold); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .paperdoll { position: relative; flex: 1; min-height: 290px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(56px, 1fr)); align-items: center; justify-items: center; padding: 4px 0 10px; }
-  .figure { position: absolute; inset: 6% 18% 4%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; opacity: .28; pointer-events: none; }
+  /* Flanking paperdoll: gear columns on either side, the live ped in the middle. */
+  .paperdoll { position: relative; flex: 1; min-height: 340px; display: grid; grid-template-columns: auto minmax(94px, 1fr) auto; align-items: stretch; gap: 6px; padding: 4px 0 10px; }
+  .gear-col { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: space-around; gap: 8px; padding: 12px 8px; background: linear-gradient(180deg, rgba(16, 18, 20, .84), rgba(14, 16, 18, .72)); border: 1px solid rgba(255, 255, 255, .05); border-radius: 12px; }
+  .ped-view { position: relative; z-index: 1; display: grid; place-items: center; border-left: 1px dashed rgba(242, 193, 92, .16); border-right: 1px dashed rgba(242, 193, 92, .16); }
+  .paperdoll.live .ped-view .figure { display: none; } /* hide the drawn stand-in once the real ped shows through */
+  .figure { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; opacity: .28; pointer-events: none; }
   .figure-head { width: 32px; height: 39px; border: 1px solid rgba(238, 235, 224, .82); border-radius: 46% 46% 42% 42%; }
   .figure-neck { width: 15px; height: 12px; border-left: 1px solid rgba(238, 235, 224, .5); border-right: 1px solid rgba(238, 235, 224, .5); }
   .figure-body { position: relative; width: 76px; height: 105px; border: 1px solid rgba(238, 235, 224, .72); border-radius: 30px 30px 16px 16px; }
@@ -70,7 +76,7 @@
   .gear-slot { z-index: 1; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; text-align: center; }
   .gear-orb { width: 42px; height: 42px; flex: none; display: grid; place-items: center; border: 1px solid rgba(242, 193, 92, .72); border-radius: 50%; background: rgba(18, 20, 22, .3); box-shadow: inset 0 0 10px rgba(242, 193, 92, .07), 0 0 13px rgba(242, 193, 92, .12); }
   .gear-orb::after { width: 6px; height: 6px; border: 1px solid rgba(242, 193, 92, .9); border-radius: 50%; content: ""; }
-  .quickbar { padding-top: 12px; border-top: 1px solid var(--line); }
+  .quickbar { margin-top: 12px; padding: 12px; border-top: 1px solid var(--line); background: linear-gradient(180deg, rgba(16, 18, 20, .84), rgba(14, 16, 18, .72)); border-radius: 12px; }
   .quickbar-title { margin-bottom: 9px; color: var(--gold); font-size: 11px; }
   .quick-slots { display: grid; grid-template-columns: repeat(4, var(--slot-size)); gap: 8px; }
   .slot-grid { display: grid; grid-template-columns: repeat(5, var(--slot-size)); gap: 5px; justify-content: start; }
@@ -89,7 +95,7 @@
     .storage { grid-column: 2; border-top: 1px solid var(--line); }
     .inventory { grid-template-rows: 52px minmax(0, 1fr); }
     .column { padding: 16px; }
-    .paperdoll { min-height: 174px; grid-template-rows: repeat(4, minmax(48px, 1fr)); }
+    .paperdoll { min-height: 260px; }
   }
   @media (max-width: 640px) {
     .veil { padding: 0; }
@@ -118,20 +124,26 @@
     <div class="columns">
       <section class="column equipment" aria-label="აღჭურვილობა">
         <div class="section-head"><div><h1>აღჭურვილობა</h1><p class="sub">პერსონაჟის ნივთები</p></div></div>
-        <div class="paperdoll" aria-hidden="true">
-          <div class="figure"><div class="figure-head"></div><div class="figure-neck"></div><div class="figure-body"></div><div class="figure-legs"><i></i><i></i></div></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>ნიღაბი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>ქუდი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>სათვალე</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>ზედა ტანსაცმელი</span></div>
-          <div class="gear-slot" data-equip="vest"><span class="gear-orb"></span><span>ჟილეტი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>ხელთათმანი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>შარვალი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>საათი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>აქსესუარი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>ფეხსაცმელი</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>ჩანთა</span></div>
-          <div class="gear-slot"><span class="gear-orb"></span><span>აქსესუარი</span></div>
+        <div class="paperdoll">
+          <div class="gear-col gear-col-left">
+            <div class="gear-slot" data-equip="hat"><span class="gear-orb"></span><span>ქუდი</span></div>
+            <div class="gear-slot" data-equip="mask"><span class="gear-orb"></span><span>ნიღაბი</span></div>
+            <div class="gear-slot" data-equip="top"><span class="gear-orb"></span><span>ზედა ტანსაცმელი</span></div>
+            <div class="gear-slot" data-equip="undershirt"><span class="gear-orb"></span><span>მაისური</span></div>
+            <div class="gear-slot" data-equip="pants"><span class="gear-orb"></span><span>შარვალი</span></div>
+            <div class="gear-slot" data-equip="shoes"><span class="gear-orb"></span><span>ფეხსაცმელი</span></div>
+          </div>
+          <div class="ped-view" aria-hidden="true">
+            <div class="figure"><div class="figure-head"></div><div class="figure-neck"></div><div class="figure-body"></div><div class="figure-legs"><i></i><i></i></div></div>
+          </div>
+          <div class="gear-col gear-col-right">
+            <div class="gear-slot" data-equip="glasses"><span class="gear-orb"></span><span>სათვალე</span></div>
+            <div class="gear-slot" data-equip="vest"><span class="gear-orb"></span><span>ჟილეტი</span></div>
+            <div class="gear-slot" data-equip="watch"><span class="gear-orb"></span><span>საათი</span></div>
+            <div class="gear-slot" data-equip="neck"><span class="gear-orb"></span><span>აქსესუარი</span></div>
+            <div class="gear-slot" data-equip="bag"><span class="gear-orb"></span><span>ჩანთა</span></div>
+            <div class="gear-slot" data-equip="bracelet"><span class="gear-orb"></span><span>სამაჯური</span></div>
+          </div>
         </div>
         <div class="quickbar">
           <div class="quickbar-title">სწრაფი წვდომა</div>
@@ -195,6 +207,12 @@
 </div>
 <script>
   const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  // The client turns this on once the ped-preview camera is live, so the drawn
+  // stand-in figure hides and the centre viewport becomes a see-through window.
+  window.setPedLive = function (on) {
+    const paperdoll = document.querySelector('.paperdoll');
+    if (paperdoll) paperdoll.classList.toggle('live', !!on);
+  };
   document.getElementById('closeInventory').onclick = () => {
     if (RAGE) mp.trigger('inventory:close');
   };
@@ -215,7 +233,12 @@
     knife: 'knife', bat: 'bat', armor: 'vest'
   };
   const INV_ICONS = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹' };
+  // Clothing item emoji, keyed by category (item id is cloth_<cat>_<d>_<t>).
+  const CLOTH_ICONS = { top:'👕', undershirt:'👔', torso:'🧥', pants:'👖', shoes:'👟', bag:'🎒', mask:'🎭', neck:'📿', hat:'🧢', glasses:'🕶️', watch:'⌚', bracelet:'💍' };
+  const clothCatOf = (id) => (String(id).indexOf('cloth_') === 0 ? String(id).split('_')[1] : null);
   const iconFor = (id) => {
+    const cat = clothCatOf(id);
+    if (cat) return CLOTH_ICONS[cat] || '👕';
     const img = WEAPON_IMG[id] || (String(id).startsWith('ammo_') ? 'ammo' : null);
     return img ? '<img class="inv-wicon" src="../shop/icons/' + img + '.svg" alt="">' : (INV_ICONS[id] || '📦');
   };
@@ -242,6 +265,7 @@
       '.gear-slot[data-equip] .gear-orb{position:relative;}' +
       '.gear-slot.worn .gear-orb{width:52px;height:52px;border-color:#5aa9ff;background:rgba(90,169,255,.12);box-shadow:0 0 14px rgba(90,169,255,.3);}' +
       '.gear-slot.worn .gear-orb::after{display:none;}' +
+      '.gear-slot.worn .gear-orb{font-size:24px;line-height:1;}' +
       '.gear-slot.worn .gear-orb .inv-wicon{width:62%;height:62%;object-fit:contain;}' +
       '.gear-slot .gear-val{position:absolute;right:-6px;bottom:-4px;font-size:10px;font-weight:700;color:#5aa9ff;text-shadow:0 1px 2px #000;}' +
       '.gear-slot.drag-over .gear-orb{border-color:var(--gold);box-shadow:0 0 14px rgba(242,193,92,.35);}' +
@@ -271,9 +295,18 @@
   ];
   allSlots().forEach(s => s.classList.add('inv-slot'));
 
-  // ---- Equipment (paperdoll): ჟილეტი holds the worn armour vest ----
+  // ---- Equipment (paperdoll): ჟილეტი holds the worn armour vest; the other slots hold clothing ----
   const vestSlot = document.querySelector('.gear-slot[data-equip="vest"]');
   let wornVest = null;
+  let wornClothing = {}; // { cat: { id, label } } currently worn
+  // Clothing slots = every equip slot except the vest. Clicking a worn one takes it off.
+  const clothingSlots = Array.from(document.querySelectorAll('.gear-slot[data-equip]'))
+    .filter(slot => slot.getAttribute('data-equip') !== 'vest');
+  clothingSlots.forEach(slot => {
+    const cat = slot.getAttribute('data-equip');
+    slot.onclick = () => { if (justDragged || !wornClothing[cat]) return; if (RAGE) mp.trigger('inventory:unequip', cat, -1); };
+    slot.oncontextmenu = (e) => { e.preventDefault(); slot.onclick(); };
+  });
   function renderEquipment(eq) {
     wornVest = eq.vest || null;
     const orb = vestSlot.querySelector('.gear-orb');
@@ -282,6 +315,16 @@
     vestSlot.title = wornVest
       ? wornVest.label + ' — ' + wornVest.armour + '%  (click / drag to inventory: take off · only when undamaged)'
       : 'ჟილეტი — drag armour here to wear it';
+    // Worn clothing per category slot.
+    wornClothing = (eq.clothing || {});
+    clothingSlots.forEach(slot => {
+      const cat = slot.getAttribute('data-equip');
+      const worn = wornClothing[cat];
+      const gearOrb = slot.querySelector('.gear-orb');
+      slot.classList.toggle('worn', !!worn);
+      gearOrb.innerHTML = worn ? iconFor(worn.id) : '';
+      slot.title = worn ? worn.label + '  (დააჭირე გასახდელად)' : (slot.querySelector('span:last-child').textContent + ' — ჩაიცვი ინვენტარიდან');
+    });
   }
   vestSlot.onclick = () => { if (justDragged || !wornVest) return; if (RAGE) mp.trigger('inventory:unequip', 'vest', -1); };
   vestSlot.oncontextmenu = (e) => { e.preventDefault(); vestSlot.onclick(); };
@@ -296,8 +339,14 @@
     const storage = document.querySelector('.column.storage');
     const bag = document.querySelector('.personal .bag');
     if (storage && columns) {
-      storage.classList.toggle('inv-hidden', !data.vehicleOpen);
-      columns.classList.toggle('no-storage', !data.vehicleOpen);
+      const atVehicle = !!data.vehicleOpen;
+      storage.classList.toggle('inv-hidden', !atVehicle);
+      columns.classList.toggle('no-storage', !atVehicle);
+      // Set the tracks explicitly so a hidden storage column leaves no empty
+      // (see-through) grid track on the right of the panel.
+      columns.style.gridTemplateColumns = atVehicle
+        ? 'minmax(230px, .78fr) minmax(360px, 1.08fr) minmax(310px, 1fr)'
+        : 'minmax(230px, .85fr) minmax(360px, 1.15fr)';
     }
     if (bag) bag.classList.toggle('inv-hidden', !data.hasBackpack);
 
@@ -328,6 +377,8 @@
           ? '  (loads automatically into its gun · Ctrl+drag: split / drop some · drag out / right-click: drop stack)'
         : item.type === 'weapon'
           ? '  (drag to a quick slot 1-4 to equip · drag out / right-click: drop)'
+        : item.type === 'clothing'
+          ? '  (click: ჩაიცვი · drag out / right-click: drop)'
           : '  (click: use · drag: move / to quick slot · Ctrl+drag: split / drop some · drag out / right-click: drop)');
       slot.innerHTML += '<span class="inv-icon">' + iconFor(item.id) + '</span>' +
         (item.rounds !== undefined ? '<span class="inv-qty inv-rounds' + (item.rounds <= 0 ? ' none' : '') + '">' + item.rounds + '</span>'

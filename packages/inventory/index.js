@@ -45,7 +45,99 @@ function playConsumeAnim(player, def) {
     setTimeout(() => { if (mp.players.exists(player)) player.stopAnimation(); }, anim.ms);
 }
 
-// ---- Equipment slots (paperdoll). Only ჟილეტი (vest) is wired: { id, armour } ----
+// ---- Clothing items (bought at the clothing store, worn from the inventory) ----
+// A clothing item id encodes its look: cloth_<category>_<drawable>_<texture>. The def is rebuilt on
+// demand from the id (nothing extra to persist), labelled from the shared category list owned by
+// packages/clothing.
+function clothCats() { return (typeof global.clothingCategories === 'function' ? global.clothingCategories() : []); }
+function clothCat(cat) { return (typeof global.clothingCatByKey === 'function' ? global.clothingCatByKey(cat) : (clothCats().find(c => c.key === cat) || null)); }
+function parseCloth(id) {
+    if (typeof id !== 'string' || id.indexOf('cloth_') !== 0) return null;
+    const parts = id.split('_');
+    if (parts.length < 4) return null;
+    const drawable = parseInt(parts[2], 10), texture = parseInt(parts[3], 10);
+    if (!Number.isInteger(drawable) || !Number.isInteger(texture)) return null;
+    return { cat: parts[1], d: drawable, t: texture };
+}
+function clothItemLabel(parsed) {
+    const c = clothCat(parsed.cat);
+    return (c ? c.label : parsed.cat) + ' #' + (parsed.d + 1) + (parsed.t ? '/' + (parsed.t + 1) : '');
+}
+function ensureClothDef(id) {
+    if (ITEM_DEFS[id]) return ITEM_DEFS[id];
+    const parsed = parseCloth(id);
+    if (!parsed) return null;
+    ITEM_DEFS[id] = { label: clothItemLabel(parsed), type: 'clothing', stackable: false, cloth: parsed };
+    return ITEM_DEFS[id];
+}
+// packages/clothing calls this on checkout so the def exists before the item is added.
+global.invRegisterCloth = (cat, drawable, texture) => {
+    const id = 'cloth_' + cat + '_' + Math.max(0, drawable) + '_' + Math.max(0, texture);
+    return ensureClothDef(id) ? id : null;
+};
+// A top (component 11) needs a matching arms variant (component 3) or the sleeves clip. GTA hides
+// the correct pairing in metadata scripts can't read, so we set arms ourselves when a top is worn:
+// look the top's drawable up here, else fall back to DEFAULT_ARMS. Build this map over time using the
+// /arms command (wear a top, try arms indices until it fits, then add "<topDrawable>: <armsDrawable>").
+const ARMS_COMPONENT = 3;
+const DEFAULT_ARMS = 0;
+const TOP_ARMS = {
+    // 47: 3, 15: 15, ...
+};
+function armsForTop(drawable) { return (drawable in TOP_ARMS) ? TOP_ARMS[drawable] : DEFAULT_ARMS; }
+
+// Put a clothing look on the ped (server-side setClothes -> syncs). Props are also echoed to the
+// wearer's own client, since server-side props don't sync on every RAGE:MP build.
+function applyCloth(player, cat, drawable, texture) {
+    const c = clothCat(cat);
+    if (!c) return;
+    try {
+        if (c.kind === 'comp') {
+            player.setClothes(c.id, Math.max(0, drawable), Math.max(0, texture), 0);
+            if (cat === 'top') { try { player.setClothes(ARMS_COMPONENT, armsForTop(Math.max(0, drawable)), 0, 0); } catch (e) {} }
+            return;
+        }
+        if (drawable < 0) player.setProp(c.id, -1, 0);
+        else player.setProp(c.id, drawable, Math.max(0, texture));
+    } catch (e) {}
+    if (c.kind === 'prop') { try { player.call('inventory:selfProp', [c.id, drawable, Math.max(0, texture)]); } catch (e) {} }
+}
+// The bare body ("naked") look per clothing category — used on spawn for empty slots and when a
+// piece is taken off, so nothing shows unless it's actually equipped. Freemode drawable indices;
+// tweak these if a value looks off on your peds.
+const FREEMODE_FEMALE = mp.joaat('mp_f_freemode_01');
+// Bare-body ("naked") look, keyed by GTA clothing COMPONENT id. Only clothing is stripped — the
+// body/skin/face stay the default character. Component 3 (arms) uses the nude-skin variant so an
+// unequipped upper body shows bare skin, not a default t-shirt. Tweak indices if a value looks off.
+const NUDE_BY_COMP = {
+    male:   { 1: 0, 3: 15, 4: 21, 5: 0, 6: 34, 7: 0, 8: 15, 11: 15 },
+    female: { 1: 0, 3: 15, 4: 15, 5: 0, 6: 35, 7: 0, 8: 15, 11: 15 }
+};
+const NUDE_PROPS = [0, 1, 2, 6, 7]; // hat, glasses, ears, watch, bracelet — cleared by default
+function nudeComp(player) { return (Number(player.model) === FREEMODE_FEMALE) ? NUDE_BY_COMP.female : NUDE_BY_COMP.male; }
+function nudeValueForComp(player, compId) { const map = nudeComp(player); return (compId in map) ? map[compId] : 0; }
+// Strip the ped to the bare body: clothing components to their nude value, cosmetic props cleared.
+function setNudeBase(player) {
+    const map = nudeComp(player);
+    Object.keys(map).forEach(compId => { try { player.setClothes(Number(compId), map[compId], 0, 0); } catch (e) {} });
+    NUDE_PROPS.forEach(propId => {
+        try { player.setProp(propId, -1, 0); } catch (e) {}
+        try { player.call('inventory:selfProp', [propId, -1, 0]); } catch (e) {}
+    });
+}
+// Taking a piece off restores that slot to bare (naked), so nothing shows unless equipped.
+function defaultCloth(player, cat) {
+    const c = clothCat(cat);
+    if (!c) return;
+    if (c.kind === 'comp') {
+        try { player.setClothes(c.id, nudeValueForComp(player, c.id), 0, 0); } catch (e) {}
+        if (cat === 'top') { try { player.setClothes(ARMS_COMPONENT, nudeValueForComp(player, ARMS_COMPONENT), 0, 0); } catch (e) {} } // arms back to bare
+    } else {
+        try { player.setProp(c.id, -1, 0); player.call('inventory:selfProp', [c.id, -1, 0]); } catch (e) {}
+    }
+}
+
+// ---- Equipment slots (paperdoll). ჟილეტი (vest) + worn clothing per category ----
 const EQUIP_FILE = path.join(__dirname, 'equipment.json');
 let equipStore = {};
 try { equipStore = JSON.parse(fs.readFileSync(EQUIP_FILE, 'utf8')); } catch (e) { equipStore = {}; }
@@ -59,8 +151,18 @@ function getEquip(player) {
     return equipStore[k];
 }
 function equipmentData(player) {
-    const vest = getEquip(player).vest;
-    return { vest: vest ? { id: vest.id, label: (ITEM_DEFS[vest.id] && ITEM_DEFS[vest.id].label) || vest.id, armour: Math.round(Number(player.armour) || 0) } : null };
+    const eq = getEquip(player);
+    const vest = eq.vest;
+    const clothing = {};
+    const worn = eq.clothing || {};
+    Object.keys(worn).forEach(cat => {
+        const w = worn[cat];
+        clothing[cat] = { id: w.id, label: (ITEM_DEFS[w.id] && ITEM_DEFS[w.id].label) || w.id };
+    });
+    return {
+        vest: vest ? { id: vest.id, label: (ITEM_DEFS[vest.id] && ITEM_DEFS[vest.id].label) || vest.id, armour: Math.round(Number(player.armour) || 0) } : null,
+        clothing
+    };
 }
 
 // Visible vest on the character: freemode clothing component 9 (body armour).
@@ -74,10 +176,33 @@ function setVestLook(player, on) {
     } catch (e) {}
 }
 
+// Take a worn clothing item off: reset that component/prop to default and return the item to the grid.
+function unequipCloth(player, cat, toIndex) {
+    const eq = getEquip(player);
+    const worn = eq.clothing && eq.clothing[cat];
+    if (!worn) return { ok: false };
+    if (!hasSpace(player, worn.id)) { // no room to store the removed piece -> refuse and tell the player
+        player.outputChatBox('!{#ff6978}[ინვენტარი] !{#ffffff}ინვენტარი სავსეა — ვერ მოხსნით (ჯერ გაათავისუფლეთ ადგილი).');
+        pushData(player);
+        return { ok: false, full: true };
+    }
+    ensureClothDef(worn.id);
+    defaultCloth(player, cat);
+    delete eq.clothing[cat];
+    saveEquip();
+    const inv = getInv(player);
+    toIndex = Number(toIndex);
+    if (Number.isInteger(toIndex) && toIndex >= 0 && toIndex < MAX_SLOTS && !inv[toIndex]) { inv[toIndex] = { id: worn.id, qty: 1 }; save(); }
+    else addItem(player, worn.id, 1);
+    player.outputChatBox(`!{#9aa4ad}[ინვენტარი] გაიხადეთ ${(ITEM_DEFS[worn.id] && ITEM_DEFS[worn.id].label) || worn.id}.`);
+    pushData(player);
+    return { ok: true };
+}
+
 // Take the vest off. Only an undamaged vest goes back to the inventory (a damaged one can't be
 // "repaired" by re-equipping); it's destroyed automatically when armour hits 0.
 function unequip(player, slot, toIndex) {
-    if (slot !== 'vest') return;
+    if (slot !== 'vest') { unequipCloth(player, slot, toIndex); return; }
     const eq = getEquip(player);
     const vest = eq.vest;
     if (!vest) return;
@@ -128,7 +253,10 @@ function restoreEquipped(player) {
     if (!mp.players.exists(player)) return;
     player.invRestored = true;
     const eq = getEquip(player);
+    setNudeBase(player); // bare body by default; only equipped pieces below will show
     if (eq.vest && eq.vest.armour > 0) { player.armour = eq.vest.armour; setVestLook(player, true); }
+    const worn = eq.clothing || {};
+    Object.keys(worn).forEach(cat => { ensureClothDef(worn[cat].id); applyCloth(player, cat, worn[cat].d, worn[cat].t); });
     const slot = eq.weaponSlot;
     if (Number.isInteger(slot)) {
         const stack = getInv(player)[slot];
@@ -152,7 +280,7 @@ function keyOf(player) { return String(player.socialClub || player.name || ('id'
 function getInv(player) {
     const k = keyOf(player);
     if (!Array.isArray(store[k])) store[k] = [];
-    if (!migrated.has(k)) { migrated.add(k); migrateWeaponAmmo(store[k]); }
+    if (!migrated.has(k)) { migrated.add(k); migrateWeaponAmmo(store[k]); store[k].forEach(s => s && ensureClothDef(s.id)); }
     return store[k];
 }
 
@@ -351,6 +479,7 @@ function inventoryData(player) {
             id: s.id,
             label: (ITEM_DEFS[s.id] && ITEM_DEFS[s.id].label) || s.id,
             type: (ITEM_DEFS[s.id] && ITEM_DEFS[s.id].type) || 'misc',
+            cat: (ITEM_DEFS[s.id] && ITEM_DEFS[s.id].cloth) ? ITEM_DEFS[s.id].cloth.cat : undefined,
             qty: s.qty,
             // guns: rounds of their own ammo in the inventory (shown on the gun slot, equipped or not)
             rounds: (ITEM_DEFS[s.id] && ITEM_DEFS[s.id].type === 'weapon' && ITEM_DEFS[s.id].ammoType)
@@ -398,6 +527,7 @@ function useItem(player, id, index) {
         }
         toggleWeapon(player, id, owned); pushData(player); return;
     }
+    if (def.type === 'clothing') { equipCloth(player, id, owned); return; }
     if (def.type === 'armor') {
         // Armour goes into the ჟილეტი (vest) equipment slot instead of being used up.
         const eq = getEquip(player);
@@ -422,6 +552,30 @@ function useItem(player, id, index) {
     }
     removeItem(player, id, 1, owned);
     player.outputChatBox(`!{#8ed17a}[ინვენტარი] გამოიყენეთ ${def.label}.`);
+    pushData(player);
+}
+
+// Wear a clothing item from the grid: apply the look, move the item into its paperdoll slot, and
+// swap whatever was already worn in that slot back into the inventory (wardrobe).
+function equipCloth(player, id, stack) {
+    const def = ITEM_DEFS[id];
+    const cloth = def && def.cloth;
+    if (!cloth) return;
+    const eq = getEquip(player);
+    if (!eq.clothing) eq.clothing = {};
+    const cat = cloth.cat;
+    const inv = getInv(player);
+    const slotIndex = inv.indexOf(stack);
+    const previous = eq.clothing[cat];
+    applyCloth(player, cat, cloth.d, cloth.t);
+    eq.clothing[cat] = { id, d: cloth.d, t: cloth.t };
+    if (slotIndex >= 0) {
+        inv[slotIndex] = null;
+        while (inv.length && !inv[inv.length - 1]) inv.pop();
+    }
+    if (previous && previous.id) { ensureClothDef(previous.id); addItem(player, previous.id, 1); }
+    saveEquip(); save();
+    player.outputChatBox(`!{#8ed17a}[ინვენტარი] ჩაიცვით ${def.label}.`);
     pushData(player);
 }
 
@@ -573,6 +727,24 @@ setInterval(() => {
 // ---- Shared API for other packages (market, future shops) ----
 global.invAddItem = (player, id, qty) => { const ok = addItem(player, id, qty); if (ok) pushData(player); return ok; };
 global.invHasSpace = (player, id, qty) => hasSpace(player, id, qty);
+// Clothing worn/unequip API used by the clothing store so it can take pieces off into the inventory.
+global.invUnequipCloth = (player, cat) => unequipCloth(player, String(cat), -1);
+global.invWornClothing = (player) => {
+    const worn = getEquip(player).clothing || {};
+    const out = {};
+    Object.keys(worn).forEach(cat => { out[cat] = { id: worn[cat].id, label: (ITEM_DEFS[worn[cat].id] && ITEM_DEFS[worn[cat].id].label) || worn[cat].id }; });
+    return out;
+};
+// The bare ("none") drawable per category for this player's ped, so the shop can preview it.
+global.invNudeLook = (player) => {
+    const out = {};
+    clothCats().forEach(cat => { out[cat.key] = cat.kind === 'prop' ? -1 : nudeValueForComp(player, cat.id); });
+    return out;
+};
+// Lets the clothing shop preview arms correctly while browsing tops.
+global.invTopArms = (player) => ({ def: DEFAULT_ARMS, nude: nudeValueForComp(player, ARMS_COMPONENT), map: TOP_ARMS });
+// Re-apply the bare base + equipped clothing (e.g. after a Director-mode model change).
+global.invRestoreLook = (player) => restoreEquipped(player);
 global.invItemLabel = (id) => (ITEM_DEFS[id] && ITEM_DEFS[id].label) || id;
 global.invCapacity = (player) => ({ used: usedSlots(getInv(player)), max: MAX_SLOTS });
 

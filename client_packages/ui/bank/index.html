@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ბანკი / ATM</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c;
+    --blue: #5ac8fa;
+    --text: #f3f0e8;
+    --muted: #aaa79e;
+    --line: rgba(255, 255, 255, .12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { color: var(--text); background: transparent; user-select: none; display: flex; align-items: center; justify-content: center; }
+  button, input { font: inherit; color: inherit; }
+  .panel { width: min(460px, 94vw); background: linear-gradient(180deg, #101822, #0c0f13); border: 1px solid rgba(90, 200, 250, .45); border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, .55); animation: lift .18s ease-out; overflow: hidden; }
+  .head { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--line); }
+  .head h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .head .spacer { flex: 1; }
+  .close { width: 32px; height: 32px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--muted); border-radius: 8px; font-size: 17px; cursor: pointer; }
+  .close:hover { color: var(--blue); border-color: var(--blue); }
+  .balances { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px 18px; }
+  .bal { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .03); }
+  .bal .lbl { color: var(--muted); font-size: 11px; }
+  .bal .val { margin-top: 4px; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .bal.cash .val { color: var(--gold); }
+  .bal.bankv .val { color: var(--blue); }
+  .tabs { display: flex; gap: 6px; padding: 0 18px; }
+  .tab { flex: 1; padding: 10px; border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; background: rgba(255, 255, 255, .03); color: var(--muted); cursor: pointer; font-size: 13px; }
+  .tab.on { color: var(--blue); border-color: rgba(90, 200, 250, .45); background: rgba(90, 200, 250, .08); }
+  .body { padding: 16px 18px; border-top: 1px solid var(--line); margin-top: -1px; }
+  .field { display: grid; gap: 8px; }
+  .field label { color: var(--muted); font-size: 11px; }
+  input[type=text], input[type=number] { padding: 10px; background: rgba(0, 0, 0, .3); border: 1px solid var(--line); border-radius: 8px; }
+  input:focus { outline: none; border-color: var(--blue); }
+  .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .quick button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255, 255, 255, .04); color: var(--text); cursor: pointer; font-size: 12px; }
+  .quick button:hover { border-color: var(--blue); color: var(--blue); }
+  .go { margin-top: 14px; width: 100%; padding: 12px; border: 1px solid var(--blue); border-radius: 10px; background: rgba(90, 200, 250, .16); color: var(--blue); font-weight: 700; font-size: 14px; cursor: pointer; }
+  .go:hover { background: rgba(90, 200, 250, .28); }
+  .msg { min-height: 16px; margin: 10px 18px 16px; font-size: 12px; color: var(--muted); }
+  .msg.ok { color: #5fd19b; }
+  .msg.err { color: #ff6978; }
+  @keyframes lift { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="head"><h1>ბანკი · ATM</h1><div class="spacer"></div><button class="close" id="close">×</button></div>
+  <div class="balances">
+    <div class="bal cash"><div class="lbl">ნაღდი ფული</div><div class="val" id="cash">$0</div></div>
+    <div class="bal bankv"><div class="lbl">ბანკის ბალანსი</div><div class="val" id="bank">$0</div></div>
+  </div>
+  <div class="tabs">
+    <button class="tab on" data-tab="deposit">შენატანი</button>
+    <button class="tab" data-tab="withdraw">გატანა</button>
+    <button class="tab" data-tab="transfer">გადარიცხვა</button>
+  </div>
+  <div class="body" id="body"></div>
+  <div class="msg" id="msg"></div>
+</div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+
+  let cash = 0, bank = 0, tab = 'deposit';
+
+  el('close').onclick = () => trigger('bank:ui:close');
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); trigger('bank:ui:close'); } });
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => { tab = t.getAttribute('data-tab'); renderTabs(); renderBody(); });
+
+  function renderTabs() { document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.getAttribute('data-tab') === tab)); }
+
+  function renderBody() {
+    const body = el('body');
+    if (tab === 'transfer') {
+      body.innerHTML =
+        '<div class="field"><label>მიმღები (სახელი ან ID)</label><input type="text" id="target" placeholder="მაგ. John_Doe ან 3"></div>' +
+        '<div class="field" style="margin-top:10px"><label>თანხა</label><input type="number" id="amount" min="1" placeholder="0"></div>' +
+        '<button class="go" id="go">გადარიცხვა</button>';
+      el('go').onclick = () => {
+        const target = el('target').value.trim();
+        const amount = parseInt(el('amount').value) || 0;
+        if (target && amount > 0) trigger('bank:ui:transfer', target, amount);
+      };
+      return;
+    }
+    const isDep = tab === 'deposit';
+    const max = isDep ? cash : bank;
+    body.innerHTML =
+      '<div class="field"><label>თანხა (ხელმისაწვდომი: ' + fmt(max) + ')</label>' +
+      '<input type="number" id="amount" min="1" placeholder="0">' +
+      '<div class="quick">' +
+        '<button data-q="100">100</button><button data-q="500">500</button>' +
+        '<button data-q="1000">1000</button><button data-q="5000">5000</button>' +
+        '<button data-q="max">ყველა</button>' +
+      '</div></div>' +
+      '<button class="go" id="go">' + (isDep ? 'შეიტანე' : 'გამოიტანე') + '</button>';
+    body.querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+      const q = b.getAttribute('data-q');
+      el('amount').value = q === 'max' ? max : q;
+    });
+    el('go').onclick = () => {
+      const amount = parseInt(el('amount').value) || 0;
+      if (amount > 0) trigger(isDep ? 'bank:ui:deposit' : 'bank:ui:withdraw', amount);
+    };
+  }
+
+  window.setBankData = function (data) {
+    cash = data.cash || 0; bank = data.bank || 0;
+    el('cash').textContent = fmt(cash);
+    el('bank').textContent = fmt(bank);
+    const msg = el('msg');
+    msg.textContent = data.message || '';
+    msg.className = 'msg' + (data.message ? (data.ok ? ' ok' : ' err') : '');
+    renderBody();
+  };
+
+  renderTabs(); renderBody();
+  if (RAGE) mp.trigger('bank:ui:ready');
+  else window.setBankData({ cash: 3200, bank: 15000 });
+</script>
+</body>
+</html>
