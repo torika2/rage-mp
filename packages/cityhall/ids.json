@@ -1,0 +1,41 @@
+{
+  "next": 2,
+  "cards": {
+    "sephigr": {
+      "number": 1,
+      "first": "Sephi",
+      "last": "Owner",
+      "dob": "1999-12-12",
+      "sex": "M",
+      "issued": "2026-09-30"
+    }
+  },
+  "licenses": {
+    "sephigr": {
+      "driving": {
+        "issued": "2026-09-30"
+      },
+      "motorcycle": {
+        "issued": "2026-09-30"
+      },
+      "truck": {
+        "issued": "2026-09-30"
+      },
+      "boat": {
+        "issued": "2026-09-30"
+      },
+      "pilot": {
+        "issued": "2026-09-30"
+      },
+      "hunting": {
+        "issued": "2026-09-30"
+      },
+      "business": {
+        "issued": "2026-09-30"
+      },
+      "weapon": {
+        "issued": "2026-09-30"
+      }
+    }
+  }
+}
