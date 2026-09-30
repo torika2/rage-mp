@@ -1,2 +1,4 @@
 # Large DLC archives exceeding GitHub 100MB file limit
 client_packages/game_resources/dlcpacks/phmc/
+client_packages/game_resources/dlcpacks/phmc/c.listcache
+client_packages/game_resources/dlcpacks/phmc/.listcache
