@@ -1,0 +1,33 @@
+{
+  "admins": [
+    "SEPHIGR"
+  ],
+  "ranks": {
+    "trainee": {
+      "label": "სტაჟიორი",
+      "level": 0,
+      "capabilities": ["duty"]
+    },
+    "paramedic": {
+      "label": "პარამედიკოსი",
+      "level": 1,
+      "capabilities": ["duty", "revive"]
+    },
+    "senior_paramedic": {
+      "label": "უფროსი პარამედიკოსი",
+      "level": 2,
+      "capabilities": ["duty", "revive"]
+    },
+    "doctor": {
+      "label": "ექიმი",
+      "level": 3,
+      "capabilities": ["duty", "revive", "recruit", "promote"]
+    },
+    "chief_physician": {
+      "label": "მთავარი ექიმი",
+      "level": 4,
+      "capabilities": ["duty", "revive", "recruit", "promote", "fire"]
+    }
+  },
+  "medics": {}
+}

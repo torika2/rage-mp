@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const carHandling = require('./carhandling'); // add-on car handling editor (Cars tab)
 
 const FLY_ADMINS = new Set(['sephigr', 'torika2']);
 const MODERATION_FILE = path.join(__dirname, 'moderation.json');
@@ -299,6 +300,16 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
             tell(player, `${target.name} is not unconscious.`);
             return;
         }
+        // Go through the hospital death system so the 30-second revive window is enforced.
+        if (typeof global.hospitalRevive === 'function') {
+            const refused = global.hospitalRevive(target);
+            if (refused) {
+                tell(player, refused); // "უკვე გარდაიცვალა ვერ გააცოცხლებ"
+                return;
+            }
+            finishAction(player, `Revived ${target.name}.`);
+            return;
+        }
         const position = target.position;
         const dimension = Number(target.dimension);
         target.spawn(new mp.Vector3(position.x, position.y, position.z));
@@ -554,6 +565,26 @@ function commandList() {
 mp.events.add('admin:panel:commands', player => {
     if (!requireAdmin(player)) return;
     player.call('admin:panel:commands', [JSON.stringify(commandList())]);
+});
+
+// ---- Cars tab: edit add-on car handling (writes to the dlc.rpf; applies after restart+reconnect) ----
+mp.events.add('admin:panel:cars', player => {
+    if (!requireAdmin(player)) return;
+    let cars = [];
+    try { cars = carHandling.list(); } catch (e) { tell(player, 'Failed to read car handling.'); }
+    player.call('admin:panel:cars', [JSON.stringify({ cars, fields: carHandling.FIELDS })]);
+});
+
+mp.events.add('admin:panel:carSave', (player, pack, handlingName, valuesJson) => {
+    if (!requireAdminMode(player)) return; // file writes require Admin Mode on
+    let edits = {};
+    try { edits = JSON.parse(String(valuesJson)) || {}; } catch (e) {
+        player.call('admin:panel:carResult', ['Invalid data.']);
+        return;
+    }
+    const result = carHandling.save(String(pack), String(handlingName), edits);
+    player.call('admin:panel:carResult', [result.message]);
+    if (result.ok) console.log(`[admin] ${player.name} edited handling ${pack}/${handlingName}: ${JSON.stringify(edits)}`);
 });
 
 mp.events.add('admin:panel:run', (player, rawText) => {

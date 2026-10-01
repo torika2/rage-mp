@@ -17,6 +17,10 @@ function save() {
     try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
 }
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
+// Mirror a record's odometer (km) onto the car's synced variable so the owner's HUD can show it.
+function setKmVar(vehicle, record) {
+    try { vehicle.setVariable('veh:km', Math.round(Number(record && record.km) || 0)); } catch (e) {}
+}
 function headingOf(vehicle) {
     if (typeof vehicle.heading === 'number') return vehicle.heading;
     return vehicle.rotation ? vehicle.rotation.z : 0;
@@ -32,9 +36,11 @@ global.vehOnSpawn = function (player, vehicle, modelName) {
         heading: headingOf(vehicle),
         dim: Number(vehicle.dimension) || 0,
         plate: vehicle.numberPlate || null,
-        fuel: FUEL_MAX
+        fuel: FUEL_MAX,
+        km: 0
     };
     try { vehicle.setVariable('veh:fuel', FUEL_MAX); } catch (e) {}
+    setKmVar(vehicle, store[keyOf(player)]);
     save();
 };
 
@@ -67,9 +73,11 @@ global.vehAdopt = function (player, vehicle, modelName, fuel) {
         heading: headingOf(vehicle),
         dim: Number(vehicle.dimension) || 0,
         plate: vehicle.numberPlate || null,
-        fuel: keptFuel
+        fuel: keptFuel,
+        km: (store[keyOf(player)] && Number(store[keyOf(player)].km)) || 0
     };
     try { vehicle.setVariable('veh:fuel', keptFuel); } catch (e) {}
+    setKmVar(vehicle, store[keyOf(player)]);
     player.myCar = vehicle;
     save();
 };
@@ -103,6 +111,7 @@ global.vehGarageTake = function (player, position, heading) {
     record.x = position.x; record.y = position.y; record.z = position.z; record.heading = heading || 0; record.dim = 0;
     const fuel = (typeof record.fuel === 'number') ? record.fuel : FUEL_MAX;
     try { vehicle.setVariable('veh:fuel', fuel); } catch (e) {}
+    setKmVar(vehicle, record);
     player.myCar = vehicle;
     save();
     return vehicle;
@@ -143,6 +152,7 @@ function restore(player) {
     if (!vehicle) return;
     const fuel = (typeof record.fuel === 'number') ? record.fuel : FUEL_MAX;
     try { vehicle.setVariable('veh:fuel', fuel); } catch (e) {}
+    setKmVar(vehicle, record);
     player.myCar = vehicle;
     player.outputChatBox('!{#8ed17a}[მანქანა] !{#ffffff}აღდგა თქვენი ბოლო მანქანა (საწვავი: ' + Math.round(fuel) + '%).');
 }
@@ -165,6 +175,19 @@ mp.events.add('vehicle:fuelReport', (player, fuel) => {
         const record = store[keyOf(player)];
         if (record) record.fuel = fuel;
     }
+});
+
+// The driver of their own car reports metres driven since the last report; we add it to the odometer.
+mp.events.add('vehicle:kmReport', (player, meters) => {
+    meters = Number(meters);
+    if (!Number.isFinite(meters) || meters <= 0 || meters > 200000) return; // sanity: ignore junk / huge jumps
+    const vehicle = player.vehicle;
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return;
+    if (!(player.myCar && mp.vehicles.exists(player.myCar) && Number(player.myCar.id) === Number(vehicle.id))) return; // own car only
+    const record = store[keyOf(player)];
+    if (!record) return;
+    record.km = (Number(record.km) || 0) + meters / 1000;
+    setKmVar(vehicle, record); // next time they enter, base reflects the new total
 });
 
 // Save on quit (freeroam also calls vehPersist before it destroys the car, so this is a backstop).

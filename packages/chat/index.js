@@ -46,6 +46,12 @@ mp.events.add('chat:submit', (player, text, channel) => {
     text = String(text).trim().slice(0, 200);
     if (!text) return;
 
+    // Downed players (packages/hospital death system) can't speak in chat.
+    if (player.getVariable('downed') === true) {
+        global.chatSend(player, { ch: 'system', text: '!{#ff6b6b}გარდაცვლილი ხარ — ვერ წერ.', ts: Date.now() });
+        return;
+    }
+
     // admin comms-mute (text side) — separate from the spam ban below
     const adminMute = global.getCommsMute && global.getCommsMute(player);
     if (adminMute) {

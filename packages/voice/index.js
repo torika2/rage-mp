@@ -6,8 +6,10 @@
 // so even a modified client can't be heard. Both directions are cut (RAGE's enableVoiceTo direction
 // isn't clearly documented), so while muted they neither talk nor hear voice.
 function muted(player) { return typeof global.getCommsMute === 'function' && !!global.getCommsMute(player); }
+// A downed player (packages/hospital death system) can neither talk nor hear — same as a mute.
+function blocked(player) { return muted(player) || player.getVariable('downed') === true; }
 function link(a, b) {
-    const cut = muted(a) || muted(b);
+    const cut = blocked(a) || blocked(b);
     try {
         if (cut) { a.disableVoiceTo(b); b.disableVoiceTo(a); }
         else { a.enableVoiceTo(b); b.enableVoiceTo(a); }
@@ -16,6 +18,14 @@ function link(a, b) {
 // Called by the admin panel right after mute / unmute so it takes effect immediately.
 global.voiceRelink = (player) => {
     mp.players.forEach(other => { if (other !== player && mp.players.exists(other)) link(player, other); });
+};
+// Called by the death system on down/revive: resync this player's PTT block and relink everyone.
+global.voiceRefresh = (player) => {
+    if (!mp.players.exists(player)) return;
+    const now = blocked(player);
+    player.voiceMutedFlag = now;
+    try { player.call('voice:setMuted', [now]); } catch (e) {}
+    global.voiceRelink(player);
 };
 
 mp.events.add('playerJoin', (player) => {
@@ -30,7 +40,7 @@ setInterval(() => {
     }
     // Keep the client's push-to-talk block in step with the mute (e.g. a timed mute that just expired).
     list.forEach(player => {
-        const now = muted(player);
+        const now = blocked(player);
         if (player.voiceMutedFlag !== now) { player.voiceMutedFlag = now; try { player.call('voice:setMuted', [now]); } catch (e) {} }
     });
 }, 15000);

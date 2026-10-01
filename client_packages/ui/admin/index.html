@@ -87,6 +87,12 @@
   .tabs { display:flex; gap:6px; margin-bottom:14px; }
   .tab { padding:8px 16px; border-radius:9px; background:transparent; color:var(--muted); font-weight:600; }
   .tab.on { background:#ffb42e1c; border-color:#ffb42e80; color:var(--accent); }
+  .car-note { background:#ffb42e14; border:1px solid #ffb42e55; color:#ffd98a; border-radius:9px; padding:9px 12px; font-size:12px; margin-bottom:12px; }
+  .car-list { display:grid; grid-template-columns:repeat(2,1fr); gap:8px 14px; max-height:46vh; overflow:auto; padding-right:4px; }
+  .car-field { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#ffffff08; border:1px solid #ffffff12; border-radius:8px; padding:7px 10px; }
+  .car-field label { font-size:12px; color:var(--muted); }
+  .car-field input { width:96px; background:#00000040; border:1px solid #ffffff20; color:var(--text); border-radius:6px; padding:5px 7px; font-size:12px; text-align:right; }
+  .car-field .range { font-size:10px; color:#7a7f87; }
   .view { flex:1; min-height:0; display:flex; flex-direction:column; }
   .view[hidden] { display:none; }
   .cmd-list { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; border:1px solid var(--line); border-radius:12px; padding:6px 12px 12px; }
@@ -138,6 +144,7 @@
       <div class="tabs">
         <button class="tab on" data-tab="playersView">Players</button>
         <button class="tab" data-tab="commandsView">Commands</button>
+        <button class="tab" data-tab="carsView">Cars</button>
       </div>
       <div class="view" id="playersView">
       <div class="toolbar">
@@ -154,6 +161,12 @@
         <div class="toolbar"><input id="cmdSearch" class="search" placeholder="Search commands…" autocomplete="off"></div>
         <div class="cmd-list" id="cmdList"><div class="muted">Loading commands…</div></div>
         <div class="raw"><input id="rawCmd" placeholder="/any command with arguments…" autocomplete="off"><button id="rawRun">Run</button></div>
+      </div>
+      <div class="view" id="carsView" hidden>
+        <div class="car-note">⚠ Handling is baked into each car's file. Saving writes to it, but changes only apply after a <b>server restart + client relaunch</b> (RAGE:MP can't hot-reload handling).</div>
+        <div class="toolbar"><select id="carSelect" class="search"><option value="">Loading cars…</option></select></div>
+        <div class="car-list" id="carForm"><div class="muted">Pick a car to edit its handling.</div></div>
+        <div class="raw"><button id="carSave" class="send">Save handling</button><span id="carMsg" class="hint"></span></div>
       </div>
     </section>
     <aside class="side">
@@ -417,11 +430,54 @@
     try { commands = JSON.parse(json) || []; } catch (e) { commands = []; }
     renderCommands();
   };
+
+  // ---- Cars tab (add-on handling editor) ----
+  let cars = [];
+  let carFields = [];
+  const carSelect = document.getElementById('carSelect');
+  const carForm = document.getElementById('carForm');
+  const carMsg = document.getElementById('carMsg');
+  function renderCarForm() {
+    const car = cars[Number(carSelect.value)];
+    if (!car) { carForm.innerHTML = '<div class="muted">Pick a car to edit its handling.</div>'; return; }
+    carForm.innerHTML = carFields.map(([name, min, max, isInt]) => {
+      const val = car.values[name];
+      if (val === undefined) return '';
+      return '<div class="car-field"><div><label>' + esc(name) + '</label>' +
+        '<div class="range">' + min + ' – ' + max + '</div></div>' +
+        '<input data-field="' + esc(name) + '" type="number" step="' + (isInt ? '1' : '0.01') + '" value="' + esc(val) + '"></div>';
+    }).join('') || '<div class="muted">No editable fields.</div>';
+  }
+  carSelect.addEventListener('change', () => { carMsg.textContent = ''; renderCarForm(); });
+  document.getElementById('carSave').onclick = () => {
+    const car = cars[Number(carSelect.value)];
+    if (!car) { window.showNotice('Pick a car first.'); return; }
+    const edits = {};
+    carForm.querySelectorAll('input[data-field]').forEach(inp => {
+      if (inp.value !== '') edits[inp.dataset.field] = inp.value;
+    });
+    carMsg.textContent = 'Saving…';
+    if (RAGE) mp.trigger('admin:panel:carSave', car.pack, car.handlingName, JSON.stringify(edits));
+    else { carMsg.textContent = 'Would save ' + Object.keys(edits).length + ' field(s).'; }
+  };
+  window.setCars = json => {
+    let data = {};
+    try { data = JSON.parse(json) || {}; } catch (e) { data = {}; }
+    cars = Array.isArray(data.cars) ? data.cars : [];
+    carFields = Array.isArray(data.fields) ? data.fields : [];
+    carSelect.innerHTML = cars.length
+      ? cars.map((c, i) => '<option value="' + i + '">' + esc(c.handlingName) + '  ·  ' + esc(c.pack) + '</option>').join('')
+      : '<option value="">No add-on cars found.</option>';
+    renderCarForm();
+  };
+  window.setCarResult = msg => { carMsg.textContent = String(msg || ''); window.showNotice(msg); };
+
   document.querySelectorAll('.tab').forEach(tab => {
     tab.onclick = () => {
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === tab));
       document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== tab.dataset.tab; });
       if (tab.dataset.tab === 'commandsView' && !commands.length && RAGE) mp.trigger('admin:panel:commandsRequest');
+      if (tab.dataset.tab === 'carsView' && !cars.length && RAGE) mp.trigger('admin:panel:carsRequest');
     };
   });
   window.showNotice = message => {

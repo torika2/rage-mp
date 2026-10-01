@@ -1,4 +1,7 @@
-# Large DLC archives exceeding GitHub 100MB file limit
+# Large DLC archives exceeding GitHub's 100MB file limit — these live on the server
+# disk and are re-downloadable from their mod sources; they are not versioned here.
 client_packages/game_resources/dlcpacks/phmc/
-client_packages/game_resources/dlcpacks/phmc/c.listcache
-client_packages/game_resources/dlcpacks/phmc/.listcache
+./client_packages/.listcache
+
+# Add-on car / map binaries (dlc.rpf) — too big for GitHub; kept only on the server.
+*.rpf

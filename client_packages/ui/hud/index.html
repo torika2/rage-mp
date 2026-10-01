@@ -24,43 +24,72 @@
     letter-spacing: .3px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
   }
 
-  /* Speedometer — bottom right */
+  /* Speedometer — circular, bottom right */
   #speedo {
-    position: absolute; bottom: 26px; right: 22px; width: 232px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
-    padding: 16px 18px; color: var(--text);
-    box-shadow: 0 12px 36px rgba(0,0,0,.5); opacity: 0; transform: translateY(10px);
-    transition: opacity .2s, transform .2s;
+    position: absolute; bottom: 22px; right: 22px; width: 264px;
+    background: linear-gradient(160deg, rgba(26,29,36,.95), rgba(13,15,19,.95));
+    border: 1px solid var(--border); border-radius: 20px; padding: 16px;
+    color: var(--text); box-shadow: 0 16px 42px rgba(0,0,0,.6);
+    opacity: 0; transform: translateY(10px); transition: opacity .2s, transform .2s;
   }
   #speedo.on { opacity: 1; transform: none; }
 
-  .topline { display: flex; align-items: flex-end; justify-content: space-between; }
-  .speed { font-size: 46px; font-weight: 800; line-height: .9; letter-spacing: -1px; }
-  .speed small { font-size: 15px; font-weight: 600; color: var(--muted); margin-left: 4px; }
-  .badges { text-align: right; }
-  .gear { font-size: 20px; font-weight: 800; }
-  .eng { font-size: 12px; font-weight: 700; margin-top: 3px; }
-  .eng.on { color: #66d17a; } .eng.off { color: var(--danger); }
+  .gauge-wrap { position: relative; width: 196px; height: 196px; margin: 2px auto 4px; }
+  .gauge { width: 196px; height: 196px; display: block; }
+  /* rotation is on the SVG element (transform attribute) — reliable in CEF, unlike CSS transform-origin on circles */
+  .g-track, .g-val { fill: none; stroke-width: 9; stroke-linecap: round; }
+  .g-track { stroke: rgba(255,255,255,.12); stroke-dasharray: 75 100; }
+  .g-val { stroke: #ffffff; stroke-dasharray: 0 100; transition: stroke-dasharray .08s linear; }
+  .gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 2; }
+  .g-speed { font-size: 54px; font-weight: 800; line-height: .82; letter-spacing: -2px; font-variant-numeric: tabular-nums; color: #ffffff; }
+  .g-unit { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 2px; margin-top: 4px; }
+  .g-gear { position: absolute; top: 26%; left: 50%; transform: translateX(-50%);
+    font-size: 15px; font-weight: 800; color: var(--accent); }
+  .driftchip { position: absolute; top: 12px; left: 14px;
+    background: rgba(255,91,91,.16); border: 1px solid rgba(255,91,91,.6); color: #ff8a8a;
+    padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
+  .lcchip { position: absolute; top: 12px; right: 14px;
+    padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
+  .lcchip.armed { background: rgba(255,180,46,.16); border: 1px solid rgba(255,180,46,.65); color: #ffd98a; }
+  .lcchip.go { background: rgba(102,209,122,.18); border: 1px solid rgba(102,209,122,.7); color: #8ff0a6;
+    animation: stat-pulse .5s infinite; }
 
-  .bar { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 12px; }
-  .bar > div { height: 100%; width: 0%; border-radius: 999px; transition: width .12s linear; }
-  #rpmFill { background: linear-gradient(90deg, var(--accent-dim), var(--accent)); }
-  #fuelFill { background: var(--accent); }
-  #fuelFill.low { background: var(--danger); }
-  .barlabel { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 1px;
-              color: var(--muted); text-transform: uppercase; margin-top: 8px; }
+  /* readout row: headlight · fuel bar · octane */
+  .ro { display: flex; align-items: center; gap: 9px; margin-top: 2px; }
+  .ro .ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center;
+    justify-content: center; font-size: 15px; background: rgba(255,255,255,.05); border: 1px solid var(--border); }
+  .ro .ico.on { color: #ffdd8a; border-color: rgba(255,180,46,.65); background: rgba(255,180,46,.16);
+    box-shadow: 0 0 10px rgba(255,180,46,.25); }
+  .ro .ico.off { color: #5a6068; }
+  .fuel-wrap { flex: 1; }
+  .fuel-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .fuel-bar > div { height: 100%; width: 100%; background: var(--accent); border-radius: 999px; transition: width .2s; }
+  .fuel-bar > div.low { background: var(--danger); }
+  .fuel-meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted);
+    margin-top: 4px; letter-spacing: .5px; }
   #fuelPct { color: var(--text); font-weight: 700; }
   #fuelPct.low { color: var(--danger); }
+  .oct { font-size: 11px; font-weight: 800; color: var(--accent); background: rgba(255,180,46,.12);
+    border: 1px solid rgba(255,180,46,.4); border-radius: 8px; padding: 6px 8px; white-space: nowrap; }
 
-  .engctrl { display: flex; align-items: center; gap: 8px; margin-top: 13px; }
-  .eico { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center;
-          justify-content: center; font-size: 17px; background: rgba(255,255,255,0.08);
-          border: 1px solid var(--border); transition: .15s; }
-  .eico.on  { color: #66d17a; border-color: rgba(102,209,122,.6); background: rgba(102,209,122,.12); }
-  .eico.off { color: var(--danger); border-color: rgba(255,91,91,.5); background: rgba(255,91,91,.10); }
-  .ekey { font-size: 12px; font-weight: 800; padding: 6px 11px; border-radius: 8px; color: var(--text);
-          background: rgba(255,255,255,0.10); border: 1px solid var(--border); }
-  .elbl { font-size: 11px; color: var(--muted); }
+  /* info chips: tuning stage + odometer */
+  .chips { display: flex; gap: 8px; margin-top: 9px; }
+  .chip { flex: 1; display: flex; align-items: center; gap: 6px; justify-content: center;
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 9px; padding: 7px 6px; }
+  .chip b { color: var(--text); font-weight: 800; }
+
+  /* in-car action buttons */
+  .btns { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-top: 10px; }
+  .btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0;
+    border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--border); transition: .15s; }
+  .btn .k { font-size: 12px; font-weight: 800; color: var(--text); background: rgba(255,255,255,.1);
+    border-radius: 5px; padding: 1px 8px; }
+  .btn .l { font-size: 9px; color: var(--muted); letter-spacing: .2px; }
+  .btn.on { background: rgba(102,209,122,.14); border-color: rgba(102,209,122,.55); }
+  .btn.on .k { color: #8ff0a6; background: rgba(102,209,122,.2); }
+  .btn.on .l { color: #a9e8ba; }
 
   #prompt {
     position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%);
@@ -219,24 +248,35 @@
   #pickup b { color: var(--accent); }
   #pickupLabel { color: var(--accent); }
 
+  /* Revive prompt — shown when standing over a downed, revivable player */
+  #revive {
+    position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); display: none;
+    background: rgba(15, 19, 25, .96); border: 1px solid rgba(111,207,151,.5); color: var(--text);
+    padding: 10px 18px; border-radius: 10px; font-size: 15px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  #revive b { color: #6fcf97; }
+  #revive .rv-note { color: var(--muted); font-size: 13px; }
+
   /* Character stats — bottom right (moves above the speedometer in a vehicle) */
   #stats {
-    position: absolute; right: 22px; bottom: 26px; width: 232px;
-    background: rgba(15, 19, 25, .96); border: 1px solid var(--border); border-radius: 16px;
-    padding: 12px 16px; color: var(--text); box-shadow: 0 12px 36px rgba(0,0,0,.5);
-    display: grid; gap: 9px; transition: bottom .2s;
+    position: absolute; right: 22px; bottom: 22px; width: 264px;
+    background: linear-gradient(160deg, rgba(26,29,36,.95), rgba(13,15,19,.95));
+    border: 1px solid var(--border); border-radius: 18px;
+    padding: 13px 15px; color: var(--text); box-shadow: 0 14px 38px rgba(0,0,0,.55);
+    display: grid; gap: 11px; transition: bottom .2s;
   }
-  .stat { display: grid; grid-template-columns: 20px 1fr 34px; align-items: center; gap: 9px; }
-  .stat .ico { font-size: 14px; text-align: center; line-height: 1; }
-  .stat .track { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .stat { display: grid; grid-template-columns: 24px 1fr 32px; align-items: center; gap: 10px; }
+  .stat .ico { width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center;
+    justify-content: center; font-size: 13px; background: rgba(255,255,255,.05); border: 1px solid var(--border); }
+  .stat .track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
   .stat .fill { height: 100%; width: 100%; border-radius: 999px; transition: width .4s; }
-  .stat .val { font-size: 12px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
-  #stHealth .fill { background: #ff5b5b; }
-  #stArmour .fill { background: #5aa9ff; }
-  #stHunger .fill { background: var(--accent); }
-  #stThirst .fill { background: #3fd0e0; }
+  .stat .val { font-size: 12px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+  #stHealth .fill { background: linear-gradient(90deg,#b5303a,#ff5b5b); }
+  #stArmour .fill { background: linear-gradient(90deg,#2f6fb0,#5aa9ff); }
+  #stHunger .fill { background: linear-gradient(90deg,var(--accent-dim),var(--accent)); }
+  #stThirst .fill { background: linear-gradient(90deg,#249aa8,#3fd0e0); }
   .stat.low .val { color: var(--danger); }
-  .stat.low .ico { animation: stat-pulse 1s infinite; }
+  .stat.low .ico { animation: stat-pulse 1s infinite; border-color: rgba(255,91,91,.6); }
   @keyframes stat-pulse { 50% { opacity: .35; } }
 
   /* Ammo — just under the crosshair while aiming a gun */
@@ -289,24 +329,43 @@
   </div>
 
   <div id="speedo">
-    <div class="topline">
-      <div class="speed"><span id="kmh">0</span><small>კმ/სთ</small></div>
-      <div class="badges">
-        <div class="gear" id="gear">N</div>
-        <div class="eng off" id="eng">○ გამ.</div>
+    <div class="driftchip" id="driftchip" style="display:none;">DRIFT</div>
+    <div class="lcchip" id="lcchip" style="display:none;">LAUNCH</div>
+    <div class="gauge-wrap">
+      <svg class="gauge" viewBox="0 0 120 120">
+        <g transform="rotate(135 60 60)">
+          <circle class="g-track" cx="60" cy="60" r="52" pathLength="100"/>
+          <circle class="g-val" id="gaugeVal" cx="60" cy="60" r="52" pathLength="100"/>
+        </g>
+      </svg>
+      <div class="gauge-center">
+        <div class="g-gear" id="gear">N</div>
+        <div class="g-speed" id="kmh">0</div>
+        <div class="g-unit">კმ/სთ</div>
       </div>
     </div>
-    <div class="bar"><div id="rpmFill"></div></div>
-    <div class="bar"><div id="fuelFill"></div></div>
-    <div class="barlabel"><span>საწვავი</span><span id="fuelPct">100%</span></div>
-    <div class="engctrl">
-      <div class="eico off" id="engIco">⏻</div>
-      <div class="ekey">2</div>
-      <div class="elbl" id="engLbl">ძრავი</div>
+    <div class="ro">
+      <div class="ico off" id="lightIco" title="ფარები">💡</div>
+      <div class="fuel-wrap">
+        <div class="fuel-bar"><div id="fuelFill"></div></div>
+        <div class="fuel-meta"><span>საწვავი</span><span id="fuelPct">100%</span></div>
+      </div>
+      <div class="oct" id="octChip">—</div>
+    </div>
+    <div class="chips">
+      <div class="chip" title="ტიუნინგის საფეხური">⚙ <b id="tuneChip">Stock</b></div>
+      <div class="chip" title="გარბენი">🛣 <b id="odoChip">0</b> კმ</div>
+    </div>
+    <div class="btns">
+      <div class="btn" id="btnEngine"><span class="k">2</span><span class="l">ძრავი</span></div>
+      <div class="btn" id="btnLights"><span class="k">H</span><span class="l">ფარები</span></div>
+      <div class="btn" id="btnBelt"><span class="k">J</span><span class="l">ღვედი</span></div>
+      <div class="btn" id="btnDoors"><span class="k">L</span><span class="l">კარები</span></div>
     </div>
   </div>
 
   <div id="pickup">დააჭირე <b>E</b>-ს ასაღებად: <span id="pickupLabel"></span></div>
+  <div id="revive">დააჭირე <b>E</b>-ს გასაცოცხლებლად <span class="rv-note">(სამედიცინო ნაკრები)</span></div>
   <div id="prompt">დააჭირე <b>E</b>-ს საწვავის შესავსებად</div>
   <div id="parkPrompt">დააჭირე <b>E</b>-ს — პარკინგი <span id="parkPromptId"></span></div>
   <div id="parkEdit"></div>
@@ -384,6 +443,7 @@
     $('prompt').style.display = d.refuel ? 'block' : 'none';
     $('pickup').style.display = d.pickup ? 'block' : 'none';
     if (d.pickup) $('pickupLabel').textContent = d.pickup;
+    $('revive').style.display = d.revive ? 'block' : 'none';
 
     // Parking: "press E" prompt (id shown) and the admin edit help bar.
     $('parkPrompt').style.display = d.parkPrompt ? 'block' : 'none';
@@ -426,26 +486,40 @@
       el.classList.toggle('low', id !== 'stArmour' && pct <= 20);
     });
     const sp = $('speedo');
-    $('stats').style.bottom = d.inVehicle ? (26 + sp.offsetHeight + 12) + 'px' : '26px';
+    $('stats').style.bottom = d.inVehicle ? (22 + sp.offsetHeight + 12) + 'px' : '22px';
     if (!d.inVehicle) { sp.classList.remove('on'); return; }
     sp.classList.add('on');
     $('kmh').textContent = d.kmh;
     $('gear').textContent = d.gear <= 0 ? 'N' : d.gear;
-    const eng = $('eng');
-    eng.textContent = d.engineOn ? '● ჩართ.' : '○ გამ.';
-    eng.className = 'eng ' + (d.engineOn ? 'on' : 'off');
-    const ei = $('engIco'); ei.className = 'eico ' + (d.engineOn ? 'on' : 'off');
-    $('engLbl').textContent = d.engineOn ? 'ძრავი ჩართ.' : 'ძრავი გამ.';
-    $('rpmFill').style.width = Math.round(d.rpm * 100) + '%';
+    $('driftchip').style.display = d.drift ? 'block' : 'none';
+    // launch control: 1 = armed (orange), 2 = launching (green pulse)
+    const lc = $('lcchip');
+    if (d.launch === 1) { lc.className = 'lcchip armed'; lc.textContent = 'LAUNCH READY'; lc.style.display = 'block'; }
+    else if (d.launch === 2) { lc.className = 'lcchip go'; lc.textContent = 'LAUNCH!'; lc.style.display = 'block'; }
+    else lc.style.display = 'none';
+    // circular gauge ring driven by RPM (reddens near redline)
+    const rpm = Math.max(0, Math.min(1, d.rpm || 0));
+    const gv = $('gaugeVal');
+    gv.style.strokeDasharray = (rpm * 75).toFixed(1) + ' 100';
+    // headlight indicator
+    $('lightIco').className = 'ico ' + (d.lights ? 'on' : 'off');
+    // fuel bar + octane
     const low = d.fuel <= 15;
     const ff = $('fuelFill'); ff.style.width = Math.round(d.fuel) + '%'; ff.className = low ? 'low' : '';
-    const fp = $('fuelPct');
-    fp.textContent = Math.round(d.fuel) + '%' + (d.octane ? '  ·  ' + d.octane : '');
-    fp.className = low ? 'low' : '';
+    const fp = $('fuelPct'); fp.textContent = Math.round(d.fuel) + '%'; fp.className = low ? 'low' : '';
+    $('octChip').textContent = d.octane ? (d.octane + ' ოქტ') : '—';
+    // tuning stage + odometer
+    $('tuneChip').textContent = d.tuning ? ('Stage ' + d.tuning) : 'Stock';
+    $('odoChip').textContent = Number(d.km || 0).toLocaleString();
+    // in-car action buttons
+    $('btnEngine').className = 'btn ' + (d.engineOn ? 'on' : '');
+    $('btnLights').className = 'btn ' + (d.lights ? 'on' : '');
+    $('btnBelt').className = 'btn ' + (d.belt ? 'on' : '');
   };
   // demo when opened in a plain browser
   if (typeof mp === 'undefined')
-    window.hud({ money: 4200, inVehicle: true, kmh: 138, gear: 5, engineOn: true, rpm: 0.72, fuel: 46, voiceTalking: true });
+    window.hud({ money: 4200, inVehicle: true, kmh: 138, gear: 5, engineOn: true, rpm: 0.72, fuel: 46,
+      octane: 98, lights: true, belt: true, tuning: 2, km: 1240, health: 100, armour: 40, hunger: 70, thirst: 55 });
 </script>
 </body>
 </html>

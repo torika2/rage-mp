@@ -3,6 +3,8 @@
 //  fuel system (octanes/prices) + CEF gas-station UI, money, pump markers
 // =====================================================================
 
+require('./interiors'); // Open All Interiors — client-side IPL loader
+
 const CFG = {
     engineCooldownMs: 1000,   // anti-spam between engine toggles
     stopSpeed: 0.5,           // m/s below which the car counts as "stopped"
@@ -339,11 +341,20 @@ const hudBrowser = mp.browsers.new('package://ui/hud/index.html');
 let hudAccum = 0;
 
 // ---------- Radio off + apply octane power on enter ----------
+function killRadio(vehicle) {
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return;
+    try {
+        mp.game.audio.setVehicleRadioEnabled(vehicle.handle, false);
+        mp.game.audio.setRadioToStationName('OFF');
+    } catch (e) {}
+}
 mp.events.add('playerEnterVehicle', (vehicle) => {
     if (!vehicle) return;
-    mp.game.audio.setVehicleRadioEnabled(vehicle.handle, false);
-    mp.game.audio.setRadioToStationName('OFF');
+    killRadio(vehicle);
     applyOctanePower(vehicle);
+    // GTA re-initialises the radio a moment after entry — re-apply so it stays OFF every time.
+    setTimeout(() => { if (mp.players.local.vehicle === vehicle) killRadio(vehicle); }, 250);
+    setTimeout(() => { if (mp.players.local.vehicle === vehicle) killRadio(vehicle); }, 1200);
 });
 
 // Blended octane profile currently in the tank (power/eff/rating).
@@ -399,6 +410,78 @@ function reportFuelWhileDriving(veh, now) {
     lastFuelReport = now;
     mp.events.callRemote('vehicle:fuelReport', Math.round(getFuel(veh)));
 }
+
+// ---- Odometer: accrue metres driven; the owner's car (synced 'veh:km') persists server-side ----
+let odoVehId = null;      // remoteId of the vehicle currently being tracked
+let odoBaseKm = 0;        // stored total km read from the car on entry (0 for cars that aren't yours)
+let odoOwned = false;     // does this car carry a persistent odometer (= your car)?
+let odoSessionM = 0;      // metres driven since entering this car
+let odoReportedM = 0;     // metres already reported to the server
+let odoLastReport = 0;
+function odoTrack(veh, speed, dt, now) {
+    const id = veh.remoteId;
+    if (id !== odoVehId) {               // entered a different car → reset tracking
+        odoFlush();
+        odoVehId = id;
+        const base = veh.getVariable('veh:km');
+        odoOwned = typeof base === 'number';
+        odoBaseKm = odoOwned ? base : 0;
+        odoSessionM = 0; odoReportedM = 0; odoLastReport = now;
+        try { veh.setModKit(0); } catch (e) {} // enable reading tuning mods
+    }
+    if (speed > 0.5) odoSessionM += speed * dt; // speed is m/s → metres
+    if (odoOwned && now - odoLastReport > 10000) {
+        odoLastReport = now;
+        let driver = true;
+        try { driver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
+        if (driver) {
+            const delta = odoSessionM - odoReportedM;
+            if (delta > 1) { mp.events.callRemote('vehicle:kmReport', Math.round(delta)); odoReportedM = odoSessionM; }
+        }
+    }
+    return odoBaseKm + odoSessionM / 1000; // total km to display
+}
+function odoFlush() { // send the last unreported stretch (called on leaving a car)
+    if (odoOwned && odoVehId !== null) {
+        const delta = odoSessionM - odoReportedM;
+        if (delta > 1) { try { mp.events.callRemote('vehicle:kmReport', Math.round(delta)); } catch (e) {} odoReportedM = odoSessionM; }
+    }
+    odoVehId = null;
+}
+
+// ---- Launch control ----
+// Hold throttle + brake (or handbrake) while stopped to ARM, then release the brake to fire a short
+// engine-power boost off the line. RAGE:MP can't touch the real clutch/RPM, so this is a power-burst
+// launch assist. Returns 0 = off, 1 = armed/ready, 2 = launching (for the HUD).
+const LC_BOOST = 1.7;        // engine power multiplier during launch
+const LC_BOOST_MS = 3000;    // how long the boost lasts
+const LC_ARM_MS = 500;       // hold throttle+brake this long to arm
+let lcArmStart = 0, lcArmed = false, lcBoostUntil = 0, lcBoosting = false;
+function launchControl(veh, speed, now) {
+    let driver = true;
+    try { driver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
+    if (!driver) return 0;
+    const accel = mp.game.controls.isControlPressed(0, 71);                                   // throttle
+    const braking = mp.game.controls.isControlPressed(0, 72) || mp.game.controls.isControlPressed(0, 76); // brake or handbrake
+
+    if (lcBoosting && now >= lcBoostUntil) { lcBoosting = false; applyOctanePower(veh); } // boost ended → restore power
+    if (lcBoosting) return 2;
+
+    if (speed < 2.0 && accel && braking) {                 // staging: revving against the brake
+        if (!lcArmStart) lcArmStart = now;
+        if (now - lcArmStart >= LC_ARM_MS) lcArmed = true;
+        return lcArmed ? 1 : 0;
+    }
+    if (lcArmed && accel && !braking && speed < 6) {        // brake released while armed → launch!
+        lcArmed = false; lcArmStart = 0;
+        lcBoosting = true; lcBoostUntil = now + LC_BOOST_MS;
+        try { veh.setEnginePowerMultiplier(octaneProfile(veh).power * LC_BOOST); } catch (e) {}
+        return 2;
+    }
+    lcArmStart = 0; lcArmed = false;
+    return 0;
+}
+
 function addFuel(veh, delta) {
     fuelByVeh[veh.remoteId] = Math.max(0, Math.min(CFG.fuelMax, getFuel(veh) + delta));
     return fuelByVeh[veh.remoteId];
@@ -2359,7 +2442,7 @@ function engineToggle(fromVehicleMenu = false, targetVehicle = null) {
         notify('ძრავი: გამორთული');
     } else {
         if (getFuel(veh) <= 0) { notify('საწვავი ამოიწურა — შეავსე საწვავის სადგურზე.'); return; }
-        veh.setEngineOn(true, true, false);
+        veh.setEngineOn(true, false, false); // instantly=false → plays the real startup sound (not resume-from-off)
         notify('ძრავი: ჩართული');
     }
     if (vehicleMenuBrowser) sendVehicleMenuState();
@@ -2392,9 +2475,29 @@ function findNearDrop() {
     return best;
 }
 
+// Nearest revivable (downed, still inside the 30s window) player on foot — for the "press E to
+// revive" prompt. The server re-checks range, the medkit and the window when we actually press E.
+const REVIVE_RANGE = 2.5;
+function findNearDowned() {
+    const me = mp.players.local;
+    if (me.vehicle || Number(me.getHealth()) <= 0) return null; // can't revive from a car or while downed yourself
+    if (me.getVariable('medic:duty') !== true) return null;      // only on-duty medics can revive
+    const p = me.position;
+    let best = null, bestDist = REVIVE_RANGE;
+    mp.players.forEachInStreamRange(o => {
+        if (o === me || o.getVariable('reviveOpen') !== true) return;
+        const q = o.position;
+        const d = Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
+        if (d <= bestDist) { bestDist = d; best = o; }
+    });
+    return best;
+}
+
 mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
     if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing) return;
     if (fuelUIOpen) return;
+    const downedTarget = findNearDowned();
+    if (downedTarget) { mp.events.callRemote('hospital:revive:attempt', downedTarget.remoteId); return; } // needs a medkit (server checks)
     if (demorganDigNear()) { if (demorganDigCooldown(mp.players.local.getVariable('demorgan:dig')) <= 0) mp.events.callRemote('demorgan:dig:start'); return; }
     const house = nearestHouseAction(mp.players.local);
     if (house) { mp.events.callRemote(house.event, house.id); return; }
@@ -2609,6 +2712,7 @@ mp.events.add('chat:hasTeam', (value) => {
 
 function openChat() {
     if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return;
+    if (Number(mp.players.local.getHealth()) <= 0) return; // downed: can't write
     chatting = true;
     mp.gui.cursor.show(true, true);
     if (chatBrowser) chatBrowser.execute(
@@ -2646,6 +2750,7 @@ mp.events.add('voice:setMuted', (value) => {
 
 mp.keys.bind(0x42, true, () => {  // B held -> talk
     if (voiceBanned || chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return;
+    if (Number(mp.players.local.getHealth()) <= 0) return; // downed: can't speak
     voiceTalking = true;
     if (mp.voiceChat) mp.voiceChat.muted = false;
 });
@@ -2688,12 +2793,63 @@ function toggleVehicleLights(fromVehicleMenu = false, targetVehicle = null) {
 mp.keys.bind(0x4C, false, closeVehicleDoors); // L - close all doors
 mp.keys.bind(0x48, false, toggleVehicleLights); // H - toggle lights
 
+// ---------- Drift mode (NumLock) ----------
+// RAGE:MP has no runtime handling native, so "drift mode" uses SET_VEHICLE_REDUCE_GRIP plus
+// SET_VEHICLE_REDUCE_GRIP_LEVEL to dial HOW loose it is (lower level = grippier, less slippery).
+// NumLock toggles it on the car you're driving, and it resets when you get out. (A manual gearbox
+// isn't possible here: RAGE:MP exposes no set-gear native and rejects SET_VEHICLE_HIGH_GEAR.)
+const REDUCE_GRIP = '0x222FF6A823D122E2';        // SET_VEHICLE_REDUCE_GRIP(vehicle, toggle)
+const REDUCE_GRIP_LEVEL = '0x7D6F9A3EF26136A0';  // SET_VEHICLE_REDUCE_GRIP_LEVEL(vehicle, float)
+const DRIFT_GRIP_LEVEL = 0.4;                    // default: lower = more grip; 0.5 = barely loose … 2.5 = ice
+// Per-car drift grip overrides (model hash -> level). M8 keeps more grip in drift than other cars.
+const DRIFT_GRIP_BY_MODEL = { [mp.game.joaat('mansm8c') >>> 0]: 0.0 };
+
+let driftMode = false;
+
+function localDriving() {
+    const veh = mp.players.local.vehicle;
+    if (!veh) return null;
+    try { if (veh.getPedInSeat(-1) !== mp.players.local.handle) return null; } catch (e) { return null; }
+    return veh;
+}
+function driftLevelFor(veh) {
+    const override = DRIFT_GRIP_BY_MODEL[veh.model >>> 0];
+    return override !== undefined ? override : DRIFT_GRIP_LEVEL;
+}
+function applyDrift(veh) {
+    try {
+        mp.game.invoke(REDUCE_GRIP, veh.handle, driftMode);
+        if (driftMode) mp.game.invoke(REDUCE_GRIP_LEVEL, veh.handle, driftLevelFor(veh));
+    } catch (e) {}
+}
+
+mp.keys.bind(0x90, true, () => { // NumLock — toggle drift mode (driver only)
+    if (chatting || anyModalOpen()) return;
+    const veh = localDriving();
+    if (!veh) return;
+    driftMode = !driftMode;
+    applyDrift(veh);
+    notify(driftMode ? 'დრიფტ რეჟიმი: ჩართული' : 'დრიფტ რეჟიმი: გამორთული');
+});
+
+// Every car starts in normal grip — drift is opt-in per drive.
+mp.events.add('playerEnterVehicle', () => {
+    const veh = localDriving();
+    if (!veh) return;
+    driftMode = false;
+    applyDrift(veh); // SET_VEHICLE_REDUCE_GRIP(veh, false) — force grip back on
+});
+
 mp.events.add('playerLeaveVehicle', vehicle => { // reset per-car states on exit
     closeVehicleMenu();
     if (vehicle) {
         vehicle.setLights(0);
         delete vehicleLightsMode[vehicle.remoteId];
+        try { mp.game.invoke(REDUCE_GRIP, vehicle.handle, false); } catch (e) {}
     }
+    odoFlush(); // persist the last stretch of mileage
+    driftMode = false;
+    lcArmStart = 0; lcArmed = false; lcBoosting = false; // reset launch control
     seatbeltOn = false;
     mp.players.local.setConfigFlag(32, true);
 });
@@ -2797,7 +2953,16 @@ mp.events.add('render', () => {
 
         // "press E to refuel" prompt is rendered in the HUD (native text can't show Georgian)
         const refuel = !fuelUIOpen && eligibleToRefuel(veh);
-        payload = { money: getMoney(), inVehicle: true, kmh: Math.round(speed * 3.6), gear, engineOn, rpm, fuel, octane, refuel };
+        const km = odoTrack(veh, speed, dt, now);
+        const launch = launchControl(veh, speed, now); // 0 off · 1 armed · 2 launching
+        let engineLevel = -1; try { engineLevel = veh.getMod(11); } catch (e) {} // engine upgrade → tuning stage
+        payload = { money: getMoney(), inVehicle: true, kmh: Math.round(speed * 3.6), gear, engineOn, rpm, fuel, octane, refuel,
+            drift: driftMode,
+            lights: vehicleLightsMode[veh.remoteId] === 1,
+            belt: seatbeltOn,
+            launch,
+            tuning: engineLevel < 0 ? 0 : engineLevel + 1, // 0 = stock, 1..4 = stage
+            km: Math.round(km) };
     }
 
     // character stats (bottom-right panel). RAGE returns 0..100 for the local player; guard against the
@@ -2813,6 +2978,9 @@ mp.events.add('render', () => {
     // "press E to pick up" for the nearest ground drop
     nearDrop = (chatting || adminBrowser || inventoryBrowser || shopBrowser) ? null : findNearDrop();
     payload.pickup = nearDrop ? nearDrop.label : null;
+
+    // "press E to revive" when standing over a revivable downed player
+    payload.revive = (chatting || adminBrowser || inventoryBrowser || shopBrowser) ? false : !!findNearDowned();
 
     // voice state (shown regardless of vehicle)
     payload.voiceTalking = voiceTalking;
@@ -3124,4 +3292,64 @@ mp.events.add('admin:panel:run', text => {
 });
 mp.events.add('admin:panel:announce', message => {
     if (adminBrowser) mp.events.callRemote('admin:panel:announce', String(message));
+});
+// Cars tab: request the car/handling list, save edits, show the result.
+mp.events.add('admin:panel:carsRequest', () => {
+    if (adminBrowser) mp.events.callRemote('admin:panel:cars');
+});
+mp.events.add('admin:panel:cars', json => {
+    if (adminBrowser) adminBrowser.execute('window.setCars(' + JSON.stringify(String(json)) + ')');
+});
+mp.events.add('admin:panel:carSave', (pack, handlingName, valuesJson) => {
+    if (adminBrowser) mp.events.callRemote('admin:panel:carSave', String(pack), String(handlingName), String(valuesJson));
+});
+mp.events.add('admin:panel:carResult', msg => {
+    if (adminBrowser) adminBrowser.execute('window.setCarResult(' + JSON.stringify(String(msg)) + ')');
+});
+
+// ===================== Death / timeout screen =====================
+// The server (packages/hospital/death.js) puts us into a downed state on death: blur the screen
+// over 5s and show a Georgian "timeout" overlay counting down to respawn. A medic/admin can
+// revive within the first 30s; otherwise the server respawns us at the hospital when it ends.
+// We also pause GTA's own death/arrest restart so the server fully controls respawn timing.
+let deathBrowser = null;
+let deathCountdownTimer = null;
+
+const DEATH_PAUSE_RESTART = '0x2C2B3493FBF51C71'; // PAUSE_DEATH_ARREST_RESTART(bool)
+const DEATH_IGNORE_RESTART = '0x21FFB63D8C615361'; // IGNORE_NEXT_RESTART(bool)
+const DEATH_FADE_OUT = '0x4A18E01DF2C87B86';       // SET_FADE_OUT_AFTER_DEATH(bool)
+const SCREEN_BLUR_IN = '0xA328A24AAA6B7FDC';       // TRANSITION_TO_BLURRED(float ms)
+const SCREEN_BLUR_OUT = '0xEFACC8AEF94430D5';      // TRANSITION_FROM_BLURRED(float ms)
+
+function stopDeathCountdown() {
+    if (deathCountdownTimer) { clearInterval(deathCountdownTimer); deathCountdownTimer = null; }
+}
+
+mp.events.add('death:begin', (totalMs, blurMs, reviveMs) => {
+    // Stop GTA's instant auto-respawn/fade so the server owns the timing.
+    try { mp.game.invoke(DEATH_FADE_OUT, false); } catch (e) {}
+    try { mp.game.invoke(DEATH_PAUSE_RESTART, true); } catch (e) {}
+    try { mp.game.invoke(DEATH_IGNORE_RESTART, true); } catch (e) {}
+    // Blur the screen over ~5s.
+    try { mp.game.invoke(SCREEN_BLUR_IN, Number(blurMs) || 5000); } catch (e) {}
+
+    if (!deathBrowser) deathBrowser = mp.browsers.new('package://ui/death/index.html');
+
+    const endAt = Date.now() + (Number(totalMs) || 0);
+    const reviveEndAt = Date.now() + (Number(reviveMs) || 0);
+    const push = () => {
+        const secondsLeft = Math.max(0, Math.round((endAt - Date.now()) / 1000));
+        const canRevive = Date.now() < reviveEndAt;
+        if (deathBrowser) deathBrowser.execute('window.setDeath(' + secondsLeft + ',' + canRevive + ')');
+    };
+    stopDeathCountdown();
+    push();
+    deathCountdownTimer = setInterval(push, 500);
+});
+
+mp.events.add('death:end', () => {
+    stopDeathCountdown();
+    try { mp.game.invoke(SCREEN_BLUR_OUT, 800); } catch (e) {}
+    try { mp.game.invoke(DEATH_PAUSE_RESTART, false); } catch (e) {}
+    if (deathBrowser) { deathBrowser.destroy(); deathBrowser = null; }
 });
