@@ -3,5 +3,10 @@
 client_packages/game_resources/dlcpacks/phmc/
 ./client_packages/.listcache
 
-# Add-on car / map binaries (dlc.rpf) — too big for GitHub; kept only on the server.
-*.rpf
+# Only these dlc.rpf exceed GitHub's 100MB hard limit — keep them off GitHub (server-only).
+# The other (smaller) car packs are tracked so the repo carries them.
+client_packages/game_resources/dlcpacks/cls2015/dlc.rpf
+client_packages/game_resources/dlcpacks/mercedessclass27/dlc.rpf
+client_packages/game_resources/dlcpacks/M235iXD/dlc.rpf
+client_packages/game_resources/dlcpacks/coquette6c/dlc.rpf
+client_packages/game_resources/dlcpacks/300vxr/dlc.rpf

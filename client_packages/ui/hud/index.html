@@ -259,13 +259,16 @@
 
   /* Character stats — bottom right (moves above the speedometer in a vehicle) */
   #stats {
-    position: absolute; right: 22px; bottom: 22px; width: 264px;
+    position: absolute; right: 22px; bottom: 22px; width: fit-content; min-width: 54px;
     background: linear-gradient(160deg, rgba(26,29,36,.95), rgba(13,15,19,.95));
     border: 1px solid var(--border); border-radius: 18px;
     padding: 13px 15px; color: var(--text); box-shadow: 0 14px 38px rgba(0,0,0,.55);
-    display: grid; gap: 11px; transition: bottom .2s;
+    display: grid; gap: 11px; transition: bottom .2s; justify-items: start;
   }
-  .stat { display: grid; grid-template-columns: 24px 1fr 32px; align-items: center; gap: 10px; }
+  .stat { display: grid; grid-template-columns: 24px 160px 32px; align-items: center; gap: 10px; }
+  /* When a stat is fine, collapse the row to just its icon (bar + value hidden). */
+  .stat.iconly { grid-template-columns: 24px; }
+  .stat.iconly .track, .stat.iconly .val { display: none; }
   .stat .ico { width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center;
     justify-content: center; font-size: 13px; background: rgba(255,255,255,.05); border: 1px solid var(--border); }
   .stat .track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
@@ -337,6 +340,7 @@
           <circle class="g-track" cx="60" cy="60" r="52" pathLength="100"/>
           <circle class="g-val" id="gaugeVal" cx="60" cy="60" r="52" pathLength="100"/>
         </g>
+        <g id="gaugeTicks" fill="#9aa4ad" font-size="8.5" font-weight="700" text-anchor="middle"></g>
       </svg>
       <div class="gauge-center">
         <div class="g-gear" id="gear">N</div>
@@ -433,6 +437,19 @@
       (t.extra ? '<span class="extra">' + esc(t.extra) + '</span>' : '') + '</div>').join('');
   };
   const $ = id => document.getElementById(id);
+  // Build the tachometer number markings (0–9) once, spread along the 270° arc.
+  (function buildGaugeTicks() {
+    const g = document.getElementById('gaugeTicks'); if (!g) return;
+    for (let i = 0; i <= 9; i++) {
+      const ang = (135 + i * 30) * Math.PI / 180, R = 39;
+      const x = 60 + R * Math.cos(ang), y = 60 + R * Math.sin(ang);
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', x.toFixed(1));
+      t.setAttribute('y', (y + 3).toFixed(1));
+      t.textContent = String(i);
+      g.appendChild(t);
+    }
+  })();
   window.setChatChannel = function (label, visible) {
     $('chatchName').textContent = label;
     $('chatch').style.display = visible ? 'block' : 'none';
@@ -478,12 +495,19 @@
       v.style.display = 'none';
     }
     // Character stats (bottom right); sits above the speedometer while in a vehicle.
+    // Show a stat's bar+value only when it needs attention; otherwise just the icon.
+    // health: when hurt (<100) · armour: when worn (>0) · hunger/thirst: when getting low (<=50%).
+    const NEED_LOW = 50;
     [['stHealth', d.health], ['stArmour', d.armour], ['stHunger', d.hunger], ['stThirst', d.thirst]].forEach(([id, v]) => {
       const el = $(id); if (!el || typeof v !== 'number') return;
       const pct = Math.max(0, Math.min(100, Math.round(v)));
       el.querySelector('.fill').style.width = pct + '%';
       el.querySelector('.val').textContent = pct;
       el.classList.toggle('low', id !== 'stArmour' && pct <= 20);
+      const attention = id === 'stHealth' ? pct < 100
+        : id === 'stArmour' ? pct > 0
+        : pct <= NEED_LOW; // hunger / thirst
+      el.classList.toggle('iconly', !attention);
     });
     const sp = $('speedo');
     $('stats').style.bottom = d.inVehicle ? (22 + sp.offsetHeight + 12) + 'px' : '22px';
@@ -497,7 +521,7 @@
     if (d.launch === 1) { lc.className = 'lcchip armed'; lc.textContent = 'LAUNCH READY'; lc.style.display = 'block'; }
     else if (d.launch === 2) { lc.className = 'lcchip go'; lc.textContent = 'LAUNCH!'; lc.style.display = 'block'; }
     else lc.style.display = 'none';
-    // circular gauge ring driven by RPM (reddens near redline)
+    // circular gauge ring driven by RPM (tachometer; 0–9 markings around the dial)
     const rpm = Math.max(0, Math.min(1, d.rpm || 0));
     const gv = $('gaugeVal');
     gv.style.strokeDasharray = (rpm * 75).toFixed(1) + ' 100';

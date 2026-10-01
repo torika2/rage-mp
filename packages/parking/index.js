@@ -20,23 +20,11 @@ const SUMMON_FEE = 100;    // bring your personal car to a spot without having p
 
 // ---- Config: parking lots and their spots. Add your own here — grab coords in-game with /pos. ----
 // Each spot: id, x/y/z (ground level), h (heading a parked car faces), price (per day).
-const LOTS = [
-    {
-        id: 'legion',
-        name: 'ცენტრალური პარკინგი',            // downtown lot, next to the gas station
-        origin: { x: 266.0, y: -1261.0, z: 29.3 }, // blip position
-        blip: { sprite: 50, color: 3, scale: 0.8 },
-        spots: [
-            { id: 'C1', x: 268.0, y: -1255.0, z: 29.3, h: 90, price: 50 },
-            { id: 'C2', x: 268.0, y: -1258.3, z: 29.3, h: 90, price: 50 },
-            { id: 'C3', x: 268.0, y: -1261.6, z: 29.3, h: 90, price: 50 },
-            { id: 'C4', x: 268.0, y: -1264.9, z: 29.3, h: 90, price: 50 },
-            { id: 'C5', x: 268.0, y: -1268.2, z: 29.3, h: 90, price: 50 }
-        ]
-    }
-];
-// Impounded cars are released here (first lot's origin by default).
-const IMPOUND_POINT = { x: LOTS[0].origin.x, y: LOTS[0].origin.y, z: LOTS[0].origin.z, h: 0 };
+// No fixed lots — the C1–C5 legion lot was removed. Parking spots are now admin-placed
+// (stored in parking.json customSpots). Add a fixed lot back here if ever needed.
+const LOTS = [];
+// Impounded cars are released at the old legion location.
+const IMPOUND_POINT = { x: 266.0, y: -1261.0, z: 29.3, h: 0 };
 
 // ---- Persistence ----
 // spots: spotId -> rental; impound: key -> [carData...]; customSpots: admin-placed spot definitions.
