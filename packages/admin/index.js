@@ -2,7 +2,19 @@ const fs = require('fs');
 const path = require('path');
 const carHandling = require('./carhandling'); // add-on car handling editor (Cars tab)
 
+// Hardcoded "owner" admins — can't be removed, and only they can grant/revoke admin in the panel.
 const FLY_ADMINS = new Set(['sephigr', 'torika2']);
+// Dynamic admins granted via the panel, persisted by Social Club (lowercase) in admins.json.
+const ADMINS_FILE = path.join(__dirname, 'admins.json');
+let grantedAdmins = new Set();
+try {
+    const d = JSON.parse(fs.readFileSync(ADMINS_FILE, 'utf8'));
+    if (d && Array.isArray(d.admins)) grantedAdmins = new Set(d.admins.map(s => String(s).trim().toLowerCase()).filter(Boolean));
+} catch (e) { grantedAdmins = new Set(); }
+function saveAdmins() {
+    const temporaryFile = ADMINS_FILE + '.tmp';
+    try { fs.writeFileSync(temporaryFile, JSON.stringify({ admins: [...grantedAdmins] }, null, 2)); fs.renameSync(temporaryFile, ADMINS_FILE); } catch (e) {}
+}
 const MODERATION_FILE = path.join(__dirname, 'moderation.json');
 const MODERATION_DURATIONS = new Map([
     [300, '5 minutes'],
@@ -99,9 +111,9 @@ function tell(player, message) {
     player.outputChatBox('!{#e0a94b}[Admin] !{#ffffff}' + message);
 }
 
-function isAdmin(player) {
-    return FLY_ADMINS.has(String(player.socialClub || '').trim().toLowerCase());
-}
+function adminKey(player) { return String(player.socialClub || '').trim().toLowerCase(); }
+function isOwnerAdmin(player) { const k = adminKey(player); return k !== '' && FLY_ADMINS.has(k); }
+function isAdmin(player) { const k = adminKey(player); return k !== '' && (FLY_ADMINS.has(k) || grantedAdmins.has(k)); }
 
 global.isProtectedAdmin = isAdmin;
 
@@ -151,6 +163,8 @@ function sendPlayerList(player) {
             inVehicle: Boolean(target.vehicle),
             isSelf: target.id === player.id,
             isAdmin: isAdmin(target),
+            isOwnerAdmin: isOwnerAdmin(target),      // owners can't be revoked
+            viewerIsOwner: isOwnerAdmin(player),     // only owners see the grant/revoke buttons
             adminMode: player.getVariable('admin:mode') === true,
             muted: Boolean(accountKey(target) && activeSanction(moderation.mutes, accountKey(target))),
             demorgan: typeof global.demorganIsJailed === 'function' && global.demorganIsJailed(target),
@@ -248,6 +262,26 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
     if (!target) {
         tell(player, 'Player ID not found; refresh the player list.');
         sendPlayerList(player);
+        return;
+    }
+
+    if (action === 'makeAdmin' || action === 'removeAdmin') {
+        if (!isOwnerAdmin(player)) { tell(player, 'Only an owner admin can grant or revoke admin.'); return; }
+        const key = adminKey(target);
+        if (!key) { tell(player, 'That player has no Social Club identity; cannot change admin.'); return; }
+        if (FLY_ADMINS.has(key)) { tell(player, 'That player is an owner admin and cannot be changed here.'); return; }
+        if (action === 'makeAdmin') {
+            if (grantedAdmins.has(key)) { tell(player, `${target.name} is already an admin.`); return; }
+            grantedAdmins.add(key); saveAdmins();
+            finishAction(player, `${target.name} is now an admin.`);
+            target.outputChatBox('!{#8ed17a}[Admin] !{#ffffff}You have been granted admin. Use /admin.');
+        } else {
+            if (!grantedAdmins.has(key)) { tell(player, `${target.name} is not a granted admin.`); return; }
+            grantedAdmins.delete(key); saveAdmins();
+            target.setVariable('admin:mode', false);
+            finishAction(player, `Removed admin from ${target.name}.`);
+            target.outputChatBox('!{#ff6b6b}[Admin] !{#ffffff}Your admin access has been removed.');
+        }
         return;
     }
 

@@ -1233,6 +1233,7 @@ function applyOverlay(overlayId, index, color) {
 }
 function applyLookPreview(look) {
     const me = mp.players.local;
+    applyHeadBlend();                                                      // hair tint only renders with head-blend data (esp. the female ped)
     try { me.setComponentVariation(HAIR_COMPONENT, look.d, 0, 0); } catch (e) {}
     try { me.setHairColor(look.c, look.h); } catch (e) {}
     applyOverlay(OVERLAY_BEARD, look.b, look.bc);
@@ -2973,14 +2974,18 @@ function applyDrift(veh) {
     } catch (e) {}
 }
 
-mp.keys.bind(0x90, true, () => { // NumLock — toggle drift mode (driver only)
-    if (chatting || anyModalOpen()) return;
+function toggleDrift() { // driver only; shared by the NumLock key and the /drift command
     const veh = localDriving();
-    if (!veh) return;
+    if (!veh) { notify('ჯერ ჩაჯექი მანქანაში (მძღოლად).'); return; }
     driftMode = !driftMode;
     applyDrift(veh);
     notify(driftMode ? 'დრიფტ რეჟიმი: ჩართული' : 'დრიფტ რეჟიმი: გამორთული');
+}
+mp.keys.bind(0x90, true, () => { // NumLock — toggle drift mode
+    if (chatting || anyModalOpen()) return;
+    toggleDrift();
 });
+mp.events.add('drift:toggle', toggleDrift); // /drift command (no keybind needed)
 
 // Every car starts in normal grip — drift is opt-in per drive.
 mp.events.add('playerEnterVehicle', () => {

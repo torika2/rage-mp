@@ -32,7 +32,7 @@ Folder = `client_packages/game_resources/dlcpacks/<folder>/dlc.rpf`.
 | Audi RS6 Avant (HAMMER) | `avant` (alias `rs6`) | `avant` | — | ✅ installed |
 | Chevy Colorado ZR2 ADD (HAMMER) | `ccadd` (alias `colorado`) | `ccadd` | — | ✅ installed |
 
-**Custom engine-sound DLCs** (installed as their own packs, pointed to via `audioNameHash`; all experimental — RAGE:MP may not load custom audio): `s63b44` (BMW S63 V8 → M8, F90), `mbnzc63eng` (Merc C63 → CLS, S-Class), `npolchar` (Dodge Charger V8 → Demon). CLS was `SCHAFTER5`, S-Class `ZENTORNO`, Demon `btype2` before. If custom audio doesn't load, revert each car's `audioNameHash` to those stock names.
+**Custom engine-sound DLCs** (installed as their own packs, pointed to via `audioNameHash`; all experimental — RAGE:MP may not load custom audio): `s63b44` (BMW S63 V8 → M8, F90, M4 F82; M4 was `turismor`), `mbnzc63eng` (Merc C63 → CLS, S-Class), `npolchar` (Dodge Charger V8 → Demon). CLS was `SCHAFTER5`, S-Class `ZENTORNO`, Demon `btype2` before. If custom audio doesn't load, revert each car's `audioNameHash` to those stock names.
 
 ### Editing car handling (admin panel → Cars tab)
 

@@ -141,6 +141,12 @@ mp.events.addCommand('car', (player, _, name) => {
     player.outputChatBox(`!{#8ed17a}გამოძახდა: ${name}`);
 });
 
+// /drift - toggle drift mode on the car you're driving (same as NumLock, no keybind needed)
+mp.events.addCommand('drift', (player) => {
+    if (!player.vehicle) return player.outputChatBox('!{#ffb42e}ჯერ ჩაჯექი მანქანაში.');
+    player.call('drift:toggle');
+});
+
 // /cars - list the clear add-on car names
 mp.events.addCommand('cars', (player) => {
     global.chatSend(player, {

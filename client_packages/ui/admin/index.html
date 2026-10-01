@@ -62,6 +62,7 @@
   .actions { display:flex; gap:5px; flex-wrap:wrap; }
   .actions button { padding:6px 8px; font-size:11px; }
   .actions .danger { color:var(--red); }
+  .actions .good { color:var(--green); }
   .side { min-height:0; border-left:1px solid var(--line); padding:20px; background:#ffffff03; overflow-y:auto; overscroll-behavior:contain; }
   .section-title { margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:16px; }
@@ -338,18 +339,25 @@
 
       const actions = document.createElement('td');
       actions.className = 'actions';
-      [
+      const actionList = [
         ['teleportTo', 'Go to', player.isSelf],
         ['bring', 'Bring', player.isSelf],
         ['heal', 'Heal', player.health <= 0],
         ['revive', 'Revive', player.health > 0]
-      ].forEach(([action, label, disabled]) => {
+      ];
+      // Only owner admins can grant/revoke admin; owners themselves can't be revoked.
+      if (player.viewerIsOwner && !player.isSelf) {
+        if (!player.isAdmin) actionList.push(['makeAdmin', 'Make Admin', false]);
+        else if (!player.isOwnerAdmin) actionList.push(['removeAdmin', 'Remove Admin', false]);
+      }
+      actionList.forEach(([action, label, disabled]) => {
         const button = document.createElement('button');
         button.textContent = label;
         button.disabled = disabled || !adminMode;
         button.dataset.action = action;
         button.dataset.id = player.id;
-        if (action === 'kill' || action === 'kick' || action === 'ban' || action === 'mute' || action === 'demorgan') button.className = 'danger';
+        if (action === 'kill' || action === 'kick' || action === 'ban' || action === 'mute' || action === 'demorgan' || action === 'removeAdmin') button.className = 'danger';
+        else if (action === 'makeAdmin') button.className = 'good';
         actions.appendChild(button);
       });
 
