@@ -57,6 +57,7 @@
   .remove:hover { border-color: #ff6978; color: #ff6978; }
   .hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
   .item-name { margin-top: -14px; color: var(--gold); font-size: 14px; font-weight: 600; min-height: 18px; }
+  .badge-new { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 9px; background: #e0457b; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .4px; vertical-align: middle; }
   .item-name.unnamed { color: var(--muted); font-weight: 400; }
   .stepper .value small { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
   .empty { margin: auto; color: var(--muted); font-size: 13px; }
@@ -152,7 +153,7 @@
       const category = state.categories[key];
       const button = document.createElement('button');
       button.className = 'cat' + (key === state.selected ? ' on' : '');
-      button.innerHTML = '<span>' + category.label + '</span><span class="cat-price">' + fmt(category.price) + '</span>';
+      button.innerHTML = '<span>' + category.label + '</span>' + (category.newCount ? '<span class="badge-new" title="ახალი ნივთები: ' + category.newCount + '">ახალი ' + category.newCount + '</span>' : '') + '<span class="cat-price">' + fmt(category.price) + '</span>';
       button.onclick = () => trigger('clothing:ui:select', key);
       cats.appendChild(button);
     });
@@ -175,7 +176,8 @@
     const position = category.position >= 0 ? (category.position + 1) : '—';
     detail.innerHTML =
       '<h2>' + category.label + '</h2>' +
-      '<div class="item-name' + (name ? '' : ' unnamed') + '">' + (none ? 'არცერთი' : esc(name || ('მოდელი #' + (category.drawable + 1)))) + '</div>' +
+      '<div class="item-name' + (name ? '' : ' unnamed') + '">' + (none ? 'არცერთი' : esc(name || ('მოდელი #' + (category.drawable + 1)))) +
+        (category.isNew ? '<span class="badge-new" title="ატვირთულია: ' + new Date(category.newAt).toLocaleDateString() + '">ახალი</span>' : '') + '</div>' +
       '<div class="picker"><div class="picker-label">მოდელი</div><div class="stepper">' +
         '<button data-nav="-1">‹</button><div class="value"><span>' + position + ' / ' + category.count + '</span>' +
           (none ? '' : '<small>#' + (category.drawable + 1) + '</small>') + '</div><button data-nav="1">›</button>' +

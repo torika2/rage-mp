@@ -93,4 +93,21 @@ sudo systemctl restart rageserv
 # then FULLY relaunch the GTA client and reconnect
 ```
 
+## Clothing packs (added 2026-10-01)
+
+| Folder | Source | Contents |
+|--------|--------|----------|
+| `mpclothes` | `clothes.7z` → `mpclothes/dlc.rpf` | `mpclothes_male.rpf` (mp_m_freemode_01) |
+| `mpclothes_f` | `clothes.7z` → `mpclothes/dlc1.rpf` (renamed) | `mpclothes_female.rpf` (mp_f_freemode_01) |
+
+RAGE:MP loads one `dlc.rpf` per folder, so the archive's `dlc1.rpf` lives in its own folder.
+The archive's `optional/*.ymt` files are not installed (they replace files inside the rpf).
+
+### Upload times & "new" labels
+`packages/clothing/dlc.js` records every pack in `dlcpacks/` with its upload time (`packages/clothing/data/dlc_registry.json`;
+a size change counts as a re-upload). When a shop opens, the client reports each slot's drawable count; growth past the
+last known count is stamped with the newest clothing pack for that gender (`data/clothing_new.json`). Drawables stamped
+within 7 days (`NEW_DAYS`) show a "ახალი" badge in the shop, plus a per-category count. Admin command `/dlcs` lists packs,
+dates and ranges. The base count comes from `ui/clothing/names.js` (slots without names, e.g. bags, start from the first report).
+
 _Last updated: 2026-09-28._

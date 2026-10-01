@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ტატუს სალონი</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c;
+    --gold-soft: rgba(242, 193, 92, .48);
+    --accent: #d6786d;
+    --text: #f3f0e8;
+    --muted: #aaa79e;
+    --line: rgba(255, 255, 255, .12);
+    --panel: linear-gradient(180deg, #131518, #0e1012);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { color: var(--text); background: transparent; user-select: none; }
+  button { color: inherit; font: inherit; cursor: pointer; }
+  .veil { position: absolute; inset: 0; display: flex; justify-content: flex-end; animation: appear .18s ease-out; }
+  .shop { width: min(760px, 44vw); height: 100%; display: grid; grid-template-rows: 62px minmax(0, 1fr) auto; background: var(--panel); border-left: 1px solid var(--gold-soft); box-shadow: -18px 0 40px rgba(0, 0, 0, .45); animation: slide .22s ease-out; }
+  .head { display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+  .title { display: flex; flex-direction: column; }
+  .title h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .title span { color: var(--muted); font-size: 11px; }
+  .spacer { flex: 1; }
+  .money { color: var(--gold); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .close { width: 34px; height: 34px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--muted); font-size: 18px; }
+  .close:hover { color: var(--gold); border-color: var(--gold-soft); }
+  .body { min-height: 0; display: grid; grid-template-columns: minmax(180px, .8fr) minmax(280px, 1.2fr); }
+  .cats { overflow: auto; padding: 14px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+  .cat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid transparent; border-radius: 10px; background: rgba(255, 255, 255, .03); color: var(--text); font-size: 13px; text-align: left; }
+  .cat:hover { background: rgba(255, 255, 255, .06); }
+  .cat.on { border-color: var(--gold-soft); background: rgba(242, 193, 92, .1); color: var(--gold); }
+  .cat .cat-price { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .cat .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+  .detail { overflow: auto; padding: 22px; display: flex; flex-direction: column; gap: 22px; }
+  .detail h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .picker { display: grid; gap: 8px; }
+  .picker-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .stepper { display: grid; grid-template-columns: 46px 1fr 46px; align-items: center; gap: 8px; }
+  .stepper button { height: 46px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); font-size: 20px; border-radius: 10px; }
+  .stepper button:hover { border-color: var(--gold-soft); color: var(--gold); }
+  .stepper .value { height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, .25); font-size: 14px; font-weight: 700; }
+  .stepper .value small { color: var(--muted); font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; }
+  .styles { max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px; }
+  .style { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: rgba(255, 255, 255, .03); font-size: 12px; text-align: left; }
+  .style:hover { background: rgba(255, 255, 255, .06); }
+  .style.on { border-color: var(--gold-soft); background: rgba(242, 193, 92, .1); color: var(--gold); }
+  .style .tag { margin-left: auto; color: var(--muted); font-size: 10px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .swatch { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .08); font-size: 9px; display: grid; place-items: center; color: var(--muted); }
+  .swatch:hover { border-color: var(--gold-soft); }
+  .swatch.on { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(242, 193, 92, .35); color: var(--text); }
+  .price-row { display: flex; align-items: baseline; gap: 10px; }
+  .price-row .p { color: var(--gold); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .price-row .tax { color: var(--muted); font-size: 11px; }
+  .actions { margin-top: auto; display: flex; gap: 10px; }
+  .add { flex: 1; padding: 13px; border: 1px solid var(--gold); border-radius: 10px; background: rgba(242, 193, 92, .14); color: var(--gold); font-weight: 700; font-size: 14px; }
+  .add:hover { background: rgba(242, 193, 92, .24); }
+  .add:disabled { opacity: .4; cursor: not-allowed; }
+  .remove { flex: 0 0 auto; padding: 13px 18px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .04); color: var(--muted); font-size: 13px; }
+  .remove:hover { border-color: #ff6978; color: #ff6978; }
+  .hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .empty { margin: auto; color: var(--muted); font-size: 13px; }
+  /* Cart footer */
+  .cart { border-top: 1px solid var(--gold-soft); padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; background: rgba(0, 0, 0, .25); }
+  .cart-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .cart-head b { color: var(--accent); }
+  .cart-list { max-height: 148px; overflow: auto; display: flex; flex-direction: column; gap: 5px; }
+  .cart-empty { color: var(--muted); font-size: 12px; padding: 4px 0; }
+  .cart-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .03); font-size: 12px; }
+  .cart-item .ci-price { margin-left: auto; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .cart-item .ci-del { width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
+  .cart-item .ci-del:hover { border-color: #ff6978; color: #ff6978; }
+  .checkout { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
+  .checkout .total { font-size: 13px; color: var(--muted); }
+  .checkout .total b { color: var(--gold); font-size: 18px; font-variant-numeric: tabular-nums; }
+  .checkout button { padding: 12px 20px; border: 1px solid var(--gold); border-radius: 10px; background: rgba(242, 193, 92, .16); color: var(--gold); font-weight: 700; font-size: 14px; }
+  .checkout button:hover { background: rgba(242, 193, 92, .28); }
+  .checkout button:disabled { opacity: .4; cursor: not-allowed; }
+  @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slide { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+  .zones { overflow: auto; padding: 14px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+  .cat .cnt { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .detail { padding: 16px; gap: 12px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .toolbar select { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #17191c; color: var(--text); font: inherit; font-size: 12px; }
+  .grid { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px; }
+  .tat { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: rgba(255, 255, 255, .03); font-size: 12px; text-align: left; }
+  .tat:hover { background: rgba(255, 255, 255, .07); }
+  .tat.sel { border-color: var(--gold-soft); background: rgba(242, 193, 92, .1); color: var(--gold); }
+  .tat .tag { margin-left: auto; font-size: 10px; color: var(--muted); }
+  .tat.own .tag { color: #7bd88f; }
+  .tat.cart .tag { color: var(--gold); }
+  .tat.rem .tag { color: #ff6978; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tagbtn { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255, 255, 255, .04); font-size: 12px; }
+  .tagbtn:hover { border-color: var(--gold-soft); }
+  .tagbtn.on { border-color: var(--gold); background: rgba(242, 193, 92, .14); color: var(--gold); }
+  .tagbtn small { color: var(--muted); margin-left: 4px; font-size: 10px; }
+  .tat .side { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(255, 255, 255, .08); color: var(--muted); }
+  .sel-bar { display: flex; align-items: center; gap: 10px; }
+  .sel-bar .nm { flex: 1; font-size: 13px; font-weight: 600; color: var(--gold); min-height: 18px; }
+  .sel-bar .p { color: var(--gold); font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .sel-bar .add { flex: 0 0 auto; padding: 10px 14px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="veil">
+  <main class="shop">
+    <header class="head">
+      <div class="title"><h1>ტატუს სალონი</h1><span id="sub">ყველა GTA Online ტატუ</span></div>
+      <div class="spacer"></div>
+      <div class="money" id="money">$0</div>
+      <button class="close" id="close" title="დახურვა (Esc)">×</button>
+    </header>
+    <div class="body">
+      <div class="zones" id="zones"></div>
+      <div class="detail">
+        <div class="tags" id="tags"></div>
+        <div class="toolbar"><select id="coll"></select></div>
+        <div class="grid" id="grid"></div>
+        <div class="sel-bar">
+          <div class="nm" id="selName">აირჩიეთ ტატუ გამოსაცდელად</div>
+          <div class="p" id="selPrice"></div>
+          <button class="add" id="selBtn" disabled>＋ კალათაში</button>
+        </div>
+        <div class="hint">დაჭერა — გამოცდა პერსონაჟზე · ტატუს ბრუნავს პერსონაჟის ათრევით. უკვე გაქვთ — მწვანე „გაქვთ“; დაჭერით და „მოხსნა“ — წაშლა ($<span id="rmPrice">0</span>).</div>
+      </div>
+    </div>
+    <div class="cart">
+      <div class="cart-head">კალათა · <b id="cartCount">0</b> ცვლილება</div>
+      <div class="cart-list" id="cartList"><div class="cart-empty">კალათა ცარიელია</div></div>
+      <div class="checkout">
+        <div class="total">სულ: <b id="cartTotal">$0</b></div>
+        <button id="checkout" disabled>გადახდა</button>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="data.js"></script>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+  const ZONE_LABELS = ['თავი', 'ტორსი', 'მარცხენა ხელი', 'მარჯვენა ხელი', 'მარცხენა ფეხი', 'მარჯვენა ფეხი'];
+
+  let gender = 'm', money = 0, taxRate = 0, zonePrice = [], removePrice = 0, maxOwned = 120;
+  let list = [];                 // this gender's tattoos: [zone, collectionIdx, overlayHash, name]
+  let label = [];                // display label per id: "Hipster #3"
+  let owned = new Set();         // ids already bought
+  let addCart = new Set();       // ids queued to buy
+  let removeCart = new Set();    // owned ids queued for removal
+  let zone = 1, coll = -1, face = -1, selected = null; // face: -1 all, 1 front, 2 back, 3 side, 0 other
+  const FACE_LABELS = { 1: 'წინა', 2: 'უკანა', 3: 'გვერდი', 0: 'სხვა' };
+  let previewTimer = null;
+
+  el('close').onclick = () => trigger('tattoo:ui:close');
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); trigger('tattoo:ui:close'); }
+  });
+  let dragging = false, lastX = 0;
+  document.addEventListener('mousedown', (event) => { if (event.target.closest('.shop')) return; dragging = true; lastX = event.clientX; document.body.style.cursor = 'ew-resize'; });
+  document.addEventListener('mousemove', (event) => { if (!dragging) return; const dx = event.clientX - lastX; lastX = event.clientX; if (dx) trigger('tattoo:ui:rotate', dx); });
+  document.addEventListener('mouseup', () => { dragging = false; document.body.style.cursor = ''; });
+
+  const priceOf = (id) => zonePrice[list[id][0]] || 0;
+  const totals = () => {
+    let base = 0;
+    addCart.forEach(id => { base += priceOf(id); });
+    base += removeCart.size * removePrice;
+    const tax = Math.round(base * Math.max(0, taxRate));
+    return { base, tax, total: base + tax };
+  };
+
+  // What the ped should wear: owned minus queued removals, plus the cart, plus the item being tried.
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      const ids = new Set();
+      owned.forEach(id => { if (!removeCart.has(id)) ids.add(id); });
+      addCart.forEach(id => ids.add(id));
+      if (selected != null && !owned.has(selected)) ids.add(selected);
+      trigger('tattoo:ui:preview', JSON.stringify([...ids].map(id => [window.TATTOOS.collections[list[id][1]].h, list[id][2]])));
+    }, 60);
+  }
+
+  function renderZones() {
+    el('zones').innerHTML = '';
+    ZONE_LABELS.forEach((name, z) => {
+      let count = 0;
+      for (let id = 0; id < list.length; id++) if (list[id][0] === z) count++;
+      const button = document.createElement('button');
+      button.className = 'cat' + (z === zone ? ' on' : '');
+      button.innerHTML = '<span>' + name + '</span><span class="cnt">' + count + '</span><span class="cat-price">' + fmt(zonePrice[z]) + '</span>';
+      button.onclick = () => { zone = z; coll = -1; face = -1; selected = null; trigger('tattoo:ui:zone', z); renderAll(); schedulePreview(); };
+      el('zones').appendChild(button);
+    });
+  }
+  function renderTags() {
+    const counts = { 1: 0, 2: 0, 3: 0, 0: 0 };
+    let all = 0;
+    for (let id = 0; id < list.length; id++) if (list[id][0] === zone) { counts[list[id][4]]++; all++; }
+    const box = el('tags');
+    box.innerHTML = '';
+    [[-1, 'ყველა', all], [1, 'წინა', counts[1]], [2, 'უკანა', counts[2]], [3, 'გვერდი', counts[3]], [0, 'სხვა', counts[0]]].forEach(tag => {
+      if (tag[0] !== -1 && !tag[2]) return;
+      const button = document.createElement('button');
+      button.className = 'tagbtn' + (tag[0] === face ? ' on' : '');
+      button.innerHTML = tag[1] + '<small>' + tag[2] + '</small>';
+      button.onclick = () => {
+        face = tag[0]; coll = -1; selected = null;
+        if (face === 1 || face === 2) trigger('tattoo:ui:facing', face === 2 ? 180 : 0); // turn the ped to show that side
+        renderAll(); schedulePreview();
+      };
+      box.appendChild(button);
+    });
+  }
+  function renderColl() {
+    const names = {};
+    for (let id = 0; id < list.length; id++) if (list[id][0] === zone && (face < 0 || list[id][4] === face)) names[list[id][1]] = (names[list[id][1]] || 0) + 1;
+    const select = el('coll');
+    select.innerHTML = '<option value="-1">ყველა კოლექცია</option>' + Object.keys(names).map(c =>
+      '<option value="' + c + '"' + (Number(c) === coll ? ' selected' : '') + '>' + esc(window.TATTOOS.collections[c].n) + ' (' + names[c] + ')</option>').join('');
+    select.value = String(coll);
+    select.onchange = () => { coll = Number(select.value); selected = null; renderAll(); schedulePreview(); };
+  }
+  function renderGrid() {
+    const grid = el('grid');
+    grid.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (let id = 0; id < list.length; id++) {
+      if (list[id][0] !== zone || (coll >= 0 && list[id][1] !== coll) || (face >= 0 && list[id][4] !== face)) continue;
+      const button = document.createElement('button');
+      const own = owned.has(id), rem = removeCart.has(id), inCart = addCart.has(id);
+      button.className = 'tat' + (id === selected ? ' sel' : '') + (own ? ' own' : '') + (inCart ? ' cart' : '') + (rem ? ' rem' : '');
+      button.title = list[id][3];
+      button.dataset.id = id;
+      button.innerHTML = '<span>' + esc(label[id]) + '</span>' + (list[id][4] && face < 0 ? '<span class="side">' + FACE_LABELS[list[id][4]] + '</span>' : '') + '<span class="tag">' + (rem ? 'მოიხსნება' : own ? 'გაქვთ' : inCart ? 'კალათაშია' : fmt(priceOf(id))) + '</span>';
+      button.onclick = () => { selected = id; if (list[id][4] === 1 || list[id][4] === 2) trigger('tattoo:ui:facing', list[id][4] === 2 ? 180 : 0); renderGrid(); renderSel(); schedulePreview(); };
+      frag.appendChild(button);
+    }
+    grid.appendChild(frag);
+    const on = grid.querySelector('.sel');
+    if (on) on.scrollIntoView({ block: 'nearest' });
+  }
+  function renderSel() {
+    const btn = el('selBtn');
+    if (selected == null) { el('selName').textContent = 'აირჩიეთ ტატუ გამოსაცდელად'; el('selPrice').textContent = ''; btn.disabled = true; btn.textContent = '＋ კალათაში'; return; }
+    el('selName').textContent = label[selected] + ' · ' + ZONE_LABELS[list[selected][0]] + (list[selected][4] ? ' · ' + FACE_LABELS[list[selected][4]] : '');
+    const own = owned.has(selected);
+    el('selPrice').textContent = own ? fmt(removePrice) : fmt(priceOf(selected));
+    btn.disabled = false;
+    if (own) btn.textContent = removeCart.has(selected) ? '− გაუქმება' : '✕ მოხსნა';
+    else btn.textContent = addCart.has(selected) ? '− კალათიდან' : '＋ კალათაში';
+  }
+  el('selBtn').onclick = () => {
+    if (selected == null) return;
+    if (owned.has(selected)) { if (!removeCart.delete(selected)) removeCart.add(selected); }
+    else if (!addCart.delete(selected)) {
+      if (owned.size - removeCart.size + addCart.size >= maxOwned) return;
+      addCart.add(selected);
+    }
+    renderAll(); schedulePreview();
+  };
+  function renderCart() {
+    const rows = [];
+    addCart.forEach(id => rows.push({ id, add: true, text: '＋ ' + label[id], price: priceOf(id) }));
+    removeCart.forEach(id => rows.push({ id, add: false, text: '✕ ' + label[id], price: removePrice }));
+    const t = totals();
+    el('cartCount').textContent = rows.length;
+    el('cartTotal').textContent = fmt(t.total);
+    el('checkout').disabled = !rows.length || t.total > money;
+    el('checkout').textContent = rows.length ? 'გადახდა ' + fmt(t.total) : 'გადახდა';
+    const box = el('cartList');
+    if (!rows.length) { box.innerHTML = '<div class="cart-empty">კალათა ცარიელია</div>'; return; }
+    box.innerHTML = '';
+    rows.forEach(row => {
+      const div = document.createElement('div');
+      div.className = 'cart-item';
+      div.innerHTML = '<span>' + esc(row.text) + '</span><span class="ci-price">' + fmt(row.price) + '</span><button class="ci-del">×</button>';
+      div.querySelector('.ci-del').onclick = () => { (row.add ? addCart : removeCart).delete(row.id); renderAll(); schedulePreview(); };
+      box.appendChild(div);
+    });
+  }
+  function renderAll() {
+    el('money').textContent = fmt(money);
+    renderZones(); renderTags(); renderColl(); renderGrid(); renderSel(); renderCart();
+  }
+  el('checkout').onclick = () => {
+    if (!addCart.size && !removeCart.size) return;
+    trigger('tattoo:ui:checkout', JSON.stringify({ add: [...addCart], remove: [...removeCart] }));
+  };
+
+  // ---- Called by the client ----
+  window.setTattooData = function (data) {
+    gender = data.gender === 'f' ? 'f' : 'm';
+    money = data.money || 0; taxRate = data.taxRate || 0; zonePrice = data.zonePrice || []; removePrice = data.removePrice || 0; maxOwned = data.maxOwned || 120;
+    list = window.TATTOOS[gender];
+    const counter = {};
+    label = list.map(item => {
+      const key = item[0] + ':' + item[1];
+      counter[key] = (counter[key] || 0) + 1;
+      return window.TATTOOS.collections[item[1]].n + ' #' + counter[key];
+    });
+    owned = new Set(data.owned || []);
+    addCart = new Set(); removeCart = new Set(); selected = null; zone = 1; coll = -1; face = -1;
+    el('rmPrice').textContent = removePrice;
+    renderAll();
+    trigger('tattoo:ui:zone', zone);
+    schedulePreview();
+  };
+  window.setMoney = function (value) { money = value; renderAll(); };
+
+  if (RAGE) mp.trigger('tattoo:ui:ready');
+  else window.setTattooData({ gender: 'm', money: 5000, taxRate: .1, zonePrice: [250, 350, 200, 200, 200, 200], removePrice: 75, maxOwned: 120, owned: [3] });
+</script>
+</body>
+</html>

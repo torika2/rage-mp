@@ -123,6 +123,20 @@ BARBER_SHOPS.forEach(p => {
         { color: [120, 200, 210, 140], visible: true });
 });
 
+// Tattoo salons — blips + markers (visual). Server (packages/tattoo) enforces where you can get inked;
+// keep coords in sync with SHOP_LOCATIONS there.
+const TATTOO_SHOPS = [
+    [322.14, 180.47, 103.59], [-1153.68, -1425.68, 4.95], [1322.65, -1651.98, 51.28],
+    [-3170.07, 1075.06, 20.83], [1864.63, 3747.74, 33.03], [-293.71, 6200.04, 31.49]
+];
+let tattooBrowser = null;
+TATTOO_SHOPS.forEach(p => {
+    mp.blips.new(75, new mp.Vector3(p[0], p[1], p[2]),
+        { name: 'ტატუს სალონი', scale: 0.8, color: 1, shortRange: true });
+    mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
+        { color: [210, 110, 100, 140], visible: true });
+});
+
 // ATMs — blips only (visual). Server (packages/bank) enforces the ATM range; keep coords in sync
 // with ATM_LOCATIONS there.
 const ATM_LOCATIONS = [
@@ -321,6 +335,10 @@ function nearestShopMode(pos) {
     for (const p of BARBER_SHOPS) {
         const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
         if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'barber';
+    }
+    for (const p of TATTOO_SHOPS) {
+        const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
+        if (dx * dx + dy * dy + dz * dz <= SHOP_INTERACT_RANGE * SHOP_INTERACT_RANGE) return 'tattoo';
     }
     for (const p of ATM_LOCATIONS) {
         const dx = pos.x - p[0], dy = pos.y - p[1], dz = pos.z - p[2];
@@ -789,6 +807,7 @@ let clothingCart = [];      // [{ cat, d, t, label, price }] — items queued fo
 let clothingReturn = null;  // where to teleport the player back to on close
 let clothingValid = {};     // { key: [drawable, ...] } — drawables that exist and render for this ped
 let clothingTexCache = {};  // { 'key:drawable': [texture, ...] } — valid textures per drawable
+let clothingNewInfo = null; // { now, newDays, ranges:{key:[{from,to,pack,at}]} } — recently uploaded drawables
 let clothingGender = 'm';   // 'm' | 'f' — picks the GTA Online name table in the shop page
 // A clean, prop-free spot to stand in while dressing, so store objects never hide the character.
 const DRESSING_SPOT = { x: -1447.805, y: -242.122, z: 49.80, heading: -15.6 };
@@ -800,7 +819,7 @@ const CLOTH_ZONE = {
 };
 
 function openClothingUI() {
-    if (clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser) return;
+    if (clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser) return;
     const me = mp.players.local;
     let heading = 0; try { heading = me.getHeading(); } catch (e) {}
     clothingReturn = { x: me.position.x, y: me.position.y, z: me.position.z, heading };
@@ -922,6 +941,16 @@ function catPrice(cat, drawable) {
     const tax = Math.round(base * Math.max(0, clothingTaxRate));
     return { base, tax, total: base + tax };
 }
+// The newest recently-uploaded range containing this drawable, or null.
+function newRangeOf(key, drawable) {
+    if (!clothingNewInfo || drawable < 0) return null;
+    const cutoff = clothingNewInfo.now - clothingNewInfo.newDays * 86400000;
+    const ranges = clothingNewInfo.ranges[key] || [];
+    for (let i = 0; i < ranges.length; i++) {
+        if (ranges[i].at >= cutoff && drawable >= ranges[i].from && drawable < ranges[i].to) return ranges[i];
+    }
+    return null;
+}
 function buildCat(key) {
     const cat = clothingCats[key];
     const sel = clothingPreview[key];
@@ -932,7 +961,9 @@ function buildCat(key) {
         drawable: sel.drawable, position: valid.indexOf(sel.drawable), count: valid.length,
         texture: sel.texture, textures: validTextures(cat, sel.drawable),
         price: price.total, tax: price.tax,
-        worn: !!clothingWorn[key]
+        worn: !!clothingWorn[key],
+        isNew: !!newRangeOf(key, sel.drawable), newAt: (newRangeOf(key, sel.drawable) || {}).at || 0,
+        newCount: valid.filter(d => newRangeOf(key, d)).length
     };
 }
 function pushCart() {
@@ -977,6 +1008,14 @@ mp.events.add('clothing:state', (json) => {
     if (clothingSelected) applyPedCamZone(CLOTH_ZONE[clothingSelected] || 'full');
     pushClothingData();
     pushCart();
+    // Report slot sizes so the server can stamp newly uploaded drawables (it replies with clothing:newInfo).
+    const counts = {};
+    clothingOrder.forEach(key => { counts[key] = drawableCount(clothingCats[key]); });
+    mp.events.callRemote('clothing:reportCounts', JSON.stringify(counts));
+});
+mp.events.add('clothing:newInfo', (json) => {
+    try { clothingNewInfo = JSON.parse(json); } catch (e) { return; }
+    pushClothingData();
 });
 mp.events.add('clothing:ui:select', (key) => {
     if (!clothingCats || !clothingCats[key]) return;
@@ -1241,7 +1280,7 @@ function pushBarber() {
 }
 
 function requestBarberUI() {
-    if (barberBrowser || barberPending || anyModalOpen()) return;
+    if (barberBrowser || tattooBrowser || barberPending || anyModalOpen()) return;
     barberPending = true;
     setTimeout(() => { barberPending = false; }, 3000); // server never answered -> allow retry
     mp.events.callRemote('barber:requestState');
@@ -1250,7 +1289,7 @@ mp.events.add('barber:state', (json) => {
     if (!barberPending) return; // only answer our own E press
     barberPending = false;
     const data = JSON.parse(json);
-    if (!data.open || barberBrowser || anyModalOpen()) return;
+    if (!data.open || barberBrowser || tattooBrowser || anyModalOpen()) return;
     const limits = Object.assign({ colors: 64, beards: 29, eyebrows: 34, eyes: 32 }, data.limits || {});
     try { const native = mp.game.ped.getNumHairColors(); if (native > 0) limits.colors = Math.min(limits.colors, native); } catch (e) {}
     barberState = { money: data.money || 0, taxRate: data.taxRate || 0, prices: data.prices || {}, limits, blend: data.blend || null };
@@ -1297,7 +1336,7 @@ function closeBarberUI() {
     mp.gui.cursor.show(false, false);
 }
 mp.events.add('barber:ui:ready', () => {
-    if (!barberBrowser || !barberState) return;
+    if (!barberBrowser || tattooBrowser || !barberState) return;
     const palette = [];
     for (let i = 0; i < barberState.limits.colors; i++) palette.push(hairRgb(i));
     barberBrowser.execute('window.setBarberData(' + JSON.stringify({
@@ -1377,6 +1416,110 @@ mp.events.add('barber:result', (json) => {
 });
 mp.events.add('barber:ui:close', closeBarberUI);
 mp.events.add('barber:ui:rotate', (deltaPixels) => rotatePedPreview(Number(deltaPixels) * 0.5));
+
+// ---------- CEF tattoo salon — packages/tattoo ----------
+// The page (ui/tattoo) holds the full tattoo lists and the cart; this side only moves the player to the
+// clean dressing spot, strips clothes that would hide ink, frames the camera on the chosen body zone and
+// previews the decorations the page asks for. The server re-prices and applies the purchase.
+let tattooPending = false;  // E pressed, waiting for the server to confirm we're at a salon
+let tattooState = null;     // { gender, money, taxRate, zonePrice, removePrice, maxOwned, owned, nude, nudeArms }
+let tattooSavedLook = null; // { comp: [drawable, texture] } — clothes to put back on close
+let tattooReturn = null;    // where to teleport the player back to on close
+const TATTOO_CAM = ['head', 'upper', 'upper', 'upper', 'lower', 'lower']; // by zone index (head, torso, arms, legs)
+const TATTOO_STRIP = { 11: 'top', 8: 'undershirt', 4: 'pants', 6: 'shoes' }; // clothing component -> nude look key
+
+function tattooDraw(pairs) { // replace the local ped's decorations with [[collectionHash, overlayHash], ...]
+    const me = mp.players.local;
+    try { me.clearDecorations(); } catch (e) { try { mp.game.invoke('0x0E5173C163976E38', me.handle); } catch (e2) {} }
+    (pairs || []).forEach(pair => {
+        try { me.setDecoration(pair[0], pair[1]); } catch (e) { try { mp.game.invoke('0x5F5D1665E352A839', me.handle, pair[0], pair[1]); } catch (e2) {} }
+    });
+}
+function requestTattooUI() {
+    if (tattooBrowser || tattooPending || anyModalOpen()) return;
+    tattooPending = true;
+    setTimeout(() => { tattooPending = false; }, 3000); // server never answered -> allow retry
+    mp.events.callRemote('tattoo:requestState');
+}
+mp.events.add('tattoo:state', (json) => {
+    if (!tattooPending) return; // only answer our own E press
+    tattooPending = false;
+    const data = JSON.parse(json);
+    if (!data.open || tattooBrowser || anyModalOpen()) return;
+    tattooState = data;
+    const me = mp.players.local;
+    let heading = 0; try { heading = me.getHeading(); } catch (e) {}
+    tattooReturn = { x: me.position.x, y: me.position.y, z: me.position.z, heading };
+    try { me.position = new mp.Vector3(DRESSING_SPOT.x, DRESSING_SPOT.y, DRESSING_SPOT.z); } catch (e) {}
+    try { me.setHeading(DRESSING_SPOT.heading); } catch (e) {}
+    tattooSavedLook = {};
+    [3, 4, 6, 8, 11].forEach(comp => {
+        try { tattooSavedLook[comp] = [me.getDrawableVariation(comp), me.getTextureVariation(comp)]; } catch (e) {}
+    });
+    const nude = data.nude || {};
+    Object.keys(TATTOO_STRIP).forEach(comp => {
+        if (nude[TATTOO_STRIP[comp]] != null) { try { me.setComponentVariation(Number(comp), nude[TATTOO_STRIP[comp]], 0, 0); } catch (e) {} }
+    });
+    try { me.setComponentVariation(3, data.nudeArms != null ? data.nudeArms : 15, 0, 0); } catch (e) {}
+    startPedPreview();
+    applyPedCamZone('upper');
+    tattooBrowser = mp.browsers.new('package://ui/tattoo/index.html');
+    mp.gui.cursor.show(true, true);
+});
+function closeTattooUI() {
+    if (!tattooBrowser) return;
+    const me = mp.players.local;
+    if (tattooSavedLook) Object.keys(tattooSavedLook).forEach(comp => {
+        try { me.setComponentVariation(Number(comp), tattooSavedLook[comp][0], tattooSavedLook[comp][1], 0); } catch (e) {}
+    });
+    tattooSavedLook = null;
+    suppressPauseUntil = Date.now() + 1500;
+    blockPauseControls();
+    tattooBrowser.destroy();
+    tattooBrowser = null;
+    stopPedPreview();
+    if (tattooReturn) { // teleport back to the salon
+        try { me.position = new mp.Vector3(tattooReturn.x, tattooReturn.y, tattooReturn.z); } catch (e) {}
+        try { me.setHeading(tattooReturn.heading); } catch (e) {}
+        tattooReturn = null;
+    }
+    tattooState = null;
+    mp.events.callRemote('tattoo:refresh'); // drop the un-bought try-on: the server redraws what the player owns
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('tattoo:ui:ready', () => {
+    if (!tattooBrowser || !tattooState) return;
+    tattooBrowser.execute('window.setTattooData(' + JSON.stringify({
+        gender: tattooState.gender, money: tattooState.money, taxRate: tattooState.taxRate, zonePrice: tattooState.zonePrice,
+        removePrice: tattooState.removePrice, maxOwned: tattooState.maxOwned, owned: tattooState.owned
+    }) + ')');
+});
+mp.events.add('tattoo:ui:preview', (json) => { // [[collectionHash, overlayHash], ...] to show on the ped
+    if (!tattooBrowser) return;
+    try { tattooDraw(JSON.parse(json)); } catch (e) {}
+});
+mp.events.add('tattoo:ui:zone', (zone) => { if (tattooBrowser) applyPedCamZone(TATTOO_CAM[Number(zone)] || 'full'); });
+mp.events.add('tattoo:ui:checkout', (json) => {
+    if (!tattooBrowser) return;
+    mp.events.callRemote('tattoo:buy', String(json));
+});
+mp.events.add('tattoo:result', (json) => {
+    const result = JSON.parse(json);
+    if (!tattooBrowser) return;
+    if (result.ok) {
+        if (tattooState) tattooState.owned = result.owned || [];
+        closeTattooUI(); // the server has applied + synced the new set
+        return;
+    }
+    tattooBrowser.execute('window.setMoney(' + Number(result.money || 0) + ')'); // failed: stay open, refresh balance
+});
+mp.events.add('tattoo:ui:facing', (degrees) => { // turn the ped to show its front (0) or back (180)
+    if (!tattooBrowser || !pedAnchor) return;
+    pedRotation = Number(degrees) || 0;
+    try { mp.players.local.setHeading(pedAnchor.heading + pedRotation); } catch (e) {}
+});
+mp.events.add('tattoo:ui:close', closeTattooUI);
+mp.events.add('tattoo:ui:rotate', (deltaPixels) => rotatePedPreview(Number(deltaPixels) * 0.5));
 
 // ---------- City Hall (Rockford Hills) — packages/cityhall ----------
 // The server sends the points (entrance/duty/desk/clerk/spawn), which admins move in-game with
@@ -2082,7 +2225,7 @@ function setPhone(out) {
     }
 }
 function anyModalOpen() {
-    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || parkEditing);
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || parkEditing);
 }
 mp.keys.bind(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
 mp.keys.bind(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
@@ -2155,7 +2298,7 @@ suppressAmbient();
 // ---------- CEF bank / ATM ----------
 let bankBrowser = null;
 function openBankUI() {
-    if (bankBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || directorBrowser) return;
+    if (bankBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser || inventoryBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser) return;
     bankBrowser = mp.browsers.new('package://ui/bank/index.html');
     mp.gui.cursor.show(true, true);
 }
@@ -2499,7 +2642,7 @@ function findNearDowned() {
 }
 
 mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
-    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing) return;
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing) return;
     if (fuelUIOpen) return;
     const downedTarget = findNearDowned();
     if (downedTarget) { mp.events.callRemote('hospital:revive:attempt', downedTarget.remoteId); return; } // needs a medkit (server checks)
@@ -2516,6 +2659,7 @@ mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a droppe
         const mode = nearestShopMode(mp.players.local.position);
         if (mode === 'clothing') openClothingUI();
         else if (mode === 'barber') requestBarberUI();
+        else if (mode === 'tattoo') requestTattooUI();
         else if (mode === 'atm') openBankUI();
         else if (mode) openShopUI(mode);
     }
@@ -2527,6 +2671,7 @@ mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
     else if (shopBrowser) closeShopUI();               // closes shop + its paired inventory
     else if (clothingBrowser) closeClothingUI();
     else if (barberBrowser) closeBarberUI();
+    else if (tattooBrowser) closeTattooUI();
     else if (cityhallBrowser) closeCityhallUI();
     else if (housesBrowser) closeHousesUI();
     else if (directorBrowser) closeDirector();
@@ -2540,7 +2685,7 @@ mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
 
 // "Press E to shop" prompt when on foot at an Ammu-Nation / 24-7 marker.
 mp.events.add('render', () => {
-    if (shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || bankBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
+    if (shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || bankBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
     const house = nearestHouseAction(mp.players.local);
     if (house) {
         mp.game.graphics.drawText(worldText('Press E  (' + house.prompt + ')'), [0.5, 0.86], {
@@ -2558,7 +2703,7 @@ mp.events.add('render', () => {
     }
     const mode = nearestShopMode(mp.players.local.position);
     if (!mode) return;
-    const label = mode === 'weapons' ? 'Ammu-Nation' : mode === 'clothing' ? 'Clothing Store' : mode === 'barber' ? 'Barber Shop' : mode === 'atm' ? 'ATM' : '24/7 Market';
+    const label = mode === 'weapons' ? 'Ammu-Nation' : mode === 'clothing' ? 'Clothing Store' : mode === 'barber' ? 'Barber Shop' : mode === 'tattoo' ? 'Tattoo Salon' : mode === 'atm' ? 'ATM' : '24/7 Market';
     const prompt = mode === 'atm' ? 'Press E for ATM' : 'Press E to shop  (' + label + ')';
     mp.game.graphics.drawText(prompt, [0.5, 0.86], {
         font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
@@ -2873,7 +3018,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);

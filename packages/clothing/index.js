@@ -52,6 +52,7 @@ global.clothingCatByKey = (key) => CAT_BY_KEY[String(key)] || null;
 // in-game with /armsfit, saved to data/torso_overrides.json (same shape, wins over the dump).
 const fs = require('fs');
 const path = require('path');
+const dlc = require('./dlc'); // DLC upload times + "new item" ranges
 const TORSO_FILE = path.join(__dirname, 'data', 'besttorso.json');
 const OVERRIDE_FILE = path.join(__dirname, 'data', 'torso_overrides.json');
 let TORSO = { m: {}, f: {} };
@@ -121,6 +122,35 @@ mp.events.add('clothing:requestState', (player) => {
         nude: (typeof global.invNudeLook === 'function' ? global.invNudeLook(player) : {}),
         topArms: (typeof global.invTopArms === 'function' ? global.invTopArms(player) : { def: 0, nude: 15, map: {} })
     })]);
+});
+
+// The shop reports its per-slot drawable counts; we stamp growth with the pack's upload time and reply
+// with the ranges so the shop can label recent additions as new.
+mp.events.add('clothing:reportCounts', (player, countsJson) => {
+    if (!atStore(player)) return;
+    const gender = genderOf(player);
+    if (!gender) return;
+    let counts;
+    try { counts = JSON.parse(countsJson); } catch (e) { return; }
+    const ranges = dlc.reportCounts(gender, counts);
+    player.call('clothing:newInfo', [JSON.stringify({ now: Date.now(), newDays: dlc.NEW_DAYS, ranges })]);
+});
+
+// /dlcs — admin: every recorded add-on pack with its upload time, and the new-item ranges per slot.
+mp.events.addCommand('dlcs', (player) => {
+    if (typeof global.isProtectedAdmin !== 'function' || !global.isProtectedAdmin(player)) return tell(player, 'მხოლოდ ადმინისთვის.');
+    const packs = dlc.scanPacks().packs;
+    Object.keys(packs).forEach(name => {
+        const p = packs[name];
+        const days = Math.floor((Date.now() - p.uploadedAt) / 86400000);
+        player.outputChatBox(`!{#c07ad0}[DLC] !{#ffffff}${name}${p.clothing ? ' (' + (p.gender || 'm+f') + ')' : ''}${p.missing ? ' [missing]' : ''} — ${new Date(p.uploadedAt).toISOString().slice(0, 16).replace('T', ' ')} (${days}d)`);
+    });
+    ['m', 'f'].forEach(g => {
+        const slots = dlc.ranges(g);
+        const text = Object.keys(slots).filter(k => slots[k].ranges.length)
+            .map(k => `${k} ${slots[k].ranges.map(r => r.from + '-' + (r.to - 1)).join(',')}`).join(' · ');
+        if (text) player.outputChatBox(`!{#c07ad0}[DLC] !{#ffffff}${g}: ${text}`);
+    });
 });
 
 // Take a worn piece off from inside the shop: it moves into the inventory (or is refused if full).

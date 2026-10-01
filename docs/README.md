@@ -15,6 +15,7 @@ Operational docs for this RAGE:MP (GTA V multiplayer) server.
 | [06-testing.md](06-testing.md) | Test plan for the money/fuel/engine flow |
 | [07-police-system.md](07-police-system.md) | Police ranks, commands, jail, and configuration |
 | [09-admin-panel.md](09-admin-panel.md) | Admin panel access, actions, security checks, and usage |
+| [11-tattoo-salons.md](11-tattoo-salons.md) | Tattoo salons: locations, data, pricing, saving |
 | [inventory.md](inventory.md) | What mods are installed and their spawn names |
 
 ## Golden rules (read these first)
