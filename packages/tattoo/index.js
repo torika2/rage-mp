@@ -75,10 +75,12 @@ function restoreTattoos(player) {
     applyTattoos(player);
 }
 
+mp.events.add('tattoo:leave', (player) => { player.tattooSession = 0; player.dimension = 0; });
 mp.events.add('tattoo:requestState', (player) => {
     const model = modelKey(player);
     const open = atShop(player) && !!model;
     player.tattooSession = open ? Date.now() : 0;
+    if (open) player.dimension = 2000000 + player.id; // own instance so customers don't overlap
     if (!open) tell(player, atShop(player) ? 'სალონი მხოლოდ სტანდარტულ პერსონაჟს ემსახურება.' : 'მიდით ტატუს სალონთან (რუკაზე ტატუს ნიშანი).');
     player.call('tattoo:state', [JSON.stringify({
         open,

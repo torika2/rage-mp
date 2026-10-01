@@ -64,3 +64,12 @@ or a malformed file. Fix and `sudo systemctl restart rageserv`.
 
 Already fixed: `client_packages/game_resources/common/data/gameconfig.xml` has `MapTypesStore`
 raised to `50000`. If it recurs, that file is the place.
+
+## Barber: buying hair colour "doesn't complete / doesn't save"
+
+Symptom: in the hair salon, pressing Pay does nothing and no colour saves (often on a fresh
+character). Cause: the ped reports out-of-range colour values (e.g. `hairColor = 255`), and the
+server's `parseLook` rejects the whole look (valid colours are 0–63). Fixed — `withDefaults()` in
+`packages/barber/index.js` clamps every field to its valid range. See
+[12-salons.md](12-salons.md). If it recurs, check that `withDefaults` is clamping (not just
+`Number.isInteger`), and look for `[barber] buy rejected by parseLook` in the server log.

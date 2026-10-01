@@ -54,14 +54,21 @@ function modelKey(player) {
     if (model === FREEMODE_FEMALE) return 'f';
     return null;
 }
-// Fills fields missing from older saves (hair-only records) with the defaults.
+// Fills missing fields AND clamps every field to its valid range. The live ped can report junk
+// values (e.g. hairColor 255 on a fresh char), which must not pass through or the buy's parseLook
+// rejects the whole look.
 function withDefaults(look) {
-    const c = Number.isInteger(look.c) ? look.c : 0;
+    const inRange = (v, min, max, dflt) => (Number.isInteger(v) && v >= min && v <= max) ? v : dflt;
+    const c = inRange(look.c, 0, HAIR_COLORS - 1, 0);
     return {
-        d: Number.isInteger(look.d) ? look.d : 0, c, h: Number.isInteger(look.h) ? look.h : c,
-        b: Number.isInteger(look.b) ? look.b : -1, bc: Number.isInteger(look.bc) ? look.bc : c,
-        e: Number.isInteger(look.e) ? look.e : 0, ec: Number.isInteger(look.ec) ? look.ec : c,
-        eye: Number.isInteger(look.eye) ? look.eye : 0
+        d: inRange(look.d, 0, MAX_HAIR_DRAWABLE, 0),
+        c,
+        h: inRange(look.h, 0, HAIR_COLORS - 1, c),
+        b: inRange(look.b, -1, BEARDS - 1, -1),
+        bc: inRange(look.bc, 0, HAIR_COLORS - 1, c),
+        e: inRange(look.e, -1, EYEBROWS - 1, 0),
+        ec: inRange(look.ec, 0, HAIR_COLORS - 1, c),
+        eye: inRange(look.eye, 0, EYE_COLORS - 1, 0)
     };
 }
 function savedLook(player) {
@@ -143,9 +150,12 @@ function parseLook(raw, model) {
 
 // The client asks to open the salon (E, while still standing at it). If in range this starts the
 // session and returns prices, balance and the current look; the client only then opens the UI.
+mp.events.add('barber:leave', (player) => { player.barberSession = 0; player.dimension = 0; });
 mp.events.add('barber:requestState', (player) => {
     const open = atShop(player) && !!modelKey(player);
     player.barberSession = open ? Date.now() : 0;
+    if (open) player.dimension = 2000000 + player.id; // own instance so customers don't overlap
+
     if (!open) tell(player, atShop(player) ? 'სალონი მხოლოდ სტანდარტულ პერსონაჟს ემსახურება.' : 'მიდით სალონთან (რუკაზე მაკრატლის ნიშანი).');
     if (open) applyLook(player, currentLook(player)); // make sure the head blend is on before previewing
     player.call('barber:state', [JSON.stringify({
@@ -169,9 +179,13 @@ mp.events.add('barber:buy', (player, lookJson) => {
     const model = modelKey(player);
     if (!model) { tell(player, 'სალონი მხოლოდ სტანდარტულ პერსონაჟს ემსახურება.'); return reply(false); }
     let raw;
-    try { raw = JSON.parse(lookJson); } catch (e) { return reply(false); }
+    try { raw = JSON.parse(lookJson); } catch (e) { console.log('[barber] buy: bad JSON', lookJson); return reply(false); }
     const next = raw && typeof raw === 'object' ? parseLook(raw, model) : null;
-    if (!next) return reply(false);
+    if (!next) {
+        console.log(`[barber] buy rejected by parseLook — model=${model} raw=${JSON.stringify(raw)}`);
+        tell(player, 'იერსახის მონაცემები არასწორია (სცადე თავიდან).');
+        return reply(false);
+    }
     if (typeof global.getMoney !== 'function' || typeof global.setMoney !== 'function') {
         tell(player, 'სისტემა ამჟამად მიუწვდომელია.');
         return reply(false);
@@ -191,7 +205,7 @@ mp.events.add('barber:buy', (player, lookJson) => {
     store[key][model] = next;
     save();
     applyLook(player, next);
-    player.barberSession = 0;
+    // keep barberSession alive so the player can keep buying items in this visit (cleared on barber:leave)
     tell(player, `ახალი იერსახე — $${cost.total}${cost.tax ? ` (მ.შ. $${cost.tax} გადასახადი)` : ''}. ბალანსი: $${global.getMoney(player)}.`);
     reply(true);
 });

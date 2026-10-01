@@ -845,6 +845,7 @@ function closeClothingUI() {
         clothingReturn = null;
     }
     clothingCats = null; clothingSelected = null; clothingCart = [];
+    mp.events.callRemote('clothing:leave'); // restore dimension 0 (leave the private shop instance)
     mp.gui.cursor.show(false, false);
 }
 
@@ -1233,7 +1234,6 @@ function applyOverlay(overlayId, index, color) {
 }
 function applyLookPreview(look) {
     const me = mp.players.local;
-    applyHeadBlend();                                                      // hair tint only renders with head-blend data (esp. the female ped)
     try { me.setComponentVariation(HAIR_COMPONENT, look.d, 0, 0); } catch (e) {}
     try { me.setHairColor(look.c, look.h); } catch (e) {}
     applyOverlay(OVERLAY_BEARD, look.b, look.bc);
@@ -1314,6 +1314,9 @@ mp.events.add('barber:state', (json) => {
     try { me.setHeading(DRESSING_SPOT.heading); } catch (e) {}
     applyHeadBlend();
     applyLookPreview(barberSel);
+    // setHeadBlendData needs a frame to settle before hair tint renders (esp. the female ped),
+    // so re-assert the look shortly after opening — otherwise the first colour change looks dead.
+    setTimeout(() => { if (barberBrowser && barberSel) { applyHeadBlend(); applyLookPreview(barberSel); } }, 300);
     startPedPreview();
     applyPedCamZone('head');
     barberBrowser = mp.browsers.new('package://ui/barber/index.html');
@@ -1334,6 +1337,7 @@ function closeBarberUI() {
         barberReturn = null;
     }
     barberState = null; barberOriginal = null; barberSel = null; barberCart = {};
+    mp.events.callRemote('barber:leave'); // restore dimension 0 (leave the private shop instance)
     mp.gui.cursor.show(false, false);
 }
 mp.events.add('barber:ui:ready', () => {
@@ -1362,6 +1366,9 @@ mp.events.add('barber:ui:nav', (key, delta) => {
         const n = barberState.limits.colors;
         barberSel[cat.field] = ((barberSel[cat.field] + Number(delta)) % n + n) % n;
     }
+    // Auto-stage the change so checkout buys it (no separate "add to cart" click).
+    if (barberSel[cat.field] === barberOriginal[cat.field]) delete barberCart[cat.key];
+    else barberCart[cat.key] = barberSel[cat.field];
     applyLookPreview(barberSel);
     pushBarber();
 });
@@ -1373,6 +1380,9 @@ mp.events.add('barber:ui:pick', (key, value) => {
     if (cat.kind === 'list') { if (!barberLists[cat.list].some(item => item.v === value)) return; }
     else value = Math.max(0, Math.min(barberState.limits.colors - 1, value || 0));
     barberSel[cat.field] = value;
+    // Auto-stage this change so it's bought on checkout — no separate "add to cart" click needed.
+    if (value === barberOriginal[cat.field]) delete barberCart[cat.key];
+    else barberCart[cat.key] = value;
     applyLookPreview(barberSel);
     pushBarber();
 });
@@ -1486,6 +1496,7 @@ function closeTattooUI() {
     }
     tattooState = null;
     mp.events.callRemote('tattoo:refresh'); // drop the un-bought try-on: the server redraws what the player owns
+    mp.events.callRemote('tattoo:leave');   // restore dimension 0 (leave the private shop instance)
     mp.gui.cursor.show(false, false);
 }
 mp.events.add('tattoo:ui:ready', () => {
@@ -3535,4 +3546,31 @@ mp.events.add('render', () => {
     mp.game.controls.disableAllControlActions(0);
     mp.game.controls.disableAllControlActions(1);
     mp.game.controls.disableAllControlActions(2);
+});
+
+// ===================== Admin ESP =====================
+// Admins (server sets the synced 'admin:esp' flag) automatically see every nearby player's name,
+// ID, health and distance through walls — drawn in world space each frame.
+mp.events.add('render', () => {
+    const me = mp.players.local;
+    if (!me || me.getVariable('admin:esp') !== true) return;
+    if (chatting || anyModalOpen()) return;
+    const self = me.position;
+    mp.players.forEachInStreamRange(p => {
+        if (!p || p === me) return;
+        let pos; try { pos = p.position; } catch (e) { return; }
+        const dx = pos.x - self.x, dy = pos.y - self.y, dz = pos.z - self.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        let screen = null;
+        try { screen = mp.game.graphics.world3dToScreen2d(pos.x, pos.y, pos.z + 1.15); } catch (e) {}
+        if (!screen) return;
+        let hp = 0; try { hp = Math.max(0, Math.min(100, Math.round(Number(p.getHealth()) || 0))); } catch (e) {}
+        const scale = dist > 80 ? 0.3 : 0.42;
+        mp.game.graphics.drawText(worldText(String(p.name || ('ID ' + p.id))), [screen.x, screen.y], {
+            font: 4, color: [120, 230, 150, 235], outline: true, centre: true, scale: [scale, scale]
+        });
+        mp.game.graphics.drawText('ID ' + p.id + ' · ' + hp + ' HP · ' + Math.round(dist) + 'm', [screen.x, screen.y + 0.019], {
+            font: 4, color: [200, 220, 255, 215], outline: true, centre: true, scale: [scale * 0.78, scale * 0.78]
+        });
+    });
 });

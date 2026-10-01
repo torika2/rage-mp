@@ -198,6 +198,7 @@ mp.events.add('playerJoin', player => {
     player.setVariable('admin:mode', false);
     player.setVariable('admin:panelOpen', false);
     player.setVariable('admin:fly', false);
+    player.setVariable('admin:esp', isAdmin(player)); // admins get player ESP automatically
     player.call('admin:mode:set', [false]);
     mp.players.forEach(target => {
         if (target.id !== player.id && target.getVariable('admin:fly') === true) {
@@ -273,12 +274,14 @@ mp.events.add('admin:panel:action', (player, actionJson) => {
         if (action === 'makeAdmin') {
             if (grantedAdmins.has(key)) { tell(player, `${target.name} is already an admin.`); return; }
             grantedAdmins.add(key); saveAdmins();
+            target.setVariable('admin:esp', true); // ESP on immediately
             finishAction(player, `${target.name} is now an admin.`);
             target.outputChatBox('!{#8ed17a}[Admin] !{#ffffff}You have been granted admin. Use /admin.');
         } else {
             if (!grantedAdmins.has(key)) { tell(player, `${target.name} is not a granted admin.`); return; }
             grantedAdmins.delete(key); saveAdmins();
             target.setVariable('admin:mode', false);
+            target.setVariable('admin:esp', false); // ESP off
             finishAction(player, `Removed admin from ${target.name}.`);
             target.outputChatBox('!{#ff6b6b}[Admin] !{#ffffff}Your admin access has been removed.');
         }

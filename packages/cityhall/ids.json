@@ -1,5 +1,5 @@
 {
-  "next": 2,
+  "next": 3,
   "cards": {
     "sephigr": {
       "number": 1,
@@ -8,6 +8,14 @@
       "dob": "1999-12-12",
       "sex": "M",
       "issued": "2026-09-30"
+    },
+    "nxssiix": {
+      "number": 2,
+      "first": "Lost",
+      "last": "Lostidze",
+      "dob": "2000-06-08",
+      "sex": "F",
+      "issued": "2026-10-01"
     }
   },
   "licenses": {
@@ -35,6 +43,32 @@
       },
       "weapon": {
         "issued": "2026-09-30"
+      }
+    },
+    "nxssiix": {
+      "weapon": {
+        "issued": "2026-10-01"
+      },
+      "driving": {
+        "issued": "2026-10-01"
+      },
+      "motorcycle": {
+        "issued": "2026-10-01"
+      },
+      "truck": {
+        "issued": "2026-10-01"
+      },
+      "pilot": {
+        "issued": "2026-10-01"
+      },
+      "boat": {
+        "issued": "2026-10-01"
+      },
+      "hunting": {
+        "issued": "2026-10-01"
+      },
+      "business": {
+        "issued": "2026-10-01"
       }
     }
   }

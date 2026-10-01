@@ -110,10 +110,18 @@ function basePriceOf(cat, drawable) {
 }
 
 // The client requests the catalog (ids/labels/prices) + the current balance to browse & preview.
+// Private dimension per player while in a shop, so customers don't stack on the shared dressing spot.
+const SHOP_DIM_BASE = 2000000;
+const SHOP_SESSION_MS = 15 * 60 * 1000;
+function clothingInSession(player) { return player.clothingSession && (Date.now() - player.clothingSession) < SHOP_SESSION_MS; }
+mp.events.add('clothing:leave', (player) => { player.clothingSession = 0; player.dimension = 0; });
+
 mp.events.add('clothing:requestState', (player) => {
+    const open = atStore(player);
+    if (open) { player.clothingSession = Date.now(); player.dimension = SHOP_DIM_BASE + player.id; } // own instance
     const rate = (typeof global.govTaxRate === 'function' ? Number(global.govTaxRate()) : 0) || 0;
     player.call('clothing:state', [JSON.stringify({
-        open: atStore(player),
+        open,
         gender: genderOf(player),
         money: (typeof global.getMoney === 'function' ? global.getMoney(player) : 0),
         taxRate: rate,
@@ -163,7 +171,7 @@ mp.events.add('clothing:unequip', (player, cat) => {
 
 // Checkout: buy every item in the cart at once. cart = [{ cat, d, t }, ...].
 mp.events.add('clothing:buyCart', (player, cartJson) => {
-    if (!atStore(player)) return tell(player, 'ყიდვისთვის მიდით ტანსაცმლის მაღაზიაში (რუკაზე მაისურის ნიშანი).');
+    if (!atStore(player) && !clothingInSession(player)) return tell(player, 'ყიდვისთვის მიდით ტანსაცმლის მაღაზიაში (რუკაზე მაისურის ნიშანი).');
     let cart;
     try { cart = JSON.parse(cartJson); } catch (e) { return; }
     if (!Array.isArray(cart) || !cart.length) return;

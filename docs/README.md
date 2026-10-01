@@ -16,6 +16,7 @@ Operational docs for this RAGE:MP (GTA V multiplayer) server.
 | [07-police-system.md](07-police-system.md) | Police ranks, commands, jail, and configuration |
 | [09-admin-panel.md](09-admin-panel.md) | Admin panel access, actions, security checks, and usage |
 | [11-tattoo-salons.md](11-tattoo-salons.md) | Tattoo salons: locations, data, pricing, saving |
+| [12-salons.md](12-salons.md) | Barber/clothing/tattoo: private instances, barber buy flow, hair-colour gotcha |
 | [inventory.md](inventory.md) | What mods are installed and their spawn names |
 
 ## Golden rules (read these first)

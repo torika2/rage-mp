@@ -475,3 +475,30 @@ mp.events.addCommand('dmdig', (player, _, action, n) => {
     }
     tell(player, `სათხრელი ადგილები (${custom ? 'თქვენი' : 'ნაგულისხმევი'}): ${digSpots().map((s, i) => `#${i + 1} ${s.x.toFixed(1)}, ${s.y.toFixed(1)}, ${s.z.toFixed(1)}`).join(' · ')}. /dmdig add | del <n> | reset`);
 });
+
+// ---- Static walls inside Demorgan (dimension 1) ----
+// Each captured /pos spot is expanded into a 3-wide × 2-tall block of containers (big solid wall):
+// centre + one to the left + one to the right (along the container's length), each stacked 2 high.
+const WALL_MODEL = 'prop_container_01a';
+const WALL_H = 2.6;   // container height — vertical stack gap
+const WALL_L = 12.0;  // container length — left/right spacing along the container's length axis
+const DEMORGAN_WALL_SPOTS = [
+    { x: 876.026, y: -3204.302, z: -97.063, rz: -104.7 },
+    { x: 895.117, y: -3237.001, z: -98.281, rz: -94.6 },
+    { x: 896.731, y: -3245.906, z: -98.239, rz: -91.1 }
+];
+const demorganObjects = [];
+for (const s of DEMORGAN_WALL_SPOTS) {
+    const rad = s.rz * Math.PI / 180;
+    const ox = Math.cos(rad) * WALL_L, oy = Math.sin(rad) * WALL_L; // along the container's length axis
+    for (const side of [-1, 0, 1]) {   // left · centre · right
+        for (const lvl of [0, 1]) {    // bottom · top
+            try {
+                demorganObjects.push(mp.objects.new(mp.joaat(WALL_MODEL),
+                    new mp.Vector3(s.x + ox * side, s.y + oy * side, s.z + WALL_H * lvl),
+                    { rotation: new mp.Vector3(0, 0, s.rz), dimension: DIMENSION }));
+            } catch (e) { try { mp.console.logError('[demorgan] wall spawn failed: ' + e.message); } catch (e2) {} }
+        }
+    }
+}
+console.log('[demorgan] walls spawned: ' + demorganObjects.length);

@@ -100,8 +100,8 @@
       <div class="detail" id="detail"><div class="empty">იტვირთება…</div></div>
     </div>
     <div class="cart">
-      <div class="cart-head">კალათა · <b id="cartCount">0</b> სერვისი</div>
-      <div class="cart-list" id="cartList"><div class="cart-empty">კალათა ცარიელია</div></div>
+      <div class="cart-head">ცვლილებები · <b id="cartCount">0</b></div>
+      <div class="cart-list" id="cartList"><div class="cart-empty">ჯერ არაფერი შეგირჩევია</div></div>
       <div class="checkout">
         <div class="total">სულ: <b id="cartTotal">$0</b></div>
         <button id="checkout" disabled>გადახდა</button>
@@ -180,14 +180,12 @@
       '<h2>' + esc(category.label) + '</h2>' + picker +
       '<div class="price-row"><span class="p" id="catPrice"></span><span class="tax">მ.შ. გადასახადი</span></div>' +
       '<div class="actions">' +
-        '<button class="add" id="add">＋ კალათაში დამატება</button>' +
         '<button class="remove" id="revert">თავდაპირველი</button>' +
       '</div>' +
-      '<div class="hint">‹ › / ისრები ან ' + (category.kind === 'list' ? 'სიიდან' : 'ფერზე დაჭერით') + ' — გამოცდა · ' +
-        'პერსონაჟის ათრევით ბრუნავს. „თავდაპირველი“ — ამ ნაწილს დააბრუნებს. გადაიხდით მხოლოდ კალათაში არსებულს.</div>';
+      '<div class="hint">‹ › / ისრები ან ' + (category.kind === 'list' ? 'სიიდან' : 'ფერზე დაჭერით') + ' — აირჩიე · ' +
+        'პერსონაჟის ათრევით ბრუნავს. „თავდაპირველი“ — ამ ნაწილს დააბრუნებს. შემდეგ დააჭირე „გადახდას“.</div>';
     detail.querySelectorAll('[data-nav]').forEach(b => { b.onclick = () => trigger('barber:ui:nav', view.selected, parseInt(b.getAttribute('data-nav'), 10)); });
     detail.querySelectorAll('[data-v]').forEach(b => { b.onclick = () => trigger('barber:ui:pick', view.selected, parseInt(b.getAttribute('data-v'), 10)); });
-    el('add').onclick = () => trigger('barber:ui:add', view.selected);
     el('revert').onclick = () => trigger('barber:ui:revert', view.selected);
   }
 
@@ -203,8 +201,6 @@
       b.classList.toggle('on', on);
     });
     el('catPrice').textContent = fmt(category.price);
-    el('add').disabled = !category.changed && !category.inCart;
-    el('add').textContent = category.inCart && !category.changed ? '− კალათიდან ამოღება' : '＋ კალათაში დამატება';
   }
 
   function renderCart() {
