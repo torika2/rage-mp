@@ -348,13 +348,18 @@ function killRadio(vehicle) {
         mp.game.audio.setRadioToStationName('OFF');
     } catch (e) {}
 }
+let radioKillTimer = null;
 mp.events.add('playerEnterVehicle', (vehicle) => {
     if (!vehicle) return;
-    killRadio(vehicle);
     applyOctanePower(vehicle);
-    // GTA re-initialises the radio a moment after entry — re-apply so it stays OFF every time.
-    setTimeout(() => { if (mp.players.local.vehicle === vehicle) killRadio(vehicle); }, 250);
-    setTimeout(() => { if (mp.players.local.vehicle === vehicle) killRadio(vehicle); }, 1200);
+    // GTA keeps re-enabling the radio for ~1–2s after entry — hammer it OFF for ~3s so it never plays.
+    if (radioKillTimer) clearInterval(radioKillTimer);
+    let ticks = 0;
+    killRadio(vehicle);
+    radioKillTimer = setInterval(() => {
+        if (mp.players.local.vehicle !== vehicle || ++ticks > 12) { clearInterval(radioKillTimer); radioKillTimer = null; return; }
+        killRadio(vehicle);
+    }, 250);
 });
 
 // Blended octane profile currently in the tank (power/eff/rating).
@@ -3352,4 +3357,32 @@ mp.events.add('death:end', () => {
     try { mp.game.invoke(SCREEN_BLUR_OUT, 800); } catch (e) {}
     try { mp.game.invoke(DEATH_PAUSE_RESTART, false); } catch (e) {}
     if (deathBrowser) { deathBrowser.destroy(); deathBrowser = null; }
+});
+
+// ===================== Character: gender selection on first join =====================
+// Server asks ('character:choose') when the account has no saved body; we freeze the player and
+// show the male/female chooser, relay the pick, and clean up on 'character:done'.
+let characterBrowser = null;
+mp.events.add('character:choose', () => {
+    if (characterBrowser) return;
+    characterBrowser = mp.browsers.new('package://ui/character/index.html');
+    mp.gui.cursor.show(true, true);
+    try { mp.players.local.freezePosition(true); } catch (e) {}
+});
+mp.events.add('character:pick', (gender) => {
+    mp.events.callRemote('character:setGender', String(gender));
+});
+mp.events.add('character:done', () => {
+    if (characterBrowser) { characterBrowser.destroy(); characterBrowser = null; }
+    mp.gui.cursor.show(false, false);
+    try { mp.players.local.freezePosition(false); } catch (e) {}
+});
+// While the chooser is open, keep the cursor on and block game controls so the mouse moves the
+// cursor (to click a card) instead of swinging the camera.
+mp.events.add('render', () => {
+    if (!characterBrowser) return;
+    mp.gui.cursor.show(true, true);
+    mp.game.controls.disableAllControlActions(0);
+    mp.game.controls.disableAllControlActions(1);
+    mp.game.controls.disableAllControlActions(2);
 });

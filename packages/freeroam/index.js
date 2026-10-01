@@ -133,6 +133,11 @@ mp.events.addCommand('car', (player, _, name) => {
     player.myCar = car;
     if (typeof global.vehOnSpawn === 'function') global.vehOnSpawn(player, car, name); // persist this car
     player.putIntoVehicle(car, 0);
+    // Add-on models may not be streamed to the client on the very first spawn, so the instant
+    // seat can miss — retry once the vehicle has had a moment to stream in.
+    setTimeout(() => {
+        if (mp.players.exists(player) && mp.vehicles.exists(car) && !player.vehicle) player.putIntoVehicle(car, 0);
+    }, 700);
     player.outputChatBox(`!{#8ed17a}გამოძახდა: ${name}`);
 });
 

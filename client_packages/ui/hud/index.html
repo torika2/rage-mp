@@ -37,9 +37,9 @@
   .gauge-wrap { position: relative; width: 196px; height: 196px; margin: 2px auto 4px; }
   .gauge { width: 196px; height: 196px; display: block; }
   /* rotation is on the SVG element (transform attribute) — reliable in CEF, unlike CSS transform-origin on circles */
-  .g-track, .g-val { fill: none; stroke-width: 9; stroke-linecap: round; }
-  .g-track { stroke: rgba(255,255,255,.12); stroke-dasharray: 75 100; }
-  .g-val { stroke: #ffffff; stroke-dasharray: 0 100; transition: stroke-dasharray .08s linear; }
+  .g-track, .g-val { fill: none; stroke-linecap: round; }
+  .g-track { stroke: rgba(255,255,255,.12); stroke-dasharray: 75 100; stroke-width: 9; }
+  .g-val { stroke: #ffffff; stroke-dasharray: 0 100; transition: stroke-dasharray .08s linear; stroke-width: 4.5; }
   .gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; z-index: 2; }
   .g-speed { font-size: 54px; font-weight: 800; line-height: .82; letter-spacing: -2px; font-variant-numeric: tabular-nums; color: #ffffff; }
@@ -521,10 +521,12 @@
     if (d.launch === 1) { lc.className = 'lcchip armed'; lc.textContent = 'LAUNCH READY'; lc.style.display = 'block'; }
     else if (d.launch === 2) { lc.className = 'lcchip go'; lc.textContent = 'LAUNCH!'; lc.style.display = 'block'; }
     else lc.style.display = 'none';
-    // circular gauge ring driven by RPM (tachometer; 0–9 markings around the dial)
-    const rpm = Math.max(0, Math.min(1, d.rpm || 0));
+    // circular gauge ring driven by RPM (tachometer; 0–9 markings around the dial).
+    // Engine off → 0. Running: GTA idles at ~0.2 rpm, offset so idle rests between the 0 and 1 marks.
+    const raw = Math.max(0, Math.min(1, d.rpm || 0));
+    const frac = d.engineOn ? Math.max(0, Math.min(1, (raw - 0.15) / 0.85)) : 0;
     const gv = $('gaugeVal');
-    gv.style.strokeDasharray = (rpm * 75).toFixed(1) + ' 100';
+    gv.style.strokeDasharray = (frac * 75).toFixed(1) + ' 100';
     // headlight indicator
     $('lightIco').className = 'ico ' + (d.lights ? 'on' : 'off');
     // fuel bar + octane
