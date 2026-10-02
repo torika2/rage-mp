@@ -10,3 +10,6 @@ client_packages/game_resources/dlcpacks/mercedessclass27/dlc.rpf
 client_packages/game_resources/dlcpacks/M235iXD/dlc.rpf
 client_packages/game_resources/dlcpacks/coquette6c/dlc.rpf
 client_packages/game_resources/dlcpacks/300vxr/dlc.rpf
+
+# Backend API secret (base URL + API key) — never commit.
+packages/_core/api.config.json
