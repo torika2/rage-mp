@@ -53,6 +53,102 @@ try {
     }
 } catch (e) { console.log('[_core] outputChatBox redirect failed: ' + e); }
 
+// ===================== Backend API client =====================
+// Thin wrapper so any package can persist/load data via the NestJS API (which owns MySQL).
+// Config (base URL + API key) lives in packages/_core/api.config.json (gitignored).
+// IMPORTANT: don't call these on a hot per-tick path — cache in memory and persist on events
+// (login, logout, purchase, periodic flush). See docs.
+let apiConfig = { baseUrl: 'http://127.0.0.1:3000', apiKey: '' };
+try {
+    apiConfig = Object.assign(apiConfig, require('./api.config.json'));
+} catch (e) {
+    console.log('[_core] api.config.json missing — API client disabled until it is created.');
+}
+
+// Uses Node's built-in http (the RAGE:MP server's embedded Node predates global fetch).
+const http = require('http');
+const apiUrl = require('url').parse(apiConfig.baseUrl);
+
+function apiRequest(method, path, body) {
+    return new Promise((resolve, reject) => {
+        const payload = body === undefined ? null : JSON.stringify(body);
+        const headers = { 'Authorization': 'Bearer ' + apiConfig.apiKey };
+        if (payload !== null) {
+            headers['Content-Type'] = 'application/json';
+            headers['Content-Length'] = Buffer.byteLength(payload);
+        }
+        const request = http.request({
+            hostname: apiUrl.hostname,
+            port: apiUrl.port,
+            path,
+            method,
+            headers,
+        }, (response) => {
+            let data = '';
+            response.on('data', (chunk) => { data += chunk; });
+            response.on('end', () => {
+                const status = response.statusCode;
+                if (status >= 200 && status < 300) {
+                    resolve(data ? JSON.parse(data) : null);
+                } else {
+                    reject(new Error(`API ${method} ${path} -> ${status}`));
+                }
+            });
+        });
+        request.on('error', reject);
+        if (payload !== null) request.write(payload);
+        request.end();
+    });
+}
+
+global.api = {
+    get: (path) => apiRequest('GET', path),
+    put: (path, body) => apiRequest('PUT', path, body),
+    post: (path, body) => apiRequest('POST', path, body),
+    patch: (path, body) => apiRequest('PATCH', path, body),
+
+    // --- accounts ---
+    register: (data) => apiRequest('POST', '/auth/register', data),
+    login: (email, password) => apiRequest('POST', '/auth/login', { email, password }),
+    loginBySocialClub: (socialClubName, password) => apiRequest('POST', '/auth/login-social', { socialClubName, password }),
+    getUser: (id) => apiRequest('GET', `/users/${id}`),
+    setEmailValidated: (id, value) => apiRequest('PATCH', `/users/${id}/email-validation`, { value }),
+    setPhoneValidated: (id, value) => apiRequest('PATCH', `/users/${id}/phone-validation`, { value }),
+    setUserType: (id, userType) => apiRequest('PATCH', `/users/${id}/type`, { userType }),
+    setUserGender: (id, gender) => apiRequest('PATCH', `/users/${id}/gender`, { gender }),
+
+    // --- characters (gameplay state) ---
+    loadCharacter: (id) => apiRequest('GET', `/characters/${id}`),
+    saveCharacter: (id, data) => apiRequest('PUT', `/characters/${id}`, data),
+    saveAppearance: (id, appearance) => apiRequest('PUT', `/characters/${id}/appearance`, { appearance }),
+    saveEquipment: (id, data) => apiRequest('PUT', `/characters/${id}/equipment`, { data }),
+    saveClothing: (id, data) => apiRequest('PUT', `/characters/${id}/clothing`, { data }),
+    saveTattoos: (id, data) => apiRequest('PUT', `/characters/${id}/tattoos`, { data }),
+    saveLastPosition: (id, position) => apiRequest('PUT', `/characters/${id}/position`, { data: position }),
+
+    // --- inventory ---
+    loadInventory: (id) => apiRequest('GET', `/characters/${id}/inventory`),
+    saveInventory: (id, slots) => apiRequest('PUT', `/characters/${id}/inventory`, { slots }),
+
+    // --- vehicles (ownership) ---
+    loadVehicles: (id) => apiRequest('GET', `/characters/${id}/vehicles`),
+    createVehicle: (id, data) => apiRequest('POST', `/characters/${id}/vehicles`, data),
+    updateVehicle: (vehicleId, data) => apiRequest('PUT', `/vehicles/${vehicleId}`, data),
+    deleteVehicle: (vehicleId) => apiRequest('DELETE', `/vehicles/${vehicleId}`),
+
+    // --- houses ---
+    loadHouses: () => apiRequest('GET', '/houses'),
+    loadHouse: (houseId) => apiRequest('GET', `/houses/${houseId}`),
+    createHouse: (data) => apiRequest('POST', '/houses', data),
+    updateHouse: (houseId, data) => apiRequest('PUT', `/houses/${houseId}`, data),
+    deleteHouse: (houseId) => apiRequest('DELETE', `/houses/${houseId}`),
+
+    // --- parking ---
+    loadParking: () => apiRequest('GET', '/parking'),
+    saveParkingSpot: (spotId, data) => apiRequest('PUT', `/parking/${encodeURIComponent(spotId)}`, data),
+    clearParkingSpot: (spotId) => apiRequest('DELETE', `/parking/${encodeURIComponent(spotId)}`),
+};
+
 mp.events.add('packagesLoaded', () => {
     console.log(`[_core] command registry ready: ${Object.keys(global.commandRegistry).length} commands`);
 });

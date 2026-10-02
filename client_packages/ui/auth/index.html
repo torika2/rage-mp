@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ავტორიზაცია</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c;
+    --blue: #5ac8fa;
+    --green: #8ed17a;
+    --red: #ff6b6b;
+    --text: #f3f0e8;
+    --muted: #aaa79e;
+    --line: rgba(255, 255, 255, .12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body {
+    color: var(--text); user-select: none;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(1200px 800px at 50% -10%, rgba(90,200,250,.10), transparent 60%), #090c11;
+  }
+  .panel {
+    width: min(440px, 92vw);
+    background: linear-gradient(180deg, #101822, #0c0f13);
+    border: 1px solid rgba(90, 200, 250, .45);
+    border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+    animation: lift .18s ease-out; overflow: hidden;
+  }
+  @keyframes lift { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .head { padding: 18px 20px 10px; border-bottom: 1px solid var(--line); }
+  .head h1 { margin: 0; font-size: 18px; font-weight: 800; }
+  .head p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  .head .sc { color: var(--gold); }
+  .body { padding: 16px 20px 20px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+  input, select {
+    width: 100%; padding: 11px 12px; font: inherit; color: var(--text);
+    background: rgba(0, 0, 0, .3); border: 1px solid var(--line); border-radius: 9px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--blue); }
+  .phone { display: flex; }
+  .phone .cc { padding: 11px 10px; border: 1px solid var(--line); border-right: 0;
+    border-radius: 9px 0 0 9px; background: rgba(255,255,255,.05); color: var(--muted); }
+  .phone input { border-radius: 0 9px 9px 0; }
+  .gender { display: flex; gap: 10px; }
+  .gender button {
+    flex: 1; padding: 11px; border: 1px solid var(--line); border-radius: 9px;
+    background: rgba(255,255,255,.03); color: var(--muted); cursor: pointer; font: inherit;
+  }
+  .gender button.on { color: var(--blue); border-color: rgba(90,200,250,.5); background: rgba(90,200,250,.1); }
+  .submit {
+    width: 100%; margin-top: 6px; padding: 12px; border: 0; border-radius: 10px; cursor: pointer;
+    font-weight: 800; font-size: 14px; color: #0b0f13;
+    background: linear-gradient(180deg, var(--gold), #d9a63f);
+  }
+  .submit:hover { filter: brightness(1.06); }
+  .submit:disabled { opacity: .5; cursor: default; }
+  .switch { margin-top: 12px; text-align: center; font-size: 12px; color: var(--muted); }
+  .switch a { color: var(--blue); cursor: pointer; }
+  .msg { min-height: 16px; margin: 2px 0 10px; font-size: 12px; color: var(--red); }
+  .msg.ok { color: var(--green); }
+  .hint { color: var(--muted); font-size: 10px; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="head">
+      <h1 id="title">ავტორიზაცია</h1>
+      <p id="subtitle">Social Club: <span class="sc" id="scName">—</span></p>
+    </div>
+    <div class="body">
+      <div class="msg" id="msg"></div>
+
+      <!-- LOGIN -->
+      <form id="loginForm" style="display:none">
+        <div class="field">
+          <label>ანგარიში (ემაილი)</label>
+          <input id="loginEmail" type="text" readonly>
+        </div>
+        <div class="field">
+          <label>პაროლი</label>
+          <input id="loginPassword" type="password" autocomplete="off" placeholder="••••••••">
+        </div>
+        <button class="submit" type="submit">შესვლა</button>
+        <div class="switch">არ გაქვთ ანგარიში? <a id="toRegister">რეგისტრაცია</a></div>
+      </form>
+
+      <!-- REGISTER -->
+      <form id="registerForm" style="display:none">
+        <div class="row">
+          <div class="field"><label>სახელი</label><input id="firstName" type="text" maxlength="32"></div>
+          <div class="field"><label>გვარი</label><input id="lastName" type="text" maxlength="32"></div>
+        </div>
+        <div class="field">
+          <label>პირადობის ნომერი</label>
+          <input id="residentNumber" type="text" inputmode="numeric" maxlength="11" placeholder="11 ციფრი">
+        </div>
+        <div class="field">
+          <label>ტელეფონი</label>
+          <div class="phone"><span class="cc">+995</span><input id="phoneLocal" type="text" inputmode="numeric" maxlength="9" placeholder="5XXXXXXXX"></div>
+        </div>
+        <div class="field">
+          <label>ემაილი</label>
+          <input id="regEmail" type="text" placeholder="you@example.ge">
+        </div>
+        <div class="field">
+          <label>პაროლი</label>
+          <input id="regPassword" type="password" autocomplete="off" placeholder="მინ. 8 სიმბოლო">
+        </div>
+        <button class="submit" type="submit">რეგისტრაცია</button>
+        <div class="switch">უკვე გაქვთ ანგარიში? <a id="toLogin">შესვლა</a></div>
+      </form>
+    </div>
+  </div>
+
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const $ = (id) => document.getElementById(id);
+
+  let state = { socialClub: '', email: '' };
+
+  function show(mode) {
+    $('msg').textContent = '';
+    $('msg').className = 'msg';
+    const login = mode === 'login';
+    $('loginForm').style.display = login ? '' : 'none';
+    $('registerForm').style.display = login ? 'none' : '';
+    $('title').textContent = login ? 'შესვლა' : 'რეგისტრაცია';
+    if (login) { $('loginEmail').value = state.email || ''; $('loginPassword').focus(); }
+    else { $('firstName').focus(); }
+  }
+
+  // --- called from the game client ---
+  window.authShow = function (mode, dataJson) {
+    try { state = JSON.parse(dataJson) || {}; } catch (e) { state = {}; }
+    $('scName').textContent = state.socialClub || '—';
+    show(mode);
+  };
+  window.authError = function (text) {
+    const m = $('msg'); m.textContent = text || ''; m.className = 'msg';
+    enable(true);
+  };
+
+  function enable(on) {
+    document.querySelectorAll('.submit').forEach(b => { b.disabled = !on; });
+  }
+
+  $('toRegister').addEventListener('click', () => show('register'));
+  $('toLogin').addEventListener('click', () => show('login'));
+
+  // digits-only enforcement
+  ['residentNumber', 'phoneLocal'].forEach(id => $(id).addEventListener('input', e => {
+    e.target.value = e.target.value.replace(/\D/g, '');
+  }));
+
+  $('loginForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const pw = $('loginPassword').value;
+    if (!pw) return;
+    enable(false);
+    trigger('auth:submitLogin', pw);
+  });
+
+  $('registerForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const form = {
+      firstName: $('firstName').value.trim(),
+      lastName: $('lastName').value.trim(),
+      residentNumber: $('residentNumber').value.trim(),
+      phoneNumber: $('phoneLocal').value ? '+995' + $('phoneLocal').value.trim() : '',
+      email: $('regEmail').value.trim(),
+      password: $('regPassword').value,
+    };
+    if (!form.firstName || !form.lastName) return fail('შეიყვანეთ სახელი და გვარი.');
+    if (form.residentNumber.length !== 11) return fail('პირადობის ნომერი უნდა იყოს 11 ციფრი.');
+    if (form.phoneNumber && form.phoneNumber.length !== 13) return fail('ტელეფონის ნომერი არასწორია (+995 და 9 ციფრი).');
+    if (!form.email) return fail('შეიყვანეთ ემაილი.');
+    if (form.password.length < 8) return fail('პაროლი უნდა იყოს მინ. 8 სიმბოლო.');
+    enable(false);
+    trigger('auth:submitRegister', JSON.stringify(form));
+  });
+
+  function fail(text) { const m = $('msg'); m.textContent = text; m.className = 'msg'; return false; }
+
+  // browser preview fallback
+  if (!RAGE) window.authShow('register', JSON.stringify({ socialClub: 'PreviewUser' }));
+</script>
+</body>
+</html>

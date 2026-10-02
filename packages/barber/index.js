@@ -89,7 +89,9 @@ function currentLook(player) {
 function applyLook(player, look) {
     const model = modelKey(player);
     if (!model) return;
-    try { player.setHeadBlend(...DEFAULT_BLEND[model]); } catch (e) {}
+    // A character-creator appearance owns the head blend + face features; don't reset them to default.
+    const hasCreatorLook = typeof global.creatorHasAppearance === 'function' && global.creatorHasAppearance(player);
+    if (!hasCreatorLook) { try { player.setHeadBlend(...DEFAULT_BLEND[model]); } catch (e) {} }
     try { player.setClothes(HAIR_COMPONENT, look.d, 0, 0); } catch (e) {}
     try { player.setHairColor(look.c, look.h); } catch (e) {}
     try { player.setHeadOverlay(OVERLAY_BEARD, [look.b < 0 ? OVERLAY_NONE : look.b, 1.0, look.bc, look.bc]); } catch (e) {}
@@ -99,6 +101,11 @@ function applyLook(player, look) {
 // Every freemode ped gets the head blend + its (saved or default) look, so colours/overlays render.
 function restoreLook(player) {
     if (!mp.players.exists(player) || !modelKey(player)) return;
+    // When the character has a creator appearance, that blob is authoritative — apply it instead.
+    if (typeof global.creatorHasAppearance === 'function' && global.creatorHasAppearance(player)) {
+        global.applyCreatorAppearance(player);
+        return;
+    }
     applyLook(player, currentLook(player));
 }
 
@@ -200,11 +207,23 @@ mp.events.add('barber:buy', (player, lookJson) => {
 
     global.setMoney(player, global.getMoney(player) - cost.total);
     if (cost.tax > 0 && typeof global.govAddToTreasury === 'function') global.govAddToTreasury(cost.tax);
-    const key = keyOf(player);
-    if (!store[key] || typeof store[key] !== 'object') store[key] = {};
-    store[key][model] = next;
-    save();
     applyLook(player, next);
+    // Persist: for creator-era characters the change goes into the authoritative appearance blob
+    // (so it survives respawn); otherwise it goes to barber.json as before.
+    if (typeof global.creatorHasAppearance === 'function' && global.creatorHasAppearance(player) && player.character) {
+        const blob = player.character.appearance;
+        blob.hair = { style: next.d, color: next.c, highlight: next.h };
+        if (!blob.overlays) blob.overlays = {};
+        blob.overlays.beard = Object.assign({ opacity: 1 }, blob.overlays.beard, { style: next.b, color: next.bc });
+        blob.overlays.eyebrows = Object.assign({ opacity: 1 }, blob.overlays.eyebrows, { style: next.e, color: next.ec });
+        blob.eyeColor = next.eye;
+        if (global.api) global.api.saveAppearance(player.character.id, blob).catch(() => {});
+    } else {
+        const key = keyOf(player);
+        if (!store[key] || typeof store[key] !== 'object') store[key] = {};
+        store[key][model] = next;
+        save();
+    }
     // keep barberSession alive so the player can keep buying items in this visit (cleared on barber:leave)
     tell(player, `ახალი იერსახე — $${cost.total}${cost.tax ? ` (მ.შ. $${cost.tax} გადასახადი)` : ''}. ბალანსი: $${global.getMoney(player)}.`);
     reply(true);
