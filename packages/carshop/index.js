@@ -13,11 +13,33 @@ const AREA_RANGE = 55.0;                                    // whole lot counts 
 
 // Display layout: cars parked in a grid you can walk up to and "enter" to get the buy card.
 // Two groups (inside the showroom + outside in the lot). Adjust these in-game if the ground differs.
-const DISPLAY = {
-    inside:  { base: { x: -46.5, y: -1091.5, z: 26.55 }, heading: 160, cols: 3, stepRight: 4.0, stepBack: 5.5 },
-    outside: { base: { x: -34.0, y: -1078.0, z: 26.70 }, heading: 340, cols: 6, stepRight: 4.2, stepBack: 6.0 },
-};
-const INSIDE_COUNT = 6; // first N catalog cars go inside, the rest outside
+// Fixed display spots (x, y, z, heading) — catalog cars fill them in order.
+const SPOTS = [
+    [-45.002, -1116.682, 26.433, -1.0],
+    [-47.763, -1117.031, 26.433, 1.3],
+    [-50.498, -1117.149, 26.433, 9.4],
+    [-53.543, -1117.125, 26.433, 2.1],
+    [-56.153, -1117.352, 26.433, 3.5],
+    [-59.049, -1117.272, 26.433, -0.3],
+    [-61.756, -1117.557, 26.433, 3.2],
+    [-58.606, -1105.861, 26.436, 72.0],
+    [-45.134, -1099.756, 26.422, 127.2],
+    [-53.363, -1095.922, 26.422, 111.4],
+    [-34.725, -1097.058, 26.422, 156.3],
+    [-41.183, -1097.590, 26.422, 159.1],
+    [-47.077, -1093.870, 26.422, 162.5],
+    [-51.080, -1092.238, 26.422, 157.7],
+    [-54.335, -1090.769, 26.422, 156.3],
+    [-46.251, -1108.720, 26.422, 68.4],
+    [-51.458, -1080.361, 26.888, 68.8],
+    [-48.862, -1073.806, 26.783, 69.3],
+    [-15.705, -1108.313, 26.672, -82.5],
+    [-14.736, -1105.060, 26.672, -81.5],
+    [-13.827, -1101.992, 26.672, -83.5],
+    [-12.698, -1098.376, 26.672, -83.3],
+];
+// Catalog cars beyond the fixed spots go in this overflow grid in the outside lot.
+const OVERFLOW = { base: { x: -34.0, y: -1078.0, z: 26.70 }, heading: 340, cols: 6, stepRight: 4.2, stepBack: 6.0 };
 
 // Buyable civilian add-ons. key = stored modelName/alias, model = spawn name.
 // label = short list name · fullName/hp/speed(km/h)/tuning = shown in the display buy card.
@@ -84,21 +106,18 @@ function gridSpots(group, count) {
 const displayVehicles = [];
 function spawnDisplays() {
     const keys = Object.keys(CATALOG);
-    const insideKeys = keys.slice(0, INSIDE_COUNT), outsideKeys = keys.slice(INSIDE_COUNT);
-    const place = (keyList, group) => {
-        const spots = gridSpots(group, keyList.length);
-        keyList.forEach((key, i) => {
-            const s = spots[i]; if (!s) return;
-            let v;
-            try { v = mp.vehicles.new(mp.joaat(CATALOG[key].model) >>> 0, new mp.Vector3(s.x, s.y, s.z), { heading: s.h, dimension: 0, engine: false }); }
-            catch (e) { return; }
-            if (!v) return;
-            v.setVariable('carshop:display', key); // tag so entering pops the buy card instead of driving
-            displayVehicles.push(v);
-        });
-    };
-    place(insideKeys, DISPLAY.inside);
-    place(outsideKeys, DISPLAY.outside);
+    const overflow = gridSpots(OVERFLOW, Math.max(0, keys.length - SPOTS.length));
+    keys.forEach((key, i) => {
+        const s = i < SPOTS.length
+            ? { x: SPOTS[i][0], y: SPOTS[i][1], z: SPOTS[i][2], h: SPOTS[i][3] }
+            : overflow[i - SPOTS.length];
+        let v;
+        try { v = mp.vehicles.new(mp.joaat(CATALOG[key].model) >>> 0, new mp.Vector3(s.x, s.y, s.z), { heading: s.h, dimension: 0, engine: false }); }
+        catch (e) { return; }
+        if (!v) return;
+        v.setVariable('carshop:display', key); // tag so entering pops the buy card instead of driving
+        displayVehicles.push(v);
+    });
     console.log(`[carshop] ${displayVehicles.length} display cars spawned`);
 }
 spawnDisplays();

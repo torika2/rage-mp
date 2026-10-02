@@ -1,5 +1,7 @@
 // ===================== Economy: money + fuel purchases =====================
-// Money is server-authoritative and persisted to money.json (keyed by Social Club).
+// Money is server-authoritative. It lives in memory (keyed by Social Club) and is persisted to the
+// database (characters.money) via packages/_core dbSync. money.json is only read once, to import
+// pre-database saves into a character the first time it logs in.
 const fs = require('fs');
 const path = require('path');
 
@@ -13,11 +15,7 @@ const OCTANE_NAMES = ['რეგულარი 87', 'პლუსი 91', 'პ�
 
 let store = {};
 try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
-function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    fs.writeFileSync(temporaryFile, JSON.stringify(store));
-    fs.renameSync(temporaryFile, DATA_FILE);
-}
+function save() { global.dbSync.touch('money'); }
 
 function keyOf(player) { return player.socialClub || player.name || ('id' + player.id); }
 function getMoney(player) {
@@ -53,6 +51,15 @@ global.adminAddMoney = function (player, amount) {
 };
 
 mp.events.add('playerJoin', (player) => player.setVariable('money', getMoney(player)));
+
+global.dbSync.register('money', {
+    get: (player) => getMoney(player),
+    push: (characterId, money) => global.api.saveCharacter(characterId, { money }),
+});
+global.onCharacterLoad((player, character, firstTime) => {
+    if (!firstTime) store[keyOf(player)] = Math.max(0, Math.floor(Number(character.money) || 0));
+    player.setVariable('money', getMoney(player)); // firstTime: keeps money.json value (or START_MONEY)
+});
 
 // Shared money API so other packages (government, shops, markets) can charge/pay.
 global.getMoney = getMoney;

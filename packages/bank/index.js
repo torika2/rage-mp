@@ -27,10 +27,8 @@ const ATM_LOCATIONS = [
 
 let store = {};
 try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
-function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
-}
+// Legacy bank.json is read once (import into a character's first DB login); the DB owns the balance.
+function save() { global.dbSync.touch('bank'); }
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
 function getBank(player) {
     const k = keyOf(player);
@@ -126,6 +124,15 @@ function findPlayer(query) {
 }
 
 mp.events.add('playerJoin', (player) => player.setVariable('bank', getBank(player)));
+
+global.dbSync.register('bank', {
+    get: (player) => getBank(player),
+    push: (characterId, bank) => global.api.saveCharacter(characterId, { bank }),
+});
+global.onCharacterLoad((player, character, firstTime) => {
+    if (!firstTime) store[keyOf(player)] = Math.max(0, Math.floor(Number(character.bank) || 0));
+    player.setVariable('bank', getBank(player));
+});
 mp.events.addCommand('bank', (player) => {
     player.outputChatBox(`!{#5ac8fa}[ბანკი] !{#ffffff}ნაღდი: $${global.getMoney(player)} · ბანკი: $${getBank(player)}`);
 });

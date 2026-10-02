@@ -1,4 +1,4 @@
-import { IsIn, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, Min } from 'class-validator';
 
 /** Gameplay-state update — the game server sends only what changed. */
 export class UpdateCharacterDto {
@@ -23,4 +23,8 @@ export class UpdateCharacterDto {
   @IsOptional()
   @IsNumber()
   thirst?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  legacyImported?: boolean;
 }

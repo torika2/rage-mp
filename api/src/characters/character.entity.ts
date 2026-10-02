@@ -74,6 +74,11 @@ export class Character {
   @Column({ name: 'last_position', type: 'json', nullable: true })
   lastPosition: Record<string, unknown> | null;
 
+  // false until the game server has seeded this character from the old local JSON saves
+  // (packages/*/*.json) once; after that the database is the only source of truth.
+  @Column({ name: 'legacy_imported', type: 'boolean', default: false })
+  legacyImported: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

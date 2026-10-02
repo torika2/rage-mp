@@ -143,10 +143,9 @@ function defaultCloth(player, cat) {
 const EQUIP_FILE = path.join(__dirname, 'equipment.json');
 let equipStore = {};
 try { equipStore = JSON.parse(fs.readFileSync(EQUIP_FILE, 'utf8')); } catch (e) { equipStore = {}; }
-function saveEquip() {
-    const temporaryFile = EQUIP_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(equipStore)); fs.renameSync(temporaryFile, EQUIP_FILE); } catch (e) {}
-}
+// Legacy equipment.json / inventory.json are read once (import into a character's first DB login);
+// the DB owns inventory (inventory_items) and equipment (characters.equipment).
+function saveEquip() { global.dbSync.touch('equipment'); }
 function getEquip(player) {
     const k = keyOf(player);
     if (!equipStore[k] || typeof equipStore[k] !== 'object') equipStore[k] = {};
@@ -273,10 +272,28 @@ mp.events.add('playerSpawn', (player) => setTimeout(() => restoreEquipped(player
 
 let store = {};
 try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
-function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
-}
+function save() { global.dbSync.touch('inventory'); }
+
+global.dbSync.register('inventory', {
+    // Dense slot array of {id, qty} | null — only valid stacks are sent (the API rejects bad ones).
+    get: (player) => (store[keyOf(player)] || []).map(stack => (stack && stack.id && Number(stack.qty) > 0)
+        ? { id: String(stack.id), qty: Math.floor(Number(stack.qty)) } : null),
+    push: (characterId, slots) => global.api.saveInventory(characterId, slots),
+});
+global.dbSync.register('equipment', {
+    get: (player) => equipStore[keyOf(player)] || {},
+    push: (characterId, data) => global.api.saveEquipment(characterId, data),
+});
+global.onCharacterLoad(async (player, character, firstTime) => {
+    if (firstTime) return; // keep inventory.json / equipment.json values; they are pushed to the DB once
+    const k = keyOf(player);
+    const loaded = await global.api.loadInventory(character.id);
+    const slots = (loaded && Array.isArray(loaded.slots)) ? loaded.slots : [];
+    while (slots.length > MAX_SLOTS && slots[slots.length - 1] === null) slots.pop(); // API pads the grid to 28
+    store[k] = slots;
+    migrated.delete(k);
+    equipStore[k] = (character.equipment && typeof character.equipment === 'object') ? character.equipment : {};
+});
 
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
 function getInv(player) {

@@ -71,7 +71,22 @@ function withDefaults(look) {
         eye: inRange(look.eye, 0, EYE_COLORS - 1, 0)
     };
 }
+// Creator-era characters: the appearance blob (characters.appearance) is the saved look.
+function blobLook(player) {
+    const blob = player.character && player.character.appearance;
+    if (!blob || !blob.hair) return null;
+    const overlays = blob.overlays || {};
+    const beard = overlays.beard || {}, brows = overlays.eyebrows || {};
+    return withDefaults({
+        d: blob.hair.style, c: blob.hair.color, h: blob.hair.highlight,
+        b: Number.isInteger(beard.style) ? beard.style : -1, bc: beard.color,
+        e: Number.isInteger(brows.style) ? brows.style : 0, ec: brows.color,
+        eye: blob.eyeColor,
+    });
+}
 function savedLook(player) {
+    const fromBlob = blobLook(player);
+    if (fromBlob) return fromBlob;
     const model = modelKey(player);
     const entry = store[keyOf(player)];
     return (model && entry && entry[model]) ? withDefaults(entry[model]) : null;

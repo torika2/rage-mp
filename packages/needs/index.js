@@ -20,10 +20,8 @@ const THIRST_DRAIN = 100 / (THIRST_EMPTY_MINUTES * 60000 / TICK_MS);
 
 let store = {};
 try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
-function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
-}
+// Legacy needs.json is read once (import into a character's first DB login); the DB owns hunger/thirst.
+function save() { global.dbSync.touch('needs'); }
 
 const clamp = (v) => Math.max(0, Math.min(100, v));
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
@@ -79,6 +77,15 @@ setInterval(() => {
 }, STARVE_TICK_MS);
 
 mp.events.add('playerJoin', (player) => sync(player));
+
+global.dbSync.register('needs', {
+    get: (player) => { const n = getNeeds(player); return { hunger: Math.round(n.hunger * 10) / 10, thirst: Math.round(n.thirst * 10) / 10 }; },
+    push: (characterId, needs) => global.api.saveCharacter(characterId, needs),
+});
+global.onCharacterLoad((player, character, firstTime) => {
+    if (!firstTime) store[keyOf(player)] = { hunger: clamp(Number(character.hunger)), thirst: clamp(Number(character.thirst)) };
+    sync(player);
+});
 mp.events.add('playerDeath', (player) => {
     const n = getNeeds(player);
     n.hunger = Math.max(n.hunger, RESPAWN_MIN);

@@ -2306,7 +2306,7 @@ function setPhone(out) {
     }
 }
 function anyModalOpen() {
-    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || parkEditing);
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || carshopBrowser || cardetailBrowser || parkEditing);
 }
 bindKey(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
 bindKey(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
@@ -2823,6 +2823,14 @@ let heldSwitchLocked = false; // weapon switching locked while the equipped gun 
 let lastHeldRegive = 0;
 let lastAmmoReport = { model: null, rounds: -1 }; // last equipped-gun ammo sent to the server
 let lastClip = { hash: 0, clip: -1 }; // for the low-ammo warning beep
+// Z toggles GTA's big minimap (SET_BIGMAP_ACTIVE) — press again to shrink back.
+let bigMinimap = false;
+bindKey(0x5A, false, () => { // Z
+    if (anyModalOpen()) return;
+    bigMinimap = !bigMinimap;
+    try { mp.game.ui.setBigmapActive(bigMinimap, false); } catch (e) {}
+});
+
 mp.events.add('render', () => {
     for (const control of WEAPON_SWITCH_CONTROLS) mp.game.controls.disableControlAction(0, control, true);
     mp.game.ui.hideHudComponentThisFrame(19); // HUD_WEAPON_WHEEL
@@ -3104,7 +3112,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser || carshopBrowser || cardetailBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -3191,8 +3199,14 @@ mp.events.add('render', () => {
         const refuel = !fuelUIOpen && eligibleToRefuel(veh);
         const km = odoTrack(veh, speed, dt, now);
         const launch = launchControl(veh, speed, now); // 0 off · 1 armed · 2 launching
+        // GTA's real rpm stays low while holding the brake at a standstill, so the tachometer would top out
+        // around 5. While launch control is armed/launching, show the revs it would really be at: near
+        // the limiter when armed (slight flutter), easing down from there during the launch boost.
+        let shownRpm = rpm;
+        if (launch === 1) shownRpm = Math.max(rpm, 0.93 + Math.random() * 0.05);
+        else if (launch === 2) shownRpm = Math.max(rpm, 0.85 + 0.1 * Math.max(0, Math.min(1, (lcBoostUntil - now) / LC_BOOST_MS)));
         let engineLevel = -1; try { engineLevel = veh.getMod(11); } catch (e) {} // engine upgrade → tuning stage
-        payload = { money: getMoney(), inVehicle: true, kmh: Math.round(speed * 3.6), gear, engineOn, rpm, fuel, octane, refuel,
+        payload = { money: getMoney(), inVehicle: true, kmh: Math.round(speed * 3.6), gear, engineOn, rpm: shownRpm, fuel, octane, refuel,
             drift: driftMode,
             lights: vehicleLightsMode[veh.remoteId] === 1,
             belt: seatbeltOn,
