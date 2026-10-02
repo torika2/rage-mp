@@ -9,6 +9,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { HousesModule } from './houses/houses.module';
 import { ParkingModule } from './parking/parking.module';
+import { ItemsModule } from './items/items.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ParkingModule } from './parking/parking.module';
     VehiclesModule,
     HousesModule,
     ParkingModule,
+    ItemsModule,
   ],
   providers: [
     // Protect every endpoint with the shared API key by default.

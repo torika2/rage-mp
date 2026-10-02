@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { Character } from '../characters/character.entity';
 
 export type UserType = 'admin' | 'default' | 'support';
@@ -31,7 +32,8 @@ export class User {
   @Column({ type: 'varchar', length: 255 })
   email: string;
 
-  // Never selected by default, never serialized back to clients.
+  // Never selected by default (select:false) AND never serialized (@Exclude) — defence in depth.
+  @Exclude()
   @Column({ name: 'password_hash', type: 'varchar', length: 255, select: false })
   passwordHash: string;
 
@@ -63,6 +65,10 @@ export class User {
   // Chosen body. null = not yet chosen → the login flow forces a choice every time until set.
   @Column({ type: 'enum', enum: GENDERS, nullable: true })
   gender: Gender | null;
+
+  // Set true when a potential-fraud event is tied to this account (e.g. an invalid item status).
+  @Column({ name: 'is_flagged', type: 'boolean', default: false })
+  isFlagged: boolean;
 
   @OneToMany(() => Character, (character) => character.user)
   characters: Character[];

@@ -7,9 +7,17 @@ require('./interiors'); // Open All Interiors — client-side IPL loader
 
 // While the onboarding gate (login/register/gender/creator/spawn) is open, suppress every custom
 // keybind so in-game hotkeys (inventory, phone, engine, menus, chat…) can't fire behind the UI.
-// Wrapping mp.keys.bind here — before any bind is registered — gates all of them in one place.
-// Defaults to TRUE so the window between connect and the server's 'auth:show' is already locked.
-global.onboardingOpen = true;
+// Every keybind in this file is registered through bindKey() instead of mp.keys.bind directly,
+// so this one flag gates them all. Defaults to locked so the window between connect and the
+// server's 'auth:show' is already blocked.
+let uiLocked = true;
+const _realKeyBind = mp.keys.bind.bind(mp.keys);
+function bindKey(key, keyUp, handler) {
+    return _realKeyBind(key, keyUp, function (...args) {
+        if (uiLocked) return;
+        return handler(...args);
+    });
+}
 
 // Hide/show the local player ped (visibility only; freeze is managed by the auth/creator handlers).
 function setLocalPedVisible(visible) {
@@ -24,13 +32,6 @@ mp.events.add('playerReady', () => {
     try { mp.players.local.freezePosition(true); } catch (e) {}
     setLocalPedVisible(false);
 });
-const _keysBind = mp.keys.bind.bind(mp.keys);
-mp.keys.bind = function (key, keyDown, handler) {
-    return _keysBind(key, keyDown, function (...args) {
-        if (global.onboardingOpen) return;
-        return handler(...args);
-    });
-};
 
 const CFG = {
     engineCooldownMs: 1000,   // anti-spam between engine toggles
@@ -321,27 +322,27 @@ function exitParkEdit(saveIt) {
 // --- Admin editor keybinds. Nudges only apply while editing and not in the confirm dialog. ---
 const MOVE_STEP = 0.15, ROT_STEP = 5, SIZE_STEP = 0.2;
 function nudge(fn) { if (parkEditing && !parkEditConfirm) fn(); }
-mp.keys.bind(0x25, true, () => nudge(() => parkEditing.x -= MOVE_STEP)); // Left  -X
-mp.keys.bind(0x27, true, () => nudge(() => parkEditing.x += MOVE_STEP)); // Right +X
-mp.keys.bind(0x26, false, () => nudge(() => parkEditing.y += MOVE_STEP)); // Up    +Y (keyup so it never opens the phone)
-mp.keys.bind(0x28, false, () => nudge(() => parkEditing.y -= MOVE_STEP)); // Down  -Y
-mp.keys.bind(0x51, true, () => nudge(() => parkEditing.h = (parkEditing.h - ROT_STEP + 360) % 360)); // Q  yaw (Z) -
-mp.keys.bind(0x45, true, () => nudge(() => parkEditing.h = (parkEditing.h + ROT_STEP) % 360));       // E  yaw (Z) + (E-interact is disabled while editing)
-mp.keys.bind(0xBC, true, () => nudge(() => parkEditing.rx = Math.max(-45, parkEditing.rx - ROT_STEP))); // ,  pitch (X) -
-mp.keys.bind(0xBE, true, () => nudge(() => parkEditing.rx = Math.min(45, parkEditing.rx + ROT_STEP)));  // .  pitch (X) +
-mp.keys.bind(0xDB, true, () => nudge(() => parkEditing.ry = Math.max(-45, parkEditing.ry - ROT_STEP))); // [  roll (Y) -
-mp.keys.bind(0xDD, true, () => nudge(() => parkEditing.ry = Math.min(45, parkEditing.ry + ROT_STEP)));  // ]  roll (Y) +
-mp.keys.bind(0xBB, true, () => nudge(() => parkEditing.w = Math.min(6, parkEditing.w + SIZE_STEP)));    // +  width
-mp.keys.bind(0xBD, true, () => nudge(() => parkEditing.w = Math.max(1.6, parkEditing.w - SIZE_STEP)));  // -  width
-mp.keys.bind(0x21, true, () => nudge(() => parkEditing.l = Math.min(12, parkEditing.l + SIZE_STEP)));   // PageUp   length
-mp.keys.bind(0x22, true, () => nudge(() => parkEditing.l = Math.max(3, parkEditing.l - SIZE_STEP)));    // PageDown length
-mp.keys.bind(0x0D, true, () => { if (parkEditing) exitParkEdit(true); });  // Enter — save (also confirms the dialog)
-mp.keys.bind(0x08, true, () => { if (parkEditing) exitParkEdit(false); }); // Backspace — discard
+bindKey(0x25, true, () => nudge(() => parkEditing.x -= MOVE_STEP)); // Left  -X
+bindKey(0x27, true, () => nudge(() => parkEditing.x += MOVE_STEP)); // Right +X
+bindKey(0x26, false, () => nudge(() => parkEditing.y += MOVE_STEP)); // Up    +Y (keyup so it never opens the phone)
+bindKey(0x28, false, () => nudge(() => parkEditing.y -= MOVE_STEP)); // Down  -Y
+bindKey(0x51, true, () => nudge(() => parkEditing.h = (parkEditing.h - ROT_STEP + 360) % 360)); // Q  yaw (Z) -
+bindKey(0x45, true, () => nudge(() => parkEditing.h = (parkEditing.h + ROT_STEP) % 360));       // E  yaw (Z) + (E-interact is disabled while editing)
+bindKey(0xBC, true, () => nudge(() => parkEditing.rx = Math.max(-45, parkEditing.rx - ROT_STEP))); // ,  pitch (X) -
+bindKey(0xBE, true, () => nudge(() => parkEditing.rx = Math.min(45, parkEditing.rx + ROT_STEP)));  // .  pitch (X) +
+bindKey(0xDB, true, () => nudge(() => parkEditing.ry = Math.max(-45, parkEditing.ry - ROT_STEP))); // [  roll (Y) -
+bindKey(0xDD, true, () => nudge(() => parkEditing.ry = Math.min(45, parkEditing.ry + ROT_STEP)));  // ]  roll (Y) +
+bindKey(0xBB, true, () => nudge(() => parkEditing.w = Math.min(6, parkEditing.w + SIZE_STEP)));    // +  width
+bindKey(0xBD, true, () => nudge(() => parkEditing.w = Math.max(1.6, parkEditing.w - SIZE_STEP)));  // -  width
+bindKey(0x21, true, () => nudge(() => parkEditing.l = Math.min(12, parkEditing.l + SIZE_STEP)));   // PageUp   length
+bindKey(0x22, true, () => nudge(() => parkEditing.l = Math.max(3, parkEditing.l - SIZE_STEP)));    // PageDown length
+bindKey(0x0D, true, () => { if (parkEditing) exitParkEdit(true); });  // Enter — save (also confirms the dialog)
+bindKey(0x08, true, () => { if (parkEditing) exitParkEdit(false); }); // Backspace — discard
 // Home / End — duplicate this slot 5 times to the left / right (gapped). Uses the live edited geometry.
-mp.keys.bind(0x24, true, () => nudge(() => mp.events.callRemote('parking:duplicate', JSON.stringify(parkEditing), 'left', 5)));  // Home
-mp.keys.bind(0x23, true, () => nudge(() => mp.events.callRemote('parking:duplicate', JSON.stringify(parkEditing), 'right', 5))); // End
+bindKey(0x24, true, () => nudge(() => mp.events.callRemote('parking:duplicate', JSON.stringify(parkEditing), 'left', 5)));  // Home
+bindKey(0x23, true, () => nudge(() => mp.events.callRemote('parking:duplicate', JSON.stringify(parkEditing), 'right', 5))); // End
 // Delete — remove this slot and exit edit mode.
-mp.keys.bind(0x2E, true, () => nudge(() => { const id = parkEditing.id; exitParkEdit(false); mp.events.callRemote('parking:removeSpot', id); })); // Del
+bindKey(0x2E, true, () => nudge(() => { const id = parkEditing.id; exitParkEdit(false); mp.events.callRemote('parking:removeSpot', id); })); // Del
 
 // On-foot interaction range for shops. Must be <= the server's SHOP_RANGE so anyone
 // close enough to see the "Press E" prompt is also accepted by the server buy check.
@@ -814,6 +815,47 @@ mp.events.add('shop:purchase', (key, qty) => {                        // Buy cli
     setTimeout(requestShopData, 200);                                // refresh balance after purchase
 });
 mp.events.add('shop:close', closeShopUI);
+
+// ---------- Car shop (dealership) ----------
+// Server opens it with 'carshop:open' (after /buycar near the dealership). The CEF pulls the
+// catalog on load and relays buys; the server records ownership in the DB and spawns the car.
+let carshopBrowser = null;
+mp.events.add('carshop:open', () => {
+    if (carshopBrowser || chatting) return;
+    carshopBrowser = mp.browsers.new('package://ui/carshop/index.html');
+    mp.gui.cursor.show(true, true);
+});
+function closeCarshop() {
+    if (!carshopBrowser) return;
+    carshopBrowser.destroy(); carshopBrowser = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('carshop:data', (json) => { if (carshopBrowser) carshopBrowser.execute(`window.setCarshop(${json})`); });
+mp.events.add('carshop:result', (json) => { if (carshopBrowser) carshopBrowser.execute(`window.carshopResult(${json})`); });
+mp.events.add('carshop:uiReady', () => mp.events.callRemote('carshop:requestData')); // from CEF -> server
+mp.events.add('carshop:close', closeCarshop); // from CEF
+
+// Buy-card popup shown when you "enter" a display car at the dealership.
+let cardetailBrowser = null;
+function closeCardetail() {
+    if (!cardetailBrowser) return;
+    cardetailBrowser.destroy(); cardetailBrowser = null;
+    if (!carshopBrowser) mp.gui.cursor.show(false, false);
+}
+mp.events.add('carshop:details', (json) => {
+    if (!cardetailBrowser) cardetailBrowser = mp.browsers.new('package://ui/cardetail/index.html');
+    mp.gui.cursor.show(true, true);
+    setTimeout(() => { if (cardetailBrowser) cardetailBrowser.execute(`window.setCarDetail(${json})`); }, 250);
+});
+mp.events.add('cardetail:close', closeCardetail); // from CEF
+// Buy (from either the list or the buy-card) -> server; then close the buy-card.
+mp.events.add('carshop:buy', (key) => { mp.events.callRemote('carshop:buy', String(key)); closeCardetail(); });
+// Keep cursor up / block game controls while the dealership UI or buy-card is open.
+mp.events.add('render', () => {
+    if (!carshopBrowser && !cardetailBrowser) return;
+    mp.gui.cursor.show(true, true);
+    mp.game.controls.disableAllControlActions(0);
+});
 
 // ---------- CEF clothing store (Binco / Ponsonbys) ----------
 // Browsing + live try-on happen on the client (only the client can read the ped's real drawable
@@ -2171,7 +2213,7 @@ mp.events.add('render', () => {
         me.position = new mp.Vector3(pos.x + dx * speed, pos.y + dy * speed, pos.z + dz * speed);
     }
 });
-mp.keys.bind(0x75, false, () => { // F6 — open/close Director Mode (super admins only)
+bindKey(0x75, false, () => { // F6 — open/close Director Mode (super admins only)
     if (chatting || adminBrowser) return;
     if (directorBrowser) { closeDirector(); return; }
     mp.events.callRemote('director:open'); // server verifies super-admin, then opens the panel
@@ -2266,8 +2308,8 @@ function setPhone(out) {
 function anyModalOpen() {
     return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || parkEditing);
 }
-mp.keys.bind(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
-mp.keys.bind(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
+bindKey(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
+bindKey(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
 
 mp.events.add('phone:ui:ready', () => {
     mp.events.callRemote('phone:request');
@@ -2680,7 +2722,7 @@ function findNearDowned() {
     return best;
 }
 
-mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
+bindKey(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
     if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing) return;
     if (fuelUIOpen) return;
     const downedTarget = findNearDowned();
@@ -2703,7 +2745,7 @@ mp.keys.bind(0x45, false, () => { // E — refuel (in vehicle), pick up a droppe
         else if (mode) openShopUI(mode);
     }
 });
-mp.keys.bind(0x1B, true, () => { // Esc closes chat input or an open modal
+bindKey(0x1B, true, () => { // Esc closes chat input or an open modal
     if (chatting) { closeChat(); return; }
     if (adminBrowser) closeAdminPanel(true);
     else if (fuelUIOpen) closeFuelUI();
@@ -2852,25 +2894,25 @@ mp.events.add('render', () => {
 });
 
 // 1-4: use/equip the item in that inventory quick slot (on foot only — 2 is the engine key in a vehicle).
-[0x31, 0x32, 0x33, 0x34].forEach((key, index) => mp.keys.bind(key, false, () => {
+[0x31, 0x32, 0x33, 0x34].forEach((key, index) => bindKey(key, false, () => {
     if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser) return;
     if (mp.players.local.vehicle) return;
     mp.events.callRemote('inventory:useQuick', index);
 }));
 
-mp.keys.bind(0x49, false, () => { // I - inventory
+bindKey(0x49, false, () => { // I - inventory
     if (chatting || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return; // City Hall form has text inputs
     if (inventoryBrowser) closeInventoryUI();
     else if (!adminBrowser && !fuelUIOpen) openInventoryUI();
 });
-mp.keys.bind(0x47, false, () => { // G - vehicle interaction menu
+bindKey(0x47, false, () => { // G - vehicle interaction menu
     if (chatting || cityhallBrowser || housesBrowser) return;
     if (vehicleMenuBrowser) closeVehicleMenu();
     else if (pendingVehicleMenuVehicle) closeVehicleMenu();
     else if (mp.players.local.vehicle) openVehicleMenu(mp.players.local.vehicle);
     else requestOutsideVehicleMenu();
 });
-mp.keys.bind(0x32, false, () => engineToggle());                    // 2 - engine on/off
+bindKey(0x32, false, () => engineToggle());                    // 2 - engine on/off
 
 // ---------- Custom chat (CEF) ----------
 mp.gui.chat.show(false); // hide native chat (also removes the "Multiplayer started" line)
@@ -2914,7 +2956,7 @@ function closeChat() {
     suppressPauseUntil = Date.now() + 800; // keep the pause/map from opening as Esc is released
     blockPauseControls();
 }
-mp.keys.bind(0x54, false, openChat); // T - open custom chat input
+bindKey(0x54, false, openChat); // T - open custom chat input
 
 mp.events.add('chat:send', (text, channel) => {
     chatChannel = (channel === 'local' || channel === 'team' || channel === 'global') ? channel : 'local';
@@ -2937,13 +2979,13 @@ mp.events.add('voice:setMuted', (value) => {
     if (mp.voiceChat) mp.voiceChat.muted = true; // stay muted; PTT can't unmute while banned
 });
 
-mp.keys.bind(0x42, true, () => {  // B held -> talk
+bindKey(0x42, true, () => {  // B held -> talk
     if (voiceBanned || chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return;
     if (Number(mp.players.local.getHealth()) <= 0) return; // downed: can't speak
     voiceTalking = true;
     if (mp.voiceChat) mp.voiceChat.muted = false;
 });
-mp.keys.bind(0x42, false, () => { // B released -> stop talking
+bindKey(0x42, false, () => { // B released -> stop talking
     voiceTalking = false;
     if (mp.voiceChat) mp.voiceChat.muted = true;
 });
@@ -2960,7 +3002,7 @@ function toggleSeatbelt(fromVehicleMenu = false) {
     if (vehicleMenuBrowser) sendVehicleMenuState();
 }
 
-mp.keys.bind(0x4A, false, toggleSeatbelt); // J - seatbelt
+bindKey(0x4A, false, toggleSeatbelt); // J - seatbelt
 
 function closeVehicleDoors(fromVehicleMenu = false, targetVehicle = null) {
     const veh = targetVehicle || mp.players.local.vehicle;
@@ -2979,8 +3021,8 @@ function toggleVehicleLights(fromVehicleMenu = false, targetVehicle = null) {
     if (vehicleMenuBrowser) sendVehicleMenuState();
 }
 
-mp.keys.bind(0x4C, false, closeVehicleDoors); // L - close all doors
-mp.keys.bind(0x48, false, toggleVehicleLights); // H - toggle lights
+bindKey(0x4C, false, closeVehicleDoors); // L - close all doors
+bindKey(0x48, false, toggleVehicleLights); // H - toggle lights
 
 // ---------- Drift mode (NumLock) ----------
 // RAGE:MP has no runtime handling native, so "drift mode" uses SET_VEHICLE_REDUCE_GRIP plus
@@ -2990,8 +3032,9 @@ mp.keys.bind(0x48, false, toggleVehicleLights); // H - toggle lights
 const REDUCE_GRIP = '0x222FF6A823D122E2';        // SET_VEHICLE_REDUCE_GRIP(vehicle, toggle)
 const REDUCE_GRIP_LEVEL = '0x7D6F9A3EF26136A0';  // SET_VEHICLE_REDUCE_GRIP_LEVEL(vehicle, float)
 const DRIFT_GRIP_LEVEL = 0.4;                    // default: lower = more grip; 0.5 = barely loose … 2.5 = ice
-// Per-car drift grip overrides (model hash -> level). M8 keeps more grip in drift than other cars.
-const DRIFT_GRIP_BY_MODEL = { [mp.game.joaat('mansm8c') >>> 0]: 0.0 };
+// Per-car drift grip overrides (model hash -> level). Lower = more grip; 0.0 is the documented floor.
+// M8 is pushed slightly NEGATIVE to attempt extra over-grip (if the native clamps, it behaves as 0.0).
+const DRIFT_GRIP_BY_MODEL = { [mp.game.joaat('mansm8c') >>> 0]: -0.5 };
 
 let driftMode = false;
 
@@ -3019,7 +3062,7 @@ function toggleDrift() { // driver only; shared by the NumLock key and the /drif
     applyDrift(veh);
     notify(driftMode ? 'დრიფტ რეჟიმი: ჩართული' : 'დრიფტ რეჟიმი: გამორთული');
 }
-mp.keys.bind(0x90, true, () => { // NumLock — toggle drift mode
+bindKey(0x90, true, () => { // NumLock — toggle drift mode
     if (chatting || anyModalOpen()) return;
     toggleDrift();
 });
@@ -3238,12 +3281,12 @@ mp.events.add('entityStreamIn', entity => {
 mp.events.add('playerDeath', () => setFlyEnabled(false));
 
 // (B is push-to-talk voice.) N toggles flight while in admin mode; the server re-checks admin mode.
-mp.keys.bind(0x4E, false, () => { // N — admin fly on/off
+bindKey(0x4E, false, () => { // N — admin fly on/off
     if (!adminModeEnabled || chatting || anyModalOpen()) return;
     mp.events.callRemote('admin:fly:toggle');
 });
 
-mp.keys.bind(0x77, false, () => {
+bindKey(0x77, false, () => {
     if (chatting) return;
     mp.events.callRemote('admin:panel:toggle');
 });
@@ -3403,8 +3446,8 @@ mp.events.add('playerQuit', (player) => clearBackWeapons(player));
 mp.events.add('playerSpawn', () => setTimeout(() => buildBackWeapons(mp.players.local), 1500)); // respawn resets attachments
 
 // Ctrl held/released while the inventory is open -> tell the UI (Ctrl+drag = split / drop some).
-mp.keys.bind(0x11, true, () => { if (inventoryBrowser) inventoryBrowser.execute('window.setCtrl && window.setCtrl(true)'); });
-mp.keys.bind(0x11, false, () => { if (inventoryBrowser) inventoryBrowser.execute('window.setCtrl && window.setCtrl(false)'); });
+bindKey(0x11, true, () => { if (inventoryBrowser) inventoryBrowser.execute('window.setCtrl && window.setCtrl(true)'); });
+bindKey(0x11, false, () => { if (inventoryBrowser) inventoryBrowser.execute('window.setCtrl && window.setCtrl(false)'); });
 
 // Eat/drink prop in the player's hand while the server-synced animation plays (runs for every nearby client).
 // Per-model hand placement (bone id, offset, rotation) matched to the animation each item uses.
@@ -3519,6 +3562,7 @@ function stopDeathCountdown() {
 }
 
 mp.events.add('death:begin', (totalMs, blurMs, reviveMs) => {
+    if (uiLocked) return; // never blur / show the death screen during onboarding (model-change deaths)
     // Stop GTA's instant auto-respawn/fade so the server owns the timing.
     try { mp.game.invoke(DEATH_FADE_OUT, false); } catch (e) {}
     try { mp.game.invoke(DEATH_PAUSE_RESTART, true); } catch (e) {}
@@ -3553,7 +3597,7 @@ mp.events.add('death:end', () => {
 let characterBrowser = null;
 mp.events.add('character:choose', () => {
     if (characterBrowser) return;
-    global.onboardingOpen = true;
+    uiLocked = true;
     characterBrowser = mp.browsers.new('package://ui/character/index.html');
     mp.gui.cursor.show(true, true);
     try { mp.players.local.freezePosition(true); } catch (e) {}
@@ -3565,7 +3609,7 @@ mp.events.add('character:done', () => {
     if (characterBrowser) { characterBrowser.destroy(); characterBrowser = null; }
     mp.gui.cursor.show(false, false);
     try { mp.players.local.freezePosition(false); } catch (e) {}
-    global.onboardingOpen = false;
+    uiLocked = false;
 });
 // While the chooser is open, keep the cursor on and block game controls so the mouse moves the
 // cursor (to click a card) instead of swinging the camera.
@@ -3582,7 +3626,7 @@ mp.events.add('render', () => {
 // cursor up until they authenticate. We relay form submissions to the server and show errors.
 let authBrowser = null;
 function openAuth(mode, dataJson) {
-    global.onboardingOpen = true;
+    uiLocked = true;
     setLocalPedVisible(false); // no character shown during login/register
     if (!authBrowser) authBrowser = mp.browsers.new('package://ui/auth/index.html');
     mp.gui.cursor.show(true, true);
@@ -3597,7 +3641,7 @@ mp.events.add('auth:error', (text) => { if (authBrowser) authBrowser.execute(`wi
 // Rejoin spawn selector: close auth/creator UI, keep the player frozen, and offer where to spawn.
 let spawnBrowser = null;
 mp.events.add('auth:spawnSelect', (payloadJson) => {
-    global.onboardingOpen = true;
+    uiLocked = true;
     if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
     if (creatorBrowser) { creatorBrowser.destroy(); creatorBrowser = null; }
     stopPedPreview();
@@ -3615,26 +3659,21 @@ mp.events.add('render', () => {
     mp.game.controls.disableAllControlActions(2);
 });
 
-// Account authenticated but no gender chosen yet: close the auth UI and open the gender chooser
-// (reusing the existing character chooser page). Its pick relays 'character:setGender' to the server.
-mp.events.add('auth:chooseGender', () => {
-    global.onboardingOpen = true;
-    if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
-    if (!characterBrowser) characterBrowser = mp.browsers.new('package://ui/character/index.html');
-    mp.gui.cursor.show(true, true);
-    try { mp.players.local.freezePosition(true); } catch (e) {}
-});
-
 // Fully authenticated and placed in the world: tear down every onboarding UI and release the player.
 mp.events.add('auth:enter', () => {
     if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
     if (characterBrowser) { characterBrowser.destroy(); characterBrowser = null; }
+    if (creatorBrowser) { creatorBrowser.destroy(); creatorBrowser = null; }
     if (spawnBrowser) { spawnBrowser.destroy(); spawnBrowser = null; }
     stopPedPreview();
     setLocalPedVisible(true); // character enters the world
+    // Clear any blur / death post-fx left over from model changes during onboarding.
+    try { mp.game.invoke(SCREEN_BLUR_OUT, 0); } catch (e) {}
+    try { mp.game.invoke('0xB4EDDC19532BFB85'); } catch (e) {} // ANIMPOSTFX_STOP_ALL
+    try { mp.game.graphics.transitionFromBlurred(0); } catch (e) {}
     mp.gui.cursor.show(false, false);
     try { mp.players.local.freezePosition(false); } catch (e) {}
-    global.onboardingOpen = false; // onboarding done — re-enable hotkeys
+    uiLocked = false; // onboarding done — re-enable hotkeys
 });
 
 // Relay CEF form submits to the server.
@@ -3689,7 +3728,10 @@ mp.events.add('creator:start', (dataJson) => {
     let data;
     try { data = JSON.parse(dataJson); } catch (e) { data = {}; }
     creatorActive = true;
-    global.onboardingOpen = true;
+    uiLocked = true;
+    // Close the login/register (and any gender) UI — the creator replaces them.
+    if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
+    if (characterBrowser) { characterBrowser.destroy(); characterBrowser = null; }
     setLocalPedVisible(true); // reveal the ped so the player can customise it
     const me = mp.players.local;
     if (data.pos) { try { me.position = new mp.Vector3(data.pos.x, data.pos.y, data.pos.z); } catch (e) {} }
@@ -3706,6 +3748,17 @@ mp.events.add('creator:apply', (blobJson) => { if (creatorActive) applyCreatorLo
 mp.events.add('creator:zone', (zone) => { if (creatorActive) applyPedCamZone(String(zone)); });
 mp.events.add('creator:rotate', (delta) => { if (creatorActive) rotatePedPreview(Number(delta) || 0); });
 mp.events.add('creator:confirm', (blobJson) => { if (creatorActive) mp.events.callRemote('creator:save', String(blobJson)); });
+// Gender toggle from the creator UI → ask the server to swap the ped model.
+mp.events.add('creator:gender', (g) => { if (creatorActive) mp.events.callRemote('creator:gender', String(g)); });
+// Server swapped the model (gender change): clear any death fx, re-frame the face, re-apply the look.
+mp.events.add('creator:refresh', () => {
+    if (!creatorActive) return;
+    try { mp.game.invoke(SCREEN_BLUR_OUT, 0); } catch (e) {}
+    try { mp.game.invoke('0xB4EDDC19532BFB85'); } catch (e) {} // ANIMPOSTFX_STOP_ALL
+    setLocalPedVisible(true);
+    applyPedCamZone('head');
+    if (creatorBrowser) creatorBrowser.execute('window.creatorReapply && window.creatorReapply()');
+});
 
 mp.events.add('creator:error', (text) => { if (creatorBrowser) creatorBrowser.execute(`window.creatorError(${JSON.stringify(String(text))})`); });
 mp.events.add('creator:done', () => {
@@ -3713,7 +3766,7 @@ mp.events.add('creator:done', () => {
     if (creatorBrowser) { creatorBrowser.destroy(); creatorBrowser = null; }
     stopPedPreview();
     mp.gui.cursor.show(false, false);
-    global.onboardingOpen = false;
+    uiLocked = false;
 });
 
 // Keep cursor up / controls locked while the creator is open.

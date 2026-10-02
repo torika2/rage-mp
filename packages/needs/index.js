@@ -48,6 +48,12 @@ setInterval(() => {
     mp.players.forEach(player => {
         if (!mp.players.exists(player) || Number(player.health) <= 0) return; // dead: no drain
         if (player.getVariable('admin:mode') === true) return; // admin mode: no hunger/thirst drain or starvation
+        // Admins never get hungry/thirsty — keep them topped up even in normal (non-admin) mode.
+        if (typeof global.isProtectedAdmin === 'function' && global.isProtectedAdmin(player)) {
+            const na = getNeeds(player);
+            if (na.hunger < 100 || na.thirst < 100) { na.hunger = 100; na.thirst = 100; sync(player); }
+            return;
+        }
         const n = getNeeds(player);
         const hunger = clamp(n.hunger - HUNGER_DRAIN);
         const thirst = clamp(n.thirst - THIRST_DRAIN);
@@ -65,6 +71,7 @@ setInterval(() => {
     mp.players.forEach(player => {
         if (!mp.players.exists(player) || Number(player.health) <= 0) return;
         if (player.getVariable('admin:mode') === true) return;
+        if (typeof global.isProtectedAdmin === 'function' && global.isProtectedAdmin(player)) return; // admins never starve
         const n = getNeeds(player);
         const damage = (n.hunger <= 0 ? STARVE_DAMAGE : 0) + (n.thirst <= 0 ? STARVE_DAMAGE : 0);
         if (damage) player.health = Math.max(0, Number(player.health) - damage);

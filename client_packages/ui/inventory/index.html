@@ -360,6 +360,7 @@
     if (cap) cap.textContent = (data.used || 0) + ' / ' + (data.max || 25);
     const items = data.items || [];
     lastItems = items;
+    if (data.owner) invOwner = data.owner;
     slots.forEach((slot, i) => {
       const item = items[i];
       slot.innerHTML = '';
@@ -396,12 +397,96 @@
       slot.oncontextmenu = (e) => {
         e.preventDefault();
         if (!RAGE || equipped) return; // equipped weapon can't be moved or dropped
-        if (!quick || item.qty <= 0) return mp.trigger('inventory:drop', item.id, i); // empty quick slot -> clear it
-        const free = slots.findIndex((s, j) => j < quickStart && !items[j]); // quick slot -> first free grid slot
-        if (free !== -1) mp.trigger('inventory:move', i, free);
+        if (quick) {
+          // quick slot: keep the non-destructive "move back to the grid" behaviour
+          if (item.qty <= 0) return mp.trigger('inventory:drop', item.id, i);
+          const free = slots.findIndex((s, j) => j < quickStart && !items[j]);
+          if (free !== -1) mp.trigger('inventory:move', i, free);
+          return;
+        }
+        // grid item: open the little toolkit (Details / Drop) instead of dropping immediately
+        showItemMenu(item, i, e.clientX, e.clientY);
       };
     });
   };
+
+  // ---- Right-click item toolkit: Details / Drop ----
+  (function injectItemMenuStyles() {
+    const css =
+      '.item-ctx{position:fixed;z-index:9999;min-width:150px;background:linear-gradient(180deg,#141b24,#0e1217);' +
+      'border:1px solid rgba(90,200,250,.4);border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.6);overflow:hidden;padding:5px;}' +
+      '.item-ctx-btn{display:block;width:100%;text-align:left;padding:10px 12px;border:0;border-radius:7px;background:transparent;' +
+      'color:#f3f0e8;font:inherit;font-size:13px;cursor:pointer;}' +
+      '.item-ctx-btn:hover{background:rgba(90,200,250,.12);color:#5ac8fa;}' +
+      '.item-ctx-btn.danger:hover{background:rgba(255,107,107,.14);color:#ff6b6b;}' +
+      '.item-details-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;}' +
+      '.item-details{width:min(360px,90vw);background:linear-gradient(180deg,#101822,#0c0f13);border:1px solid rgba(90,200,250,.45);' +
+      'border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden;color:#f3f0e8;}' +
+      '.d-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.12);}' +
+      '.d-ic{width:42px;height:42px;display:flex;align-items:center;justify-content:center;font-size:24px;}' +
+      '.d-ic img{width:100%;height:100%;object-fit:contain;}' +
+      '.d-name{font-size:16px;font-weight:800;}.d-type{font-size:11px;color:#aaa79e;margin-top:2px;}' +
+      '.d-close{margin-left:auto;width:30px;height:30px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#aaa79e;border-radius:8px;font-size:17px;cursor:pointer;}' +
+      '.d-rows{padding:12px 18px;}.d-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;}' +
+      '.d-row span{color:#aaa79e;}.d-row b{color:#f3f0e8;}' +
+      '.d-stats-title{padding:4px 18px;font-size:11px;color:#aaa79e;text-transform:uppercase;letter-spacing:.04em;border-top:1px solid rgba(255,255,255,.12);}' +
+      '.d-stat{display:flex;justify-content:space-between;padding:6px 18px;font-size:13px;}.d-stat b{color:#8ed17a;}.d-stat.muted{color:#aaa79e;}' ;
+    const el = document.createElement('style'); el.textContent = css; document.head.appendChild(el);
+  })();
+
+  let itemCtxEl = null, itemDetailsEl = null;
+  function closeItemCtx() { if (itemCtxEl) { itemCtxEl.remove(); itemCtxEl = null; } }
+  function closeItemDetails() { if (itemDetailsEl) { itemDetailsEl.remove(); itemDetailsEl = null; } }
+  document.addEventListener('mousedown', (e) => { if (itemCtxEl && !itemCtxEl.contains(e.target)) closeItemCtx(); }, true);
+
+  function showItemMenu(item, index, x, y) {
+    closeItemCtx();
+    itemCtxEl = document.createElement('div');
+    itemCtxEl.className = 'item-ctx';
+    itemCtxEl.style.left = x + 'px'; itemCtxEl.style.top = y + 'px';
+    const mk = (label, fn, cls) => {
+      const b = document.createElement('button');
+      b.className = 'item-ctx-btn' + (cls ? ' ' + cls : '');
+      b.textContent = label;
+      b.onclick = (ev) => { ev.stopPropagation(); fn(); };
+      return b;
+    };
+    itemCtxEl.appendChild(mk('დეტალები', () => { closeItemCtx(); showItemDetails(item); }));
+    itemCtxEl.appendChild(mk('გადაგდება', () => { closeItemCtx(); if (RAGE) mp.trigger('inventory:drop', item.id, index); }, 'danger'));
+    document.body.appendChild(itemCtxEl);
+    const r = itemCtxEl.getBoundingClientRect(); // keep inside the screen
+    if (r.right > innerWidth) itemCtxEl.style.left = Math.max(0, x - r.width) + 'px';
+    if (r.bottom > innerHeight) itemCtxEl.style.top = Math.max(0, y - r.height) + 'px';
+  }
+
+  const STAT_LABELS = { health: 'ჯანმრთელობა', thirst: 'წყურვილი', hunger: 'შიმშილი', armour: 'ჯავშანი', armor: 'ჯავშანი' };
+  const TYPE_LABELS = { consumable: 'საჭმელი/სასმელი', weapon: 'იარაღი', ammo: 'ვაზნა', clothing: 'ტანსაცმელი', armor: 'ჯავშანი', misc: 'სხვა' };
+  function showItemDetails(item) {
+    closeItemDetails();
+    const stats = item.stats || {};
+    const statKeys = Object.keys(stats);
+    const statsHtml = statKeys.length
+      ? statKeys.map(k => '<div class="d-stat"><span>' + (STAT_LABELS[k] || k) + '</span><b>+' + stats[k] + '</b></div>').join('')
+      : '<div class="d-stat muted">ეფექტი არ აქვს</div>';
+    itemDetailsEl = document.createElement('div');
+    itemDetailsEl.className = 'item-details-overlay';
+    itemDetailsEl.innerHTML =
+      '<div class="item-details">' +
+        '<div class="d-head"><span class="d-ic">' + iconFor(item.id) + '</span>' +
+          '<div><div class="d-name">' + item.label + '</div><div class="d-type">' + (TYPE_LABELS[item.type] || item.type) + '</div></div>' +
+          '<button class="d-close">×</button></div>' +
+        '<div class="d-rows">' +
+          '<div class="d-row"><span>მფლობელი</span><b>' + (invOwner || '—') + '</b></div>' +
+          '<div class="d-row"><span>რაოდენობა</span><b>' + item.qty + '</b></div>' +
+          (item.rounds !== undefined ? '<div class="d-row"><span>ვაზნები</span><b>' + item.rounds + '</b></div>' : '') +
+        '</div>' +
+        '<div class="d-stats-title">ეფექტი</div>' + statsHtml +
+      '</div>';
+    itemDetailsEl.addEventListener('mousedown', (e) => {
+      if (e.target === itemDetailsEl || (e.target.classList && e.target.classList.contains('d-close'))) closeItemDetails();
+    });
+    document.body.appendChild(itemDetailsEl);
+  }
 
   // ---- Drag & drop: drop on another slot to move/swap, drop outside the window to throw away ----
   let pending = null, drag = null, justDragged = false;
@@ -500,6 +585,7 @@
   window.addEventListener('blur', () => { ctrlDown = false; });
   const ctrlHeld = (e) => e.ctrlKey || ctrlDown;
   let lastItems = [];
+  let invOwner = '';
   function canSplitInto(to, id) { const t = lastItems[to]; return !t || t.id === id; }
   // mode 'move': split part of the stack into slot `to` (at most qty-1);
   // mode 'drop': drop that many on the ground (up to the whole stack).

@@ -14,9 +14,14 @@
   * { box-sizing: border-box; }
   html, body { width:100%; height:100%; margin:0; overflow:hidden; }
   body { color: var(--text); user-select:none; background: transparent; }
+  /* full-screen layer behind the panel: drag over the ped (left area) to rotate it */
+  #dragLayer { position: fixed; inset: 0; z-index: 1; cursor: grab; }
+  #dragLayer.dragging { cursor: grabbing; }
+  .drag-hint { position: fixed; left: 24px; bottom: 22px; z-index: 1; color: var(--muted); font-size: 12px;
+    background: rgba(0,0,0,.35); padding: 7px 11px; border-radius: 8px; pointer-events: none; }
   /* ped renders in the left area; the panel sits on the right */
   .panel {
-    position: absolute; top: 0; right: 0; height: 100%; width: min(430px, 42vw);
+    position: absolute; top: 0; right: 0; height: 100%; width: min(430px, 42vw); z-index: 2;
     background: linear-gradient(180deg, rgba(16,24,34,.96), rgba(12,15,19,.97));
     border-left: 1px solid rgba(90,200,250,.4); box-shadow: -20px 0 60px rgba(0,0,0,.5);
     display: flex; flex-direction: column;
@@ -47,13 +52,23 @@
     color:#0b0f13; background: linear-gradient(180deg, var(--green), #6bb45a); }
   .confirm:hover { filter: brightness(1.05); }
   .confirm:disabled { opacity:.5; cursor:default; }
+  .gender-bar { display:flex; gap:8px; padding:12px 18px 2px; }
+  .gbtn { flex:1; padding:11px; border:1px solid var(--line); border-radius:9px; background:rgba(255,255,255,.03);
+    color:var(--muted); cursor:pointer; font:inherit; font-weight:700; }
+  .gbtn.on { color:var(--blue); border-color:rgba(90,200,250,.5); background:rgba(90,200,250,.1); }
 </style>
 </head>
 <body>
+  <div id="dragLayer"></div>
+  <div class="drag-hint">გადაათრიეთ პერსონაჟის დასატრიალებლად</div>
   <div class="panel">
     <div class="head">
       <h1>პერსონაჟის შექმნა</h1>
-      <p>შექმენი შენი გარეგნობა და დააჭირე „დადასტურებას“.</p>
+      <p>აირჩიე სქესი, შექმენი გარეგნობა და დააჭირე „დადასტურებას“.</p>
+    </div>
+    <div class="gender-bar">
+      <button class="gbtn" data-g="m">კაცი</button>
+      <button class="gbtn" data-g="f">ქალი</button>
     </div>
     <div class="tabs" id="tabs"></div>
     <div class="body" id="body"></div>
@@ -182,11 +197,16 @@
     $('body').scrollTop = 0;
   }
 
+  function updateGenderButtons() {
+    document.querySelectorAll('.gbtn').forEach(b => b.classList.toggle('on', b.dataset.g === gender));
+  }
+
   // --- called from the game client ---
   window.creatorInit = function (dataJson) {
     const data = JSON.parse(dataJson);
     limits = data.limits; gender = data.gender || 'm';
     state = defaultState();
+    updateGenderButtons();
     build();
     ready = true;
     sendApply(); // apply the starting look
@@ -195,10 +215,35 @@
     $('msg').textContent = text || '';
     $('confirm').disabled = false;
   };
+  // After the server swaps the ped model (gender change), re-apply the current look.
+  window.creatorReapply = function () { sendApply(); };
+
+  // gender toggle (top of the creator)
+  document.querySelectorAll('.gbtn').forEach(b => b.addEventListener('click', () => {
+    if (gender === b.dataset.g) return;
+    gender = b.dataset.g;
+    updateGenderButtons();
+    build();                            // overlays depend on gender (hide beard/chest hair for female)
+    trigger('creator:gender', gender);  // server swaps the ped model; it then calls creatorReapply
+  }));
 
   // camera controls
   document.querySelectorAll('.cam [data-zone]').forEach(b => b.addEventListener('click', () => trigger('creator:zone', b.dataset.zone)));
   document.querySelectorAll('.cam [data-rot]').forEach(b => b.addEventListener('click', () => trigger('creator:rotate', Number(b.dataset.rot))));
+
+  // drag-to-rotate: dragging across the ped (left area) spins the character so you can see all sides
+  (function () {
+    const layer = $('dragLayer');
+    let dragging = false, lastX = 0;
+    layer.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; layer.classList.add('dragging'); });
+    window.addEventListener('mouseup', () => { dragging = false; layer.classList.remove('dragging'); });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      lastX = e.clientX;
+      if (dx) trigger('creator:rotate', dx * 0.6); // px -> degrees
+    });
+  })();
 
   $('confirm').addEventListener('click', () => {
     if (!ready) return;
