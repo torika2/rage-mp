@@ -97,6 +97,7 @@ function doSpawn(player, pos) {
     try { player.health = 100; } catch (e) {} // clear any model-change "death" state
     try { if (typeof pos.h === 'number') player.heading = pos.h; } catch (e) {}
     player.spawnOptions = null;
+    player.inWorld = true; // from here on the position is saved as the character's last location
     player.call('auth:enter'); // closes any open auth/chooser/creator/spawn UI, unfreezes
     const character = player.character;
     const name = character ? `${character.firstName} ${character.lastName}` : scNameOf(player);
@@ -122,16 +123,24 @@ mp.events.add('auth:spawnChoose', (player, choice) => {
     doSpawn(player, pos);
 });
 
-// Save the player's last location when they leave, so the selector can offer it on rejoin.
-mp.events.add('playerQuit', (player) => {
-    if (!player.authed || !player.character || !global.api) return;
-    try {
+// Last location -> characters.last_position, so the rejoin selector can offer it. Saved every
+// POSITION_SAVE_MS while the player is in the world (so a server restart/crash can't lose it) and
+// again on quit (packages/_core flushes on playerQuit). Never saved before the player has actually
+// spawned into the world — otherwise quitting at the spawn selector would overwrite it with the
+// default spawn — nor from the private dimensions used by the login screen / barber / etc.
+const POSITION_SAVE_MS = 20 * 1000;
+global.dbSync.register('position', {
+    get: (player) => {
+        if (!player.inWorld || Number(player.health) <= 0) return undefined;
+        const dim = Number(player.dimension) || 0;
+        if (dim >= 1000000) return undefined; // private instance (login screen, barber, ...)
         const p = player.position;
-        global.api.saveLastPosition(player.character.id, {
-            x: p.x, y: p.y, z: p.z, heading: Number(player.heading) || 0, dim: Number(player.dimension) || 0,
-        }).catch(() => {});
-    } catch (e) {}
+        const r = (v) => Math.round(v * 100) / 100;
+        return { x: r(p.x), y: r(p.y), z: r(p.z), heading: r(Number(player.heading) || 0), dim };
+    },
+    push: (characterId, position) => global.api.saveLastPosition(characterId, position),
 });
+setInterval(() => global.dbSync.touch('position'), POSITION_SAVE_MS);
 
 // (Gender is now chosen inside the character creator — see packages/creator.)
 
@@ -175,6 +184,7 @@ mp.events.add('auth:submitRegister', async (player, payloadJson) => {
     try {
         const user = await global.api.register(payload);
         setAuthed(player, user);
+        if (typeof global.runCharacterLoad === 'function') await global.runCharacterLoad(player);
         proceed(player);
     } catch (e) {
         player.call('auth:error', [apiErrorMessage(e)]);
@@ -187,6 +197,7 @@ mp.events.add('auth:submitLogin', async (player, password) => {
     try {
         const user = await global.api.loginBySocialClub(scNameOf(player), String(password || ''));
         setAuthed(player, user);
+        if (typeof global.runCharacterLoad === 'function') await global.runCharacterLoad(player);
         proceed(player);
     } catch (e) {
         player.call('auth:error', ['არასწორი პაროლი.']);

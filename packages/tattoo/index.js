@@ -29,10 +29,8 @@ const FREEMODE_FEMALE = mp.joaat('mp_f_freemode_01');
 const DATA_FILE = path.join(__dirname, 'tattoo.json');
 let store = {};
 try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
-function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
-}
+// Legacy tattoo.json is read once (import into a character's first DB login); the DB owns the tattoos.
+function save() { global.dbSync.touch('tattoos'); }
 
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
 function modelKey(player) {
@@ -152,6 +150,14 @@ mp.events.add('tattoo:refresh', (player) => {
 });
 
 // Spawn and model changes reset decorations; put them back (after inventory re-dresses the ped).
+global.dbSync.register('tattoos', {
+    get: (player) => store[keyOf(player)] || {},
+    push: (characterId, data) => global.api.saveTattoos(characterId, data),
+});
+global.onCharacterLoad((player, character, firstTime) => {
+    if (!firstTime) store[keyOf(player)] = (character.tattoos && typeof character.tattoos === 'object') ? character.tattoos : {};
+});
+
 mp.events.add('playerReady', (player) => setTimeout(() => restoreTattoos(player), 2000));
 mp.events.add('playerSpawn', (player) => setTimeout(() => restoreTattoos(player), 1500));
 

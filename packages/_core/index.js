@@ -156,6 +156,81 @@ global.api = {
     clearParkingSpot: (spotId) => apiRequest('DELETE', `/parking/${encodeURIComponent(spotId)}`),
 };
 
+// ===================== Character persistence (DB is the source of truth) =====================
+// Packages keep their per-player state in memory (keyed by Social Club) and register here:
+//   global.onCharacterLoad((player, character, firstTime) => ...)  — hydrate memory from the DB
+//       character after login. firstTime = this character was never seeded from the old local
+//       JSON saves, so keep the local/default values and let them be pushed up once.
+//   global.dbSync.register(name, { get(player) -> value|undefined, push(characterId, value) -> Promise })
+//   global.dbSync.touch(name)  — call after state changed; pushes (debounced) whatever differs.
+// Only authed players whose load finished (player.dbLoaded) are ever written, so defaults can't
+// overwrite saved data. Everything is flushed again when the player quits.
+const characterLoadHooks = [];
+global.onCharacterLoad = (hook) => { characterLoadHooks.push(hook); };
+
+const dbSyncers = {};
+const DB_SYNC_DELAY_MS = 1500;
+function flushPlayerSync(player, onlyName) {
+    if (!mp.players.exists(player) || !player.dbLoaded || !player.character || !global.api) return;
+    player.dbLast = player.dbLast || {};
+    Object.keys(dbSyncers).forEach((name) => {
+        if (onlyName && name !== onlyName) return;
+        let value;
+        try { value = dbSyncers[name].get(player); } catch (e) { return; }
+        if (value === undefined) return;
+        const serialized = JSON.stringify(value);
+        if (player.dbLast[name] === serialized) return;
+        player.dbLast[name] = serialized; // optimistic; rolled back below if the write fails
+        dbSyncers[name].push(player.character.id, value).catch((e) => {
+            if (player.dbLast && player.dbLast[name] === serialized) delete player.dbLast[name];
+            console.log(`[_core] DB save "${name}" failed: ${e && e.message}`);
+        });
+    });
+}
+global.dbSync = {
+    register: (name, syncer) => { dbSyncers[name] = Object.assign({ timer: null }, syncer); },
+    touch: (name) => {
+        const syncer = dbSyncers[name];
+        if (!syncer || syncer.timer) return;
+        syncer.timer = setTimeout(() => {
+            syncer.timer = null;
+            mp.players.forEach((player) => flushPlayerSync(player, name));
+        }, DB_SYNC_DELAY_MS);
+    },
+    // Mark a value as already stored in the DB (just loaded from it) so it isn't pushed back.
+    prime: (player, name) => {
+        try {
+            const value = dbSyncers[name].get(player);
+            if (value !== undefined) { player.dbLast = player.dbLast || {}; player.dbLast[name] = JSON.stringify(value); }
+        } catch (e) {}
+    },
+    flushPlayer: (player) => flushPlayerSync(player),
+};
+
+// Called by auth right after login/register. Runs every hydrate hook, seeds the DB from the old
+// local files the first time, then enables writes for this player.
+global.runCharacterLoad = async (player) => {
+    const character = player.character;
+    if (!character || !global.api) return;
+    const firstTime = !character.legacyImported;
+    let failed = false;
+    for (const hook of characterLoadHooks) {
+        try { await hook(player, character, firstTime); }
+        catch (e) { failed = true; console.log('[_core] character load hook failed: ' + (e && e.stack || e)); }
+    }
+    if (!failed) {
+        Object.keys(dbSyncers).forEach((name) => { if (!firstTime) global.dbSync.prime(player, name); });
+    }
+    player.dbLoaded = !failed; // a failed load must never be overwritten with defaults
+    if (firstTime && !failed) {
+        flushPlayerSync(player);
+        try { player.character = await global.api.saveCharacter(character.id, { legacyImported: true }); }
+        catch (e) { console.log('[_core] could not mark character imported: ' + e.message); }
+        console.log(`[_core] character #${character.id}: imported local saves into the database`);
+    }
+};
+mp.events.add('playerQuit', (player) => { try { flushPlayerSync(player); } catch (e) {} });
+
 mp.events.add('packagesLoaded', () => {
     console.log(`[_core] command registry ready: ${Object.keys(global.commandRegistry).length} commands`);
 });
