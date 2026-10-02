@@ -30,6 +30,9 @@ function labelOf(rank) {
     return rank ? data.ranks[rank].label : 'Civilian';
 }
 
+// On the police roster (excludes admins who merely get 'chief' powers). For the spawn selector.
+global.policeIsOfficer = (player) => !!data.officers[accountKey(player)];
+
 function hasCapability(player, capability) {
     const rank = rankOf(player);
     return rank !== null && data.ranks[rank].capabilities.includes(capability);

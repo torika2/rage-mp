@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>პერსონაჟის შექმნა</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c; --blue: #5ac8fa; --green: #8ed17a; --red: #ff6b6b;
+    --text: #f3f0e8; --muted: #aaa79e; --line: rgba(255,255,255,.12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; }
+  body { color: var(--text); user-select:none; background: transparent; }
+  /* ped renders in the left area; the panel sits on the right */
+  .panel {
+    position: absolute; top: 0; right: 0; height: 100%; width: min(430px, 42vw);
+    background: linear-gradient(180deg, rgba(16,24,34,.96), rgba(12,15,19,.97));
+    border-left: 1px solid rgba(90,200,250,.4); box-shadow: -20px 0 60px rgba(0,0,0,.5);
+    display: flex; flex-direction: column;
+  }
+  .head { padding: 16px 18px 10px; border-bottom: 1px solid var(--line); }
+  .head h1 { margin:0; font-size:17px; font-weight:800; }
+  .head p { margin:5px 0 0; color: var(--muted); font-size:11px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; padding:10px 14px; border-bottom:1px solid var(--line); }
+  .tab { padding:8px 11px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.03);
+    color: var(--muted); cursor:pointer; font-size:12px; }
+  .tab.on { color: var(--blue); border-color: rgba(90,200,250,.5); background: rgba(90,200,250,.1); }
+  .body { flex:1; overflow-y:auto; padding:12px 16px; }
+  .body::-webkit-scrollbar { width:8px; } .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:4px; }
+  .grp { display:none; }
+  .grp.on { display:block; }
+  .row { margin-bottom:12px; }
+  .row .lbl { display:flex; justify-content:space-between; font-size:12px; color: var(--muted); margin-bottom:5px; }
+  .row .lbl b { color: var(--text); font-weight:600; }
+  .row .val { color: var(--gold); font-variant-numeric: tabular-nums; }
+  input[type=range] { width:100%; accent-color: var(--blue); height: 18px; }
+  .sub { font-size:11px; color: var(--muted); margin:14px 0 8px; border-top:1px solid var(--line); padding-top:10px; text-transform:uppercase; letter-spacing:.04em; }
+  .cam { display:flex; gap:6px; padding:10px 16px; border-top:1px solid var(--line); }
+  .cam button { flex:1; padding:9px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.04); color:var(--text); cursor:pointer; font-size:12px; }
+  .cam button:hover { border-color: var(--blue); color: var(--blue); }
+  .foot { padding:12px 16px; border-top:1px solid var(--line); }
+  .msg { min-height:15px; font-size:12px; color: var(--red); margin-bottom:8px; }
+  .confirm { width:100%; padding:13px; border:0; border-radius:10px; cursor:pointer; font-weight:800; font-size:14px;
+    color:#0b0f13; background: linear-gradient(180deg, var(--green), #6bb45a); }
+  .confirm:hover { filter: brightness(1.05); }
+  .confirm:disabled { opacity:.5; cursor:default; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="head">
+      <h1>პერსონაჟის შექმნა</h1>
+      <p>შექმენი შენი გარეგნობა და დააჭირე „დადასტურებას“.</p>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="body" id="body"></div>
+    <div class="cam">
+      <button data-zone="head">სახე</button>
+      <button data-zone="upper">ტანი</button>
+      <button data-zone="full">სრული</button>
+      <button data-rot="-45">↺</button>
+      <button data-rot="45">↻</button>
+    </div>
+    <div class="foot">
+      <div class="msg" id="msg"></div>
+      <button class="confirm" id="confirm">დადასტურება</button>
+    </div>
+  </div>
+
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const $ = (id) => document.getElementById(id);
+
+  // Face-feature labels (indices 0..19), in GTA's order.
+  const FEATURES = [
+    'ცხვირის სიგანე','ცხვირის წვერის სიმაღლე','ცხვირის სიგრძე','ცხვირის ზურგი','ცხვირის წვერი','ცხვირის დახრა',
+    'წარბების სიმაღლე','წარბების სიღრმე','ყვრიმალის სიმაღლე','ყვრიმალის სიგანე','ლოყების სიგანე','თვალების ზომა',
+    'ტუჩების სისქე','ყბის სიგანე','ყბის სიგრძე','ნიკაპის სიმაღლე','ნიკაპის სიგრძე','ნიკაპის სიგანე','ნიკაპის ფოსო','კისრის სისქე'
+  ];
+  const OVERLAY_LABELS = {
+    blemishes:'კანის ნაკლი', beard:'წვერი', eyebrows:'წარბები', ageing:'ასაკი', makeup:'მაკიაჟი', blush:'რუჟი',
+    complexion:'კანის ტონი', sundamage:'მზის დაზიანება', lipstick:'პომადა', moles:'ხალები', chesthair:'მკერდის თმა', bodyblemishes:'სხეულის ნაკლი'
+  };
+
+  let limits = null, gender = 'm', state = null, ready = false;
+  let pending = false;
+
+  function defaultState() {
+    const overlays = {};
+    Object.keys(limits.overlays).forEach(key => {
+      const spec = limits.overlays[key];
+      const o = { style: -1, opacity: 1 };
+      if (spec.color) o.color = 0;
+      overlays[key] = o;
+    });
+    return {
+      heritage: { mom: 0, dad: 0, shapeMix: 0.5, skinMix: 0.5 },
+      features: new Array(limits.features).fill(0),
+      hair: { style: 0, color: 0, highlight: 0 },
+      overlays,
+      eyeColor: 0
+    };
+  }
+
+  function sendApply() {
+    if (!ready || pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; trigger('creator:apply', JSON.stringify(state)); });
+  }
+
+  // Build one range control. get/set read & write the state; `fmt` formats the shown value.
+  function sliderRow(label, min, max, step, get, set, fmt) {
+    const row = document.createElement('div'); row.className = 'row';
+    const lbl = document.createElement('div'); lbl.className = 'lbl';
+    const b = document.createElement('b'); b.textContent = label;
+    const val = document.createElement('span'); val.className = 'val';
+    lbl.appendChild(b); lbl.appendChild(val);
+    const input = document.createElement('input');
+    input.type = 'range'; input.min = min; input.max = max; input.step = step; input.value = get();
+    const show = () => { val.textContent = fmt ? fmt(Number(input.value)) : input.value; };
+    show();
+    input.addEventListener('input', () => { set(Number(input.value)); show(); sendApply(); });
+    row.appendChild(lbl); row.appendChild(input);
+    return row;
+  }
+  function subhead(text) { const d = document.createElement('div'); d.className = 'sub'; d.textContent = text; return d; }
+  const pct = (v) => Math.round(v * 100) + '%';
+
+  const GROUPS = ['heritage', 'face', 'hair', 'overlays', 'eyes'];
+  const GROUP_LABELS = { heritage:'წარმომავლობა', face:'სახის ფორმა', hair:'თმა', overlays:'დეტალები', eyes:'თვალები' };
+
+  function buildGroup(key) {
+    const wrap = document.createElement('div'); wrap.className = 'grp'; wrap.dataset.grp = key;
+
+    if (key === 'heritage') {
+      wrap.appendChild(sliderRow('დედა', 0, limits.parents - 1, 1, () => state.heritage.mom, v => state.heritage.mom = v));
+      wrap.appendChild(sliderRow('მამა', 0, limits.parents - 1, 1, () => state.heritage.dad, v => state.heritage.dad = v));
+      wrap.appendChild(sliderRow('მსგავსება', 0, 1, 0.05, () => state.heritage.shapeMix, v => state.heritage.shapeMix = v, pct));
+      wrap.appendChild(sliderRow('კანის ტონი', 0, 1, 0.05, () => state.heritage.skinMix, v => state.heritage.skinMix = v, pct));
+    } else if (key === 'face') {
+      FEATURES.slice(0, limits.features).forEach((name, i) => {
+        wrap.appendChild(sliderRow(name, -1, 1, 0.05, () => state.features[i], v => state.features[i] = v, pct));
+      });
+    } else if (key === 'hair') {
+      wrap.appendChild(sliderRow('ვარცხნილობა', 0, limits.hairMax, 1, () => state.hair.style, v => state.hair.style = v));
+      wrap.appendChild(sliderRow('ფერი', 0, limits.palette - 1, 1, () => state.hair.color, v => state.hair.color = v));
+      wrap.appendChild(sliderRow('ელფერი', 0, limits.palette - 1, 1, () => state.hair.highlight, v => state.hair.highlight = v));
+    } else if (key === 'overlays') {
+      Object.keys(limits.overlays).forEach(ov => {
+        const spec = limits.overlays[ov];
+        if (spec.maleOnly && gender === 'f') return; // hide beard/chest hair for female
+        wrap.appendChild(subhead(OVERLAY_LABELS[ov] || ov));
+        wrap.appendChild(sliderRow('სტილი (-1 = არცერთი)', -1, spec.max, 1, () => state.overlays[ov].style, v => state.overlays[ov].style = v));
+        wrap.appendChild(sliderRow('გამჭვირვალობა', 0, 1, 0.05, () => state.overlays[ov].opacity, v => state.overlays[ov].opacity = v, pct));
+        if (spec.color) wrap.appendChild(sliderRow('ფერი', 0, limits.palette - 1, 1, () => state.overlays[ov].color, v => state.overlays[ov].color = v));
+      });
+    } else if (key === 'eyes') {
+      wrap.appendChild(sliderRow('თვალის ფერი', 0, limits.eyeColors - 1, 1, () => state.eyeColor, v => state.eyeColor = v));
+    }
+    return wrap;
+  }
+
+  function build() {
+    const tabs = $('tabs'), body = $('body');
+    tabs.innerHTML = ''; body.innerHTML = '';
+    GROUPS.forEach((key, idx) => {
+      const tab = document.createElement('div'); tab.className = 'tab' + (idx === 0 ? ' on' : '');
+      tab.textContent = GROUP_LABELS[key]; tab.dataset.grp = key;
+      tab.addEventListener('click', () => selectGroup(key));
+      tabs.appendChild(tab);
+      const grp = buildGroup(key); if (idx === 0) grp.classList.add('on');
+      body.appendChild(grp);
+    });
+  }
+  function selectGroup(key) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.grp === key));
+    document.querySelectorAll('.grp').forEach(g => g.classList.toggle('on', g.dataset.grp === key));
+    $('body').scrollTop = 0;
+  }
+
+  // --- called from the game client ---
+  window.creatorInit = function (dataJson) {
+    const data = JSON.parse(dataJson);
+    limits = data.limits; gender = data.gender || 'm';
+    state = defaultState();
+    build();
+    ready = true;
+    sendApply(); // apply the starting look
+  };
+  window.creatorError = function (text) {
+    $('msg').textContent = text || '';
+    $('confirm').disabled = false;
+  };
+
+  // camera controls
+  document.querySelectorAll('.cam [data-zone]').forEach(b => b.addEventListener('click', () => trigger('creator:zone', b.dataset.zone)));
+  document.querySelectorAll('.cam [data-rot]').forEach(b => b.addEventListener('click', () => trigger('creator:rotate', Number(b.dataset.rot))));
+
+  $('confirm').addEventListener('click', () => {
+    if (!ready) return;
+    $('confirm').disabled = true; $('msg').textContent = '';
+    trigger('creator:confirm', JSON.stringify(state));
+  });
+
+  // browser preview fallback
+  if (!RAGE) {
+    const demoOverlays = { blemishes:{id:0,max:23,color:false}, beard:{id:1,max:28,color:true,maleOnly:true},
+      eyebrows:{id:2,max:33,color:true}, ageing:{id:3,max:14,color:false}, makeup:{id:4,max:74,color:false},
+      blush:{id:5,max:6,color:true}, complexion:{id:6,max:11,color:false}, sundamage:{id:7,max:10,color:false},
+      lipstick:{id:8,max:9,color:true}, moles:{id:9,max:17,color:false}, chesthair:{id:10,max:16,color:true,maleOnly:true},
+      bodyblemishes:{id:11,max:11,color:false} };
+    window.creatorInit(JSON.stringify({ gender:'m', limits:{ parents:46, features:20, hairMax:73, palette:64, eyeColors:32, overlays: demoOverlays } }));
+  }
+</script>
+</body>
+</html>

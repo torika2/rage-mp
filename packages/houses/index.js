@@ -385,6 +385,9 @@ mp.events.add('houses:garage', (player, id) => {
 // ---- Spawn at home: owners appear at their house on join and after respawn ----
 function sendHome(player) {
     if (!mp.players.exists(player)) return;
+    // The auth spawn selector owns the login spawn; it sets a one-shot flag so this auto-send
+    // doesn't override the player's chosen spawn (home/faction/last location).
+    if (player.suppressAutoSpawn) { player.suppressAutoSpawn = false; return; }
     if (typeof global.govOnDuty === 'function' && global.govOnDuty(player)) return; // on-duty officials spawn at City Hall
     if (typeof global.demorganIsJailed === 'function' && global.demorganIsJailed(player)) return; // prisoners stay in Demorgan
     const house = ownedBy(player).find(h => h.spawnHome !== false);
@@ -394,6 +397,16 @@ function sendHome(player) {
     player.position = new mp.Vector3(spot.x, spot.y, spot.z);
     if (typeof spot.h === 'number') player.heading = spot.h;
 }
+
+// The player's home spawn point { x, y, z, h } (first spawn-enabled owned house), or null.
+// Exposed for the auth rejoin spawn selector.
+global.houseSpawnPoint = function (player) {
+    const house = ownedBy(player).find(h => h.spawnHome !== false);
+    if (!house) return null;
+    const spot = house.spawn || house.door;
+    if (!spot) return null;
+    return { x: spot.x, y: spot.y, z: spot.z, h: typeof spot.h === 'number' ? spot.h : 0 };
+};
 // Dying inside a house copy must not respawn you in that private dimension.
 function resetFromInterior(player) {
     if (!mp.players.exists(player) || !player.houseInside) return;
@@ -401,7 +414,9 @@ function resetFromInterior(player) {
     if (Number(player.dimension) >= DIM_BASE) player.dimension = 0;
     player.call('houses:left');
 }
-mp.events.add('playerReady', (player) => setTimeout(() => sendHome(player), 3000));
+// When the account system is active, auth owns the initial login spawn (via its selector), so the
+// automatic send-home on join defers to it. Death respawns (playerSpawn below) still go home.
+mp.events.add('playerReady', (player) => { if (global.AUTH_ACTIVE) return; setTimeout(() => sendHome(player), 3000); });
 mp.events.add('playerSpawn', (player) => { resetFromInterior(player); setTimeout(() => sendHome(player), 600); });
 
 // ---- Admin: /house ... ----

@@ -3548,6 +3548,145 @@ mp.events.add('render', () => {
     mp.game.controls.disableAllControlActions(2);
 });
 
+// ===================== Auth: login / registration gate =====================
+// Server sends 'auth:show' (mode, dataJson) right after connect; the player is frozen with the
+// cursor up until they authenticate. We relay form submissions to the server and show errors.
+let authBrowser = null;
+function openAuth(mode, dataJson) {
+    if (!authBrowser) authBrowser = mp.browsers.new('package://ui/auth/index.html');
+    mp.gui.cursor.show(true, true);
+    try { mp.players.local.freezePosition(true); } catch (e) {}
+    // Give the page a tick to load before pushing state.
+    const push = () => { if (authBrowser) authBrowser.execute(`window.authShow(${JSON.stringify(mode)}, ${JSON.stringify(dataJson)})`); };
+    setTimeout(push, 300);
+}
+mp.events.add('auth:show', (mode, dataJson) => openAuth(mode, dataJson));
+mp.events.add('auth:error', (text) => { if (authBrowser) authBrowser.execute(`window.authError(${JSON.stringify(String(text))})`); });
+
+// Rejoin spawn selector: close auth/creator UI, keep the player frozen, and offer where to spawn.
+let spawnBrowser = null;
+mp.events.add('auth:spawnSelect', (payloadJson) => {
+    if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
+    if (creatorBrowser) { creatorBrowser.destroy(); creatorBrowser = null; }
+    stopPedPreview();
+    try { mp.players.local.freezePosition(true); } catch (e) {}
+    if (!spawnBrowser) spawnBrowser = mp.browsers.new('package://ui/spawn/index.html');
+    mp.gui.cursor.show(true, true);
+    setTimeout(() => { if (spawnBrowser) spawnBrowser.execute(`window.spawnInit(${JSON.stringify(String(payloadJson))})`); }, 300);
+});
+mp.events.add('auth:spawnChoose', (choice) => mp.events.callRemote('auth:spawnChoose', String(choice)));
+mp.events.add('render', () => {
+    if (!spawnBrowser) return;
+    mp.gui.cursor.show(true, true);
+    mp.game.controls.disableAllControlActions(0);
+    mp.game.controls.disableAllControlActions(1);
+    mp.game.controls.disableAllControlActions(2);
+});
+
+// Account authenticated but no gender chosen yet: close the auth UI and open the gender chooser
+// (reusing the existing character chooser page). Its pick relays 'character:setGender' to the server.
+mp.events.add('auth:chooseGender', () => {
+    if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
+    if (!characterBrowser) characterBrowser = mp.browsers.new('package://ui/character/index.html');
+    mp.gui.cursor.show(true, true);
+    try { mp.players.local.freezePosition(true); } catch (e) {}
+});
+
+// Fully authenticated and placed in the world: tear down every onboarding UI and release the player.
+mp.events.add('auth:enter', () => {
+    if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
+    if (characterBrowser) { characterBrowser.destroy(); characterBrowser = null; }
+    if (spawnBrowser) { spawnBrowser.destroy(); spawnBrowser = null; }
+    stopPedPreview();
+    mp.gui.cursor.show(false, false);
+    try { mp.players.local.freezePosition(false); } catch (e) {}
+});
+
+// Relay CEF form submits to the server.
+mp.events.add('auth:submitLogin', (password) => mp.events.callRemote('auth:submitLogin', String(password)));
+mp.events.add('auth:submitRegister', (payloadJson) => mp.events.callRemote('auth:submitRegister', String(payloadJson)));
+
+// Keep cursor up / controls locked while the auth gate is open.
+mp.events.add('render', () => {
+    if (!authBrowser) return;
+    mp.gui.cursor.show(true, true);
+    mp.game.controls.disableAllControlActions(0);
+    mp.game.controls.disableAllControlActions(1);
+    mp.game.controls.disableAllControlActions(2);
+});
+
+// ===================== Character creator (heritage + face + overlays) =====================
+// Onboarding step after gender. Server 'creator:start' puts us in a private room; we frame the face
+// with the shared ped-preview camera, open the creator UI, and apply the whole appearance blob to
+// the local ped on every change for a live preview. Confirm relays the blob to the server.
+let creatorBrowser = null;
+let creatorActive = false;
+const CREATOR_OVERLAY_IDS = {
+    blemishes: 0, beard: 1, eyebrows: 2, ageing: 3, makeup: 4, blush: 5,
+    complexion: 6, sundamage: 7, lipstick: 8, moles: 9, chesthair: 10, bodyblemishes: 11
+};
+
+function applyCreatorLocal(blobJson) {
+    let look;
+    try { look = JSON.parse(blobJson); } catch (e) { return; }
+    const me = mp.players.local;
+    const h = look.heritage || {};
+    // first = father, second = mother; last arg (isParent) = false for player peds.
+    try { me.setHeadBlendData(h.dad | 0, h.mom | 0, 0, h.dad | 0, h.mom | 0, 0, Number(h.shapeMix) || 0, Number(h.skinMix) || 0, 0, false); } catch (e) {}
+    if (Array.isArray(look.features)) look.features.forEach((v, i) => { try { me.setFaceFeature(i, Number(v) || 0); } catch (e) {} });
+    const hair = look.hair || {};
+    try { me.setComponentVariation(2, hair.style | 0, 0, 0); } catch (e) {}
+    try { me.setHairColor(hair.color | 0, hair.highlight | 0); } catch (e) {}
+    const overlays = look.overlays || {};
+    Object.keys(CREATOR_OVERLAY_IDS).forEach((key) => {
+        const entry = overlays[key] || {};
+        const id = CREATOR_OVERLAY_IDS[key];
+        const value = (entry.style == null || entry.style < 0) ? 255 : (entry.style | 0);
+        const opacity = entry.opacity == null ? 1.0 : Number(entry.opacity);
+        const color = entry.color | 0;
+        try { me.setHeadOverlay(id, value, opacity, color, color); } catch (e) {}
+        try { me.setHeadOverlayColor(id, 1, color, color); } catch (e) {} // colour type 1 = hair palette
+    });
+    try { me.setEyeColor((look.eyeColor | 0) || 0); } catch (e) {}
+}
+
+mp.events.add('creator:start', (dataJson) => {
+    let data;
+    try { data = JSON.parse(dataJson); } catch (e) { data = {}; }
+    creatorActive = true;
+    const me = mp.players.local;
+    if (data.pos) { try { me.position = new mp.Vector3(data.pos.x, data.pos.y, data.pos.z); } catch (e) {} }
+    try { me.setHeading(180); } catch (e) {}
+    startPedPreview();          // shared frozen-ped camera (see top of file)
+    applyPedCamZone('head');    // frame the face by default
+    if (!creatorBrowser) creatorBrowser = mp.browsers.new('package://ui/creator/index.html');
+    mp.gui.cursor.show(true, true);
+    setTimeout(() => { if (creatorBrowser) creatorBrowser.execute(`window.creatorInit(${JSON.stringify(dataJson)})`); }, 400);
+});
+
+// Live preview + camera controls driven by the CEF UI.
+mp.events.add('creator:apply', (blobJson) => { if (creatorActive) applyCreatorLocal(String(blobJson)); });
+mp.events.add('creator:zone', (zone) => { if (creatorActive) applyPedCamZone(String(zone)); });
+mp.events.add('creator:rotate', (delta) => { if (creatorActive) rotatePedPreview(Number(delta) || 0); });
+mp.events.add('creator:confirm', (blobJson) => { if (creatorActive) mp.events.callRemote('creator:save', String(blobJson)); });
+
+mp.events.add('creator:error', (text) => { if (creatorBrowser) creatorBrowser.execute(`window.creatorError(${JSON.stringify(String(text))})`); });
+mp.events.add('creator:done', () => {
+    creatorActive = false;
+    if (creatorBrowser) { creatorBrowser.destroy(); creatorBrowser = null; }
+    stopPedPreview();
+    mp.gui.cursor.show(false, false);
+});
+
+// Keep cursor up / controls locked while the creator is open.
+mp.events.add('render', () => {
+    if (!creatorBrowser) return;
+    mp.gui.cursor.show(true, true);
+    mp.game.controls.disableAllControlActions(0);
+    mp.game.controls.disableAllControlActions(1);
+    mp.game.controls.disableAllControlActions(2);
+});
+
 // ===================== Admin ESP =====================
 // Admins (server sets the synced 'admin:esp' flag) automatically see every nearby player's name,
 // ID, health and distance through walls — drawn in world space each frame.
