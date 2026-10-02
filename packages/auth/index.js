@@ -99,6 +99,7 @@ function doSpawn(player, pos) {
     }
     if (typeof global.applyCreatorAppearance === 'function') global.applyCreatorAppearance(player);
     try { player.dimension = Number(pos.dim) || 0; } catch (e) {}
+    try { player.alpha = 255; } catch (e) {} // make the character visible again
     try { if (typeof pos.h === 'number') player.heading = pos.h; } catch (e) {}
     player.spawnOptions = null;
     player.call('auth:enter'); // closes any open auth/chooser/creator/spawn UI, unfreezes
@@ -154,6 +155,10 @@ mp.events.add('character:setGender', async (player, gender) => {
 // --- connect: decide login vs register ---
 mp.events.add('playerReady', async (player) => {
     player.authed = false;
+    // Park the connecting player in a private dimension and make them invisible so no character is
+    // shown in the world (to them or others) until they finish authenticating.
+    try { player.dimension = 3000000 + player.id; } catch (e) {}
+    try { player.alpha = 0; } catch (e) {}
     const socialClub = scNameOf(player);
     try {
         const user = await global.api.get(`/users/social-club/${encodeURIComponent(socialClub)}`);

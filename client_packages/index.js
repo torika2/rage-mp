@@ -5,6 +5,33 @@
 
 require('./interiors'); // Open All Interiors — client-side IPL loader
 
+// While the onboarding gate (login/register/gender/creator/spawn) is open, suppress every custom
+// keybind so in-game hotkeys (inventory, phone, engine, menus, chat…) can't fire behind the UI.
+// Wrapping mp.keys.bind here — before any bind is registered — gates all of them in one place.
+// Defaults to TRUE so the window between connect and the server's 'auth:show' is already locked.
+global.onboardingOpen = true;
+
+// Hide/show the local player ped (visibility only; freeze is managed by the auth/creator handlers).
+function setLocalPedVisible(visible) {
+    const me = mp.players.local;
+    if (!me) return;
+    try { me.setAlpha(visible ? 255 : 0); } catch (e) {}
+    try { me.setVisible(visible, false); } catch (e) {}
+}
+// On first spawn (before auth:show arrives) freeze + hide the ped so no character is shown and the
+// player can't act until they authenticate.
+mp.events.add('playerReady', () => {
+    try { mp.players.local.freezePosition(true); } catch (e) {}
+    setLocalPedVisible(false);
+});
+const _keysBind = mp.keys.bind.bind(mp.keys);
+mp.keys.bind = function (key, keyDown, handler) {
+    return _keysBind(key, keyDown, function (...args) {
+        if (global.onboardingOpen) return;
+        return handler(...args);
+    });
+};
+
 const CFG = {
     engineCooldownMs: 1000,   // anti-spam between engine toggles
     stopSpeed: 0.5,           // m/s below which the car counts as "stopped"
@@ -3526,6 +3553,7 @@ mp.events.add('death:end', () => {
 let characterBrowser = null;
 mp.events.add('character:choose', () => {
     if (characterBrowser) return;
+    global.onboardingOpen = true;
     characterBrowser = mp.browsers.new('package://ui/character/index.html');
     mp.gui.cursor.show(true, true);
     try { mp.players.local.freezePosition(true); } catch (e) {}
@@ -3537,6 +3565,7 @@ mp.events.add('character:done', () => {
     if (characterBrowser) { characterBrowser.destroy(); characterBrowser = null; }
     mp.gui.cursor.show(false, false);
     try { mp.players.local.freezePosition(false); } catch (e) {}
+    global.onboardingOpen = false;
 });
 // While the chooser is open, keep the cursor on and block game controls so the mouse moves the
 // cursor (to click a card) instead of swinging the camera.
@@ -3553,6 +3582,8 @@ mp.events.add('render', () => {
 // cursor up until they authenticate. We relay form submissions to the server and show errors.
 let authBrowser = null;
 function openAuth(mode, dataJson) {
+    global.onboardingOpen = true;
+    setLocalPedVisible(false); // no character shown during login/register
     if (!authBrowser) authBrowser = mp.browsers.new('package://ui/auth/index.html');
     mp.gui.cursor.show(true, true);
     try { mp.players.local.freezePosition(true); } catch (e) {}
@@ -3566,6 +3597,7 @@ mp.events.add('auth:error', (text) => { if (authBrowser) authBrowser.execute(`wi
 // Rejoin spawn selector: close auth/creator UI, keep the player frozen, and offer where to spawn.
 let spawnBrowser = null;
 mp.events.add('auth:spawnSelect', (payloadJson) => {
+    global.onboardingOpen = true;
     if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
     if (creatorBrowser) { creatorBrowser.destroy(); creatorBrowser = null; }
     stopPedPreview();
@@ -3586,6 +3618,7 @@ mp.events.add('render', () => {
 // Account authenticated but no gender chosen yet: close the auth UI and open the gender chooser
 // (reusing the existing character chooser page). Its pick relays 'character:setGender' to the server.
 mp.events.add('auth:chooseGender', () => {
+    global.onboardingOpen = true;
     if (authBrowser) { authBrowser.destroy(); authBrowser = null; }
     if (!characterBrowser) characterBrowser = mp.browsers.new('package://ui/character/index.html');
     mp.gui.cursor.show(true, true);
@@ -3598,8 +3631,10 @@ mp.events.add('auth:enter', () => {
     if (characterBrowser) { characterBrowser.destroy(); characterBrowser = null; }
     if (spawnBrowser) { spawnBrowser.destroy(); spawnBrowser = null; }
     stopPedPreview();
+    setLocalPedVisible(true); // character enters the world
     mp.gui.cursor.show(false, false);
     try { mp.players.local.freezePosition(false); } catch (e) {}
+    global.onboardingOpen = false; // onboarding done — re-enable hotkeys
 });
 
 // Relay CEF form submits to the server.
@@ -3654,6 +3689,8 @@ mp.events.add('creator:start', (dataJson) => {
     let data;
     try { data = JSON.parse(dataJson); } catch (e) { data = {}; }
     creatorActive = true;
+    global.onboardingOpen = true;
+    setLocalPedVisible(true); // reveal the ped so the player can customise it
     const me = mp.players.local;
     if (data.pos) { try { me.position = new mp.Vector3(data.pos.x, data.pos.y, data.pos.z); } catch (e) {} }
     try { me.setHeading(180); } catch (e) {}
@@ -3676,6 +3713,7 @@ mp.events.add('creator:done', () => {
     if (creatorBrowser) { creatorBrowser.destroy(); creatorBrowser = null; }
     stopPedPreview();
     mp.gui.cursor.show(false, false);
+    global.onboardingOpen = false;
 });
 
 // Keep cursor up / controls locked while the creator is open.

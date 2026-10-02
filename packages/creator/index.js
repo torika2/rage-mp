@@ -130,6 +130,7 @@ global.startCharacterCreator = (player) => {
     const gender = genderOf(player);
     try { player.model = FREEMODE[gender]; } catch (e) {}
     player.dimension = 2500000 + player.id; // private room instance
+    try { player.alpha = 255; } catch (e) {} // visible again for customisation (private dimension)
     try { player.spawn(new mp.Vector3(CREATOR_POS.x, CREATOR_POS.y, CREATOR_POS.z)); } catch (e) {}
     player.call('creator:start', [JSON.stringify({
         gender: genderOf(player),
