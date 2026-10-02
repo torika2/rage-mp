@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>მანქანა</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c; --blue: #5ac8fa; --green: #8ed17a; --red: #ff6b6b;
+    --text: #f3f0e8; --muted: #aaa79e; --line: rgba(255,255,255,.12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; }
+  body { color: var(--text); user-select:none; background: transparent; display:flex; align-items:flex-end; justify-content:center; padding-bottom:7vh; }
+  .card { width: min(440px, 92vw); background: linear-gradient(180deg,#101822,#0c0f13);
+    border:1px solid rgba(90,200,250,.45); border-radius:14px; box-shadow:0 24px 70px rgba(0,0,0,.6); overflow:hidden; animation: lift .18s ease-out; }
+  @keyframes lift { from { transform: translateY(12px); opacity:0; } to { transform:none; opacity:1; } }
+  .head { display:flex; align-items:center; gap:10px; padding:16px 18px; border-bottom:1px solid var(--line); }
+  .head h1 { margin:0; font-size:17px; font-weight:800; }
+  .head .spacer { flex:1; }
+  .close { width:30px; height:30px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--muted); border-radius:8px; font-size:16px; cursor:pointer; }
+  .close:hover { color: var(--blue); border-color: var(--blue); }
+  .specs { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:16px 18px; }
+  .spec { border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.03); padding:11px 12px; text-align:center; }
+  .spec .v { font-size:19px; font-weight:800; font-variant-numeric: tabular-nums; }
+  .spec .v.hp { color: var(--red); } .spec .v.sp { color: var(--blue); } .spec .v.tn { color: var(--gold); font-size:15px; }
+  .spec .k { color: var(--muted); font-size:10px; margin-top:3px; text-transform:uppercase; letter-spacing:.04em; }
+  .foot { display:flex; align-items:center; gap:12px; padding:14px 18px 18px; border-top:1px solid var(--line); }
+  .price { font-size:20px; font-weight:800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .price .k { display:block; font-size:10px; color:var(--muted); font-weight:400; text-transform:uppercase; }
+  .buy { margin-left:auto; padding:12px 22px; border:0; border-radius:10px; cursor:pointer; font-weight:800; font-size:14px; color:#0b0f13; background:linear-gradient(180deg,var(--green),#6bb45a); }
+  .buy:hover { filter:brightness(1.05); }
+  .buy:disabled { opacity:.45; cursor:default; background:linear-gradient(180deg,#5a6168,#474c52); color:#cfd3d8; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="head"><h1 id="name">—</h1><div class="spacer"></div><button class="close" id="close">×</button></div>
+    <div class="specs">
+      <div class="spec"><div class="v hp" id="hp">—</div><div class="k">ცხენის ძალა</div></div>
+      <div class="spec"><div class="v sp" id="speed">—</div><div class="k">მაქს. სიჩქარე</div></div>
+      <div class="spec"><div class="v tn" id="tuning">—</div><div class="k">ტюნინგი</div></div>
+    </div>
+    <div class="foot">
+      <div class="price"><span class="k">ფასი</span><span id="price">$0</span></div>
+      <button class="buy" id="buy">ყიდვა</button>
+    </div>
+  </div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (name, ...args) => { if (RAGE) mp.trigger(name, ...args); };
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+  let currentKey = null;
+
+  window.setCarDetail = function (d) {
+    currentKey = d.key;
+    $('name').textContent = d.fullName || d.label || '—';
+    $('hp').textContent = d.hp != null ? d.hp : '—';
+    $('speed').textContent = d.speed != null ? (d.speed + ' კმ/სთ') : '—';
+    $('tuning').textContent = d.tuning || 'Stock';
+    $('price').textContent = fmt(d.price);
+    const b = $('buy');
+    b.disabled = !d.canAfford;
+    b.textContent = d.canAfford ? 'ყიდვა' : 'არ გყოფნის';
+  };
+
+  $('buy').addEventListener('click', () => { if (currentKey) { $('buy').disabled = true; trigger('carshop:buy', currentKey); } });
+  $('close').addEventListener('click', () => trigger('cardetail:close'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') trigger('cardetail:close'); });
+
+  if (!RAGE) window.setCarDetail({ key: 'm8', fullName: 'BMW M8 Competition (Mansory)', hp: 823, speed: 330, tuning: 'Stage 2', price: 150000, canAfford: true });
+</script>
+</body>
+</html>

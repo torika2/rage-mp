@@ -34,6 +34,8 @@ const FREEMODE = { m: mp.joaat('mp_m_freemode_01'), f: mp.joaat('mp_f_freemode_0
 const CREATOR_POS = { x: 402.56, y: -1000.0, z: -99.0 };
 
 function genderOf(player) {
+    // In the creator the live choice (creatorGender) wins; otherwise the saved account gender.
+    if (player.creatorGender === 'm' || player.creatorGender === 'f') return player.creatorGender;
     if (player.account && (player.account.gender === 'm' || player.account.gender === 'f')) return player.account.gender;
     return Number(player.model) === FREEMODE.f ? 'f' : 'm';
 }
@@ -128,12 +130,13 @@ global.applyCreatorAppearance = (player) => {
 global.startCharacterCreator = (player) => {
     player.creatorActive = true;
     const gender = genderOf(player);
+    player.creatorGender = gender; // the in-progress gender choice (toggled inside the creator)
     try { player.model = FREEMODE[gender]; } catch (e) {}
     player.dimension = 2500000 + player.id; // private room instance
     try { player.alpha = 255; } catch (e) {} // visible again for customisation (private dimension)
     try { player.spawn(new mp.Vector3(CREATOR_POS.x, CREATOR_POS.y, CREATOR_POS.z)); } catch (e) {}
     player.call('creator:start', [JSON.stringify({
-        gender: genderOf(player),
+        gender: gender,
         pos: CREATOR_POS,
         limits: {
             parents: HERITAGE_PARENTS, features: FEATURE_COUNT, hairMax: HAIR_MAX,
@@ -143,18 +146,36 @@ global.startCharacterCreator = (player) => {
     console.log(`[creator] ${player.name} entering character creator`);
 };
 
+// ---- gender toggle inside the creator: swap the ped model so the preview matches ----
+mp.events.add('creator:gender', (player, gender) => {
+    if (!player.creatorActive) return;
+    gender = gender === 'f' ? 'f' : 'm';
+    player.creatorGender = gender;
+    try { player.model = FREEMODE[gender]; } catch (e) {}
+    try { player.spawn(new mp.Vector3(CREATOR_POS.x, CREATOR_POS.y, CREATOR_POS.z)); } catch (e) {}
+    try { player.health = 100; } catch (e) {}
+    player.call('creator:refresh'); // client clears death fx, reframes the camera, re-applies the look
+});
+
 // ---- client confirm ----
 mp.events.add('creator:save', async (player, blobJson) => {
     if (!player.creatorActive || !player.character) return;
     let raw;
     try { raw = JSON.parse(blobJson); } catch (e) { return player.call('creator:error', ['მონაცემები დაზიანებულია.']); }
-    const look = validateAppearance(raw, genderOf(player));
+    const gender = genderOf(player);
+    const look = validateAppearance(raw, gender);
     if (!look) return player.call('creator:error', ['იერსახის მონაცემები არასწორია.']);
 
     try {
+        // Persist the chosen gender onto the account + character, then the appearance blob.
+        if (typeof global.api.setUserGender === 'function') {
+            const user = await global.api.setUserGender(player.account.id, gender);
+            player.account = user;
+        }
         const character = await global.api.saveAppearance(player.character.id, look);
-        player.character = character;           // now carries appearance
+        player.character = character;           // now carries appearance (+ gender)
         player.creatorActive = false;
+        player.creatorGender = null;            // no longer transient — account.gender is authoritative now
         player.dimension = 0;
         applyAppearance(player, look);
         // Hand off to auth, which either opens the spawn selector or spawns directly. Both the

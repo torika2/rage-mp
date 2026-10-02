@@ -116,8 +116,11 @@ mp.events.addCommand('hospital', (player) => {
     player.outputChatBox('!{#8ed17a}საავადმყოფო (Central LS Medical).');
 });
 
-// /car <name> - spawn a car and get in
+// /car <name> - spawn a car and get in (admins only — everyone else buys at the car shop)
 mp.events.addCommand('car', (player, _, name) => {
+    if (!(global.isProtectedAdmin && global.isProtectedAdmin(player))) {
+        return player.outputChatBox('!{#ffb42e}მანქანის შესაძენად ეწვიეთ ავტოსალონს (რუკაზე მანქანის ნიშანი). /car მხოლოდ ადმინისთვისაა.');
+    }
     if (!name) return player.outputChatBox('!{#ffb42e}გამოყენება: /car <სახელი> — მაგ. /car bmwm4.  სია: /cars');
 
     const key = name.toLowerCase();

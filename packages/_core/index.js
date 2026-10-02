@@ -130,6 +130,13 @@ global.api = {
     loadInventory: (id) => apiRequest('GET', `/characters/${id}/inventory`),
     saveInventory: (id, slots) => apiRequest('PUT', `/characters/${id}/inventory`, { slots }),
 
+    // --- item instances (owner + status: 'inventory' | 'dropped') ---
+    loadItems: (characterId) => apiRequest('GET', `/characters/${characterId}/items`),
+    createItem: (characterId, data) => apiRequest('POST', `/characters/${characterId}/items`, data),
+    updateItem: (itemId, data) => apiRequest('PUT', `/items/${itemId}`, data),
+    deleteItem: (itemId) => apiRequest('DELETE', `/items/${itemId}`),
+    fraudLog: (limit) => apiRequest('GET', `/fraud-log${limit ? '?limit=' + limit : ''}`),
+
     // --- vehicles (ownership) ---
     loadVehicles: (id) => apiRequest('GET', `/characters/${id}/vehicles`),
     createVehicle: (id, data) => apiRequest('POST', `/characters/${id}/vehicles`, data),

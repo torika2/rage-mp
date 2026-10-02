@@ -39,6 +39,10 @@ function clearDowned(player) {
 }
 
 function beginDeath(player) {
+    // During onboarding (auth → gender → creator → spawn) the server changes player.model, which
+    // makes RAGE:MP fire 'playerDeath'. That's not a real death — ignore it so the death blur/screen
+    // doesn't show during login.
+    if (player.onboarding) return;
     // Prisoners have their own respawn flow (straight back into Demorgan) — don't override it.
     if (typeof global.demorganIsJailed === 'function' && global.demorganIsJailed(player)) return;
     if (isDowned(player)) return;

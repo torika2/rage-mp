@@ -67,6 +67,8 @@
   .msg { min-height: 16px; margin: 2px 0 10px; font-size: 12px; color: var(--red); }
   .msg.ok { color: var(--green); }
   .hint { color: var(--muted); font-size: 10px; margin-top: 4px; }
+  .warn-note { margin-top: 7px; padding: 8px 10px; font-size: 11px; line-height: 1.4; color: #f2c15c;
+    background: rgba(242, 193, 92, .08); border: 1px solid rgba(242, 193, 92, .35); border-radius: 8px; }
 </style>
 </head>
 <body>
@@ -101,10 +103,11 @@
         <div class="field">
           <label>პირადობის ნომერი</label>
           <input id="residentNumber" type="text" inputmode="numeric" maxlength="11" placeholder="11 ციფრი">
+          <div class="warn-note">⚠ თუ არასწორად შეიყვანთ რომელიმე ინფორმაციას იცოდეთ რომ აღდგენის და ვერიფიკაციის დროს მოვითხოვთ დამადასტურებელ საბუთებს!</div>
         </div>
         <div class="field">
           <label>ტელეფონი</label>
-          <div class="phone"><span class="cc">+995</span><input id="phoneLocal" type="text" inputmode="numeric" maxlength="9" placeholder="5XXXXXXXX"></div>
+          <div class="phone"><span class="cc">+995</span><input id="phoneLocal" type="text" inputmode="numeric" maxlength="11" placeholder="551-999-015"></div>
         </div>
         <div class="field">
           <label>ემაილი</label>
@@ -156,10 +159,20 @@
   $('toRegister').addEventListener('click', () => show('register'));
   $('toLogin').addEventListener('click', () => show('login'));
 
-  // digits-only enforcement
-  ['residentNumber', 'phoneLocal'].forEach(id => $(id).addEventListener('input', e => {
-    e.target.value = e.target.value.replace(/\D/g, '');
-  }));
+  // პირადი ნომერი: digits only, max 11.
+  $('residentNumber').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11); });
+  // Phone: accept digits + dashes/spaces (e.g. 599-123-123), format to ddd-ddd-ddd, max 9 digits.
+  $('phoneLocal').addEventListener('input', e => {
+    const d = e.target.value.replace(/\D/g, '').slice(0, 9);
+    const parts = [];
+    if (d.length) parts.push(d.slice(0, 3));
+    if (d.length > 3) parts.push(d.slice(3, 6));
+    if (d.length > 6) parts.push(d.slice(6, 9));
+    e.target.value = parts.join('-');
+  });
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const onlyDigits = (s) => String(s).replace(/\D/g, '');
 
   $('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -171,18 +184,21 @@
 
   $('registerForm').addEventListener('submit', (e) => {
     e.preventDefault();
+    const residentNumber = onlyDigits($('residentNumber').value);
+    const phoneDigits = onlyDigits($('phoneLocal').value); // 9 local digits, no +995
+    const email = $('regEmail').value.trim();
     const form = {
       firstName: $('firstName').value.trim(),
       lastName: $('lastName').value.trim(),
-      residentNumber: $('residentNumber').value.trim(),
-      phoneNumber: $('phoneLocal').value ? '+995' + $('phoneLocal').value.trim() : '',
-      email: $('regEmail').value.trim(),
+      residentNumber,
+      phoneNumber: phoneDigits ? '+995' + phoneDigits : '',
+      email,
       password: $('regPassword').value,
     };
     if (!form.firstName || !form.lastName) return fail('შეიყვანეთ სახელი და გვარი.');
-    if (form.residentNumber.length !== 11) return fail('პირადობის ნომერი უნდა იყოს 11 ციფრი.');
-    if (form.phoneNumber && form.phoneNumber.length !== 13) return fail('ტელეფონის ნომერი არასწორია (+995 და 9 ციფრი).');
-    if (!form.email) return fail('შეიყვანეთ ემაილი.');
+    if (residentNumber.length !== 11) return fail('პირადი ნომერი უნდა იყოს ზუსტად 11 ციფრი.');
+    if (phoneDigits && phoneDigits.length !== 9) return fail('ტელეფონი უნდა იყოს 9 ციფრი (მაგ. 551-999-015).');
+    if (!EMAIL_RE.test(email)) return fail('შეიყვანეთ სწორი ემაილი (მაგ. name@mail.com).');
     if (form.password.length < 8) return fail('პაროლი უნდა იყოს მინ. 8 სიმბოლო.');
     enable(false);
     trigger('auth:submitRegister', JSON.stringify(form));

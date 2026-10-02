@@ -468,9 +468,14 @@ function removeItem(player, id, quantity, stack) {
 
 function inventoryData(player) {
     const inv = getInv(player);
+    // Owner name for the item-details popup (character name if the account system is active).
+    const ownerName = (player.character && player.character.firstName)
+        ? `${player.character.firstName} ${player.character.lastName}`
+        : String(player.socialClub || player.name || '');
     return {
         used: usedSlots(inv),
         max: MAX_SLOTS,
+        owner: ownerName,
         quickStart: MAX_SLOTS,
         equipped: player.invEquipped || null,
         equippedSlot: player.invEquippedStack ? inv.indexOf(player.invEquippedStack) : -1,
@@ -485,7 +490,14 @@ function inventoryData(player) {
             qty: s.qty,
             // guns: rounds of their own ammo in the inventory (shown on the gun slot, equipped or not)
             rounds: (ITEM_DEFS[s.id] && ITEM_DEFS[s.id].type === 'weapon' && ITEM_DEFS[s.id].ammoType)
-                ? countItem(inv, ITEM_DEFS[s.id].ammoType) : undefined
+                ? countItem(inv, ITEM_DEFS[s.id].ammoType) : undefined,
+            // effect stats for the details popup (only the fields the item actually has)
+            stats: (() => {
+                const def = ITEM_DEFS[s.id] || {};
+                const out = {};
+                ['health', 'thirst', 'hunger', 'armour', 'armor'].forEach(k => { if (typeof def[k] === 'number') out[k] = def[k]; });
+                return out;
+            })()
         }))
     };
 }

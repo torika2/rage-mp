@@ -29,16 +29,10 @@ function setAuthed(player, user) {
     player.authed = true;
 }
 
-// Onboarding gate, run after each auth step. Order: gender -> character creator -> spawn.
-//   no gender          -> force the gender chooser (every login until chosen).
-//   gender, no look    -> launch the character creator.
-//   gender + look       -> spawn into the world.
+// Onboarding gate, run after auth. Order: character creator (gender is chosen inside it) -> spawn.
+//   no appearance -> launch the character creator (which also sets gender).
+//   has appearance -> spawn into the world.
 function proceed(player) {
-    if (!player.account.gender) {
-        player.call('auth:chooseGender'); // client swaps the auth UI for the gender chooser
-        console.log(`[auth] ${scNameOf(player)} must choose gender`);
-        return;
-    }
     if (!player.character || !player.character.appearance) {
         if (typeof global.startCharacterCreator === 'function') { global.startCharacterCreator(player); return; }
         // creator package missing — fall through to spawn so the player isn't stuck
@@ -100,6 +94,7 @@ function doSpawn(player, pos) {
     if (typeof global.applyCreatorAppearance === 'function') global.applyCreatorAppearance(player);
     try { player.dimension = Number(pos.dim) || 0; } catch (e) {}
     try { player.alpha = 255; } catch (e) {} // make the character visible again
+    try { player.health = 100; } catch (e) {} // clear any model-change "death" state
     try { if (typeof pos.h === 'number') player.heading = pos.h; } catch (e) {}
     player.spawnOptions = null;
     player.call('auth:enter'); // closes any open auth/chooser/creator/spawn UI, unfreezes
@@ -107,6 +102,9 @@ function doSpawn(player, pos) {
     const name = character ? `${character.firstName} ${character.lastName}` : scNameOf(player);
     player.outputChatBox(`!{#8ed17a}[ავტორიზაცია] !{#ffffff}კეთილი იყოს თქვენი დაბრუნება, ${name}.`);
     console.log(`[auth] ${scNameOf(player)} authenticated as user #${player.account.id} (${player.account.userType})`);
+    // Release the death-suppression a moment after spawn so the model-change playerDeath (queued
+    // during the spawn above) is ignored, but real deaths right after are handled normally.
+    setTimeout(() => { if (mp.players.exists(player)) player.onboarding = false; }, 2000);
 }
 
 // Spawn selector choice from the client: 'home' | 'faction:<key>' | 'last' (or anything else).
@@ -135,26 +133,12 @@ mp.events.add('playerQuit', (player) => {
     } catch (e) {}
 });
 
-// Gender chooser pick (relayed from the client character chooser). Persist to the account,
-// mirror onto the character, then continue onboarding (-> creator).
-mp.events.add('character:setGender', async (player, gender) => {
-    if (!player.authed || !player.account) return;      // only the auth flow handles this
-    if (player.account.gender) return;                  // already chosen
-    gender = gender === 'f' ? 'f' : 'm';
-    try {
-        const user = await global.api.setUserGender(player.account.id, gender);
-        player.account = user;
-        player.character = (user.characters && user.characters[0]) || player.character;
-        try { player.model = mp.joaat(gender === 'f' ? 'mp_f_freemode_01' : 'mp_m_freemode_01'); } catch (e) {}
-        proceed(player);
-    } catch (e) {
-        player.call('auth:error', ['სქესის შენახვა ვერ მოხერხდა, სცადეთ თავიდან.']);
-    }
-});
+// (Gender is now chosen inside the character creator — see packages/creator.)
 
 // --- connect: decide login vs register ---
 mp.events.add('playerReady', async (player) => {
     player.authed = false;
+    player.onboarding = true; // suppresses the death system while model changes fire playerDeath
     // Park the connecting player in a private dimension and make them invisible so no character is
     // shown in the world (to them or others) until they finish authenticating.
     try { player.dimension = 3000000 + player.id; } catch (e) {}
