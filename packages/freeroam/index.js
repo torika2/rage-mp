@@ -33,13 +33,17 @@ const CAR_NAMES = {
     'rx7':          'fd',         // Mazda RX-7 (FD)
     'golfr':        'golf75r',    // VW Golf R
     'supra4':       'a80',        // Toyota Supra MK4 (JZA80)
-    'e92':          'e92',        // BMW M3 E92 (rrst pack — 3 cars in one dlc)
-    'rr14':         'rr14',       // Rolls-Royce (rrst pack)
+    // e92 (BMW M3 E92) and rr14 (Rolls-Royce) removed — their models aren't registered by any installed
+    // DLC (only stray files inside the rrst pack, which declares just `rrst`), so they never spawned.
     'rrst':         'rrst',       // rrst pack main
     'skyline':      'skyline',    // Nissan Skyline
     'wrx':          'subwrx',     // Subaru WRX STI
     'supra':        'supra19',    // Toyota Supra A90 (2019)
-    'g63':          'xg632019'    // Mercedes-AMG G63 (2019)
+    'g63':          'xg632019',   // Mercedes-AMG G63 (2019)
+    // --- Allmods batch 2 (added Oct 2026) ---
+    'contgt':       'contgt13',   // Bentley Continental GT 2013 (buyable)
+    'evo10':        'evo10',      // Mitsubishi Lancer Evo X (buyable)
+    'domgtx':       'poldomgtx'   // Vapid Dominator GTX (police)
 };
 // Friendly labels for add-on cars that aren't in the buyable carshop catalog (police / service),
 // so they read nicely in the admin Cars tab. Anything without an entry falls back to its /car alias.
@@ -47,7 +51,8 @@ const ADDON_LABELS = {
     XG632019: 'Mercedes-Benz G-Class 2019',
     polrevent:  'Reventon SCPD (Police)',
     polamggtr:  'AMG GT R (Police)',
-    swatvanr2:  'SWAT Van'
+    swatvanr2:  'SWAT Van',
+    poldomgtx:  'Dominator GTX (Police)'
 };
 
 // The full add-on roster (every /car alias → model). The admin Cars tab merges this with the buyable
@@ -154,10 +159,7 @@ mp.events.addCommand('tp', (player, _, x, y, z) => {
 });
 
 // /hospital - jump to the Central LS Medical Center interior (rc12b_default.ymap area)
-mp.events.addCommand('hospital', (player) => {
-    player.position = new mp.Vector3(325.6, -579.0, 45.4);
-    player.outputChatBox('!{#8ed17a}საავადმყოფო (Central LS Medical).');
-});
+// /hospital is owned by packages/teleports (re-pinnable via /settp, resets dimension).
 
 // /car <name> - spawn a car and get in (admins only — everyone else buys at the car shop)
 mp.events.addCommand('car', (player, _, name) => {
@@ -185,6 +187,23 @@ mp.events.addCommand('car', (player, _, name) => {
         if (mp.players.exists(player) && mp.vehicles.exists(car) && !player.vehicle) player.putIntoVehicle(car, 0);
     }, 700);
     player.outputChatBox(`!{#8ed17a}გამოძახდა: ${name}`);
+});
+
+// /carcolor <hex> — admin: paint the car you're in via custom RGB (works on add-ons that ignore the
+// palette). Broadcast so everyone sees it. Not persisted (a test/admin tool; resets on respawn/restream).
+mp.events.addCommand('carcolor', (player, _, hex) => {
+    if (!(global.isProtectedAdmin && global.isProtectedAdmin(player))) {
+        return player.outputChatBox('!{#ffb42e}/carcolor მხოლოდ ადმინისთვისაა.');
+    }
+    const veh = player.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return player.outputChatBox('!{#ffb42e}ჯერ ჩაჯექი მანქანაში.');
+    hex = String(hex || '').replace(/^#/, '').trim();
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+        return player.outputChatBox('!{#ffb42e}გამოყენება: /carcolor <hex> — მაგ. /carcolor ffffff (თეთრი), 7d3cb5 (იასამნისფერი).');
+    }
+    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+    mp.players.call('vehicle:customColor', [Number(veh.id), r, g, b]);
+    player.outputChatBox(`!{#8ed17a}მანქანის ფერი: #${hex}`);
 });
 
 // /bike <name> - spawn a motorcycle and get on (admins only). Bikes aren't sold at the dealership.
@@ -215,7 +234,7 @@ mp.events.addCommand('drift', (player) => {
 mp.events.addCommand('cars', (player) => {
     global.chatSend(player, {
         ch: 'system',
-        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, gclass, demon, m8, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado, reventon, amggtr, s1000rr, cbr, rx7, golfr, supra4, e92, rr14, rrst, skyline, wrx, supra, g63 (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
+        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, gclass, demon, m8, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado, reventon, amggtr, s1000rr, cbr, rx7, golfr, supra4, rrst, skyline, wrx, supra, g63 (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
         ts: Date.now()
     });
     global.chatSend(player, {

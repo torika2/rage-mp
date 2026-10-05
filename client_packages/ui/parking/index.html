@@ -98,7 +98,7 @@
     el('spotId').textContent = data.id;
     const st = el('status'); st.className = 'v status ' + data.status;
     st.textContent = data.status === 'free' ? 'თავისუფალი' : data.status === 'mine' ? 'შენია' : ('დაკავებული' + (data.ownerName ? ' · ' + data.ownerName : ''));
-    el('price').textContent = fmt(data.price) + ' / დღე / ადგილი';
+    el('price').textContent = fmt(data.price) + ' / დღე';
     el('money').textContent = fmt(data.money);
     el('timeRow').style.display = data.timeLeft ? 'flex' : 'none';
     el('timeLeft').textContent = data.timeLeft || '—';
@@ -107,83 +107,62 @@
     const dyn = el('dyn'); dyn.innerHTML = '';
     const dayVals = [1, 3, 7, 14].filter(d => d <= (data.maxDays || 30));
 
+    const carCount = data.carCount || 1;
     if (data.status === 'free') {
-      // Capacity is automatic — it equals how many cars you own. No manual picker.
-      const autoSlots = data.autoSlots || 1;
-      const sSlots = section('მანქანის ადგილები (ავტომატურად)');
-      const info = document.createElement('div'); info.className = 'cost';
-      info.innerHTML = 'გაქვს <b>' + autoSlots + '</b> მანქანა — ამდენივე ადგილს იქირავებ, ფასი <b>' + autoSlots + '×</b>.';
-      sSlots.appendChild(info);
-      dyn.appendChild(sSlots);
       const sDays = section('რამდენი დღით');
       sDays.appendChild(chips(dayVals, days, v => v + ' დღე', v => { days = v; render(); })); dyn.appendChild(sDays);
-      const cost = data.price * autoSlots * days;
+      const cost = data.price * carCount * days;
       const c = document.createElement('div'); c.className = 'cost';
-      c.innerHTML = fmt(data.price) + ' × ' + autoSlots + ' მანქ. × ' + days + ' დღე = <b>' + fmt(cost) + '</b>'; dyn.appendChild(c);
-      // One rental per player: renting here releases whatever spot you currently hold (cars carry over).
-      if (data.hasAnotherSpot) {
-        const warn = document.createElement('div'); warn.className = 'cost';
-        warn.innerHTML = '⚠ წინა ნაქირავები ადგილი გათავისუფლდება, მანქანები გადმოვა.'; dyn.appendChild(warn);
-      }
-      dyn.appendChild(goButton('იქირავე', 'green', data.money < cost, () => trigger('parking:ui:rent', days, autoSlots)));
+      c.innerHTML = fmt(data.price) + ' × ' + carCount + ' მანქ. × ' + days + ' დღე = <b>' + fmt(cost) + '</b>'; dyn.appendChild(c);
+      dyn.appendChild(goButton('იქირავე', 'green', data.money < cost, () => trigger('parking:ui:rent', days)));
     } else if (data.status === 'mine') {
-      const sCars = section('შენახული მანქანები (' + data.cars.length + '/' + data.slots + ')');
-      const list = document.createElement('div'); list.className = 'cars';
-      if (!data.cars.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'ცარიელია — დააყენე მანქანა.'; list.appendChild(e); }
-      data.cars.forEach(car => {
-        const row = document.createElement('div'); row.className = 'car';
-        row.innerHTML = '<span class="nm">' + car.label + '</span><span class="fu">' + car.fuel + '%</span>';
-        const b = document.createElement('button'); b.textContent = 'გამოყვანა'; b.onclick = () => trigger('parking:ui:unpark', car.i);
-        row.appendChild(b); list.appendChild(row);
-      });
-      sCars.appendChild(list); dyn.appendChild(sCars);
-      dyn.appendChild(goButton(data.inVehicle ? 'ამ მანქანის დაყენება' : 'დასაყენებლად უნდა იჯდე მანქანაში', 'green', !data.inVehicle || data.cars.length >= data.slots, () => trigger('parking:ui:park')));
+      // Your rented spot = your garage point. Spawn any owned car for free; recall the one that's out.
+      const owned = section('ჩემი მანქანები');
+      if (data.ownedCarsError) {
+        const error = document.createElement('div'); error.className = 'empty'; error.textContent = 'მანქანების სიის ჩატვირთვა ვერ მოხერხდა.'; owned.appendChild(error);
+      } else if (!data.ownedCars || !data.ownedCars.length) {
+        const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'მონაცემთა ბაზაში მანქანა არ გაქვს.'; owned.appendChild(empty);
+      } else {
+        const list = document.createElement('div'); list.className = 'cars';
+        data.ownedCars.forEach(car => {
+          const row = document.createElement('div'); row.className = 'car';
+          const name = document.createElement('span'); name.className = 'nm'; name.textContent = car.label;
+          const details = document.createElement('span'); details.className = 'fu';
+          details.textContent = '#' + car.id + (car.plate ? ' · ' + car.plate : '') + ' · ' + car.fuel + '%';
+          row.appendChild(name); row.appendChild(details);
+          const button = document.createElement('button');
+          if (car.status === 'active') {
+            if (data.activeOnSpot) {
+              // Parked right here — save (put away) for free.
+              button.textContent = 'შენახვა';
+              button.onclick = () => trigger('parking:ui:store');
+            } else {
+              // Out in the world — teleport it here for the recall fee.
+              button.textContent = 'დაბრუნება — ' + fmt(data.recallFee);
+              button.disabled = data.money < data.recallFee;
+              if (!button.disabled) button.onclick = () => trigger('parking:ui:recall');
+            }
+          } else if (car.status === 'garage') {
+            button.textContent = 'სახლის ავტოფარეხშია'; button.disabled = true;
+          } else {
+            button.textContent = 'გამოყვანა'; // free respawn
+            button.onclick = () => trigger('parking:ui:summonOwned', car.id);
+          }
+          row.appendChild(button); list.appendChild(row);
+        });
+        owned.appendChild(list);
+      }
+      dyn.appendChild(owned);
 
       const sRenew = section('ქირის გაგრძელება');
       sRenew.appendChild(chips(dayVals, days, v => v + ' დღე', v => { days = v; render(); }));
-      const rcost = data.price * data.slots * days;
-      const rc = document.createElement('div'); rc.className = 'cost'; rc.innerHTML = '+' + days + ' დღე = <b>' + fmt(rcost) + '</b>'; sRenew.appendChild(rc);
+      const rcost = data.price * carCount * days;
+      const rc = document.createElement('div'); rc.className = 'cost'; rc.innerHTML = '+' + days + ' დღე × ' + carCount + ' მანქ. = <b>' + fmt(rcost) + '</b>'; sRenew.appendChild(rc);
       sRenew.appendChild(goButton('გაგრძელება', 'gold', data.money < rcost, () => trigger('parking:ui:renew', days)));
       dyn.appendChild(sRenew);
     } else {
       dyn.appendChild(goButton('დაკავებულია', 'ghost', true, null));
     }
-
-    // Spawn-anyway: summon your personal car here, or pull an impounded car.
-    const extra = section('სხვა');
-    extra.appendChild(goButton('ჩემი მანქანის გადმოტანა — ' + fmt(data.summonFee), '', !data.hasPersonalCar || data.money < data.summonFee, () => trigger('parking:ui:summon')));
-    const owned = section('ჩემი მანქანები');
-    if (data.ownedCarsError) {
-      const error = document.createElement('div'); error.className = 'empty'; error.textContent = 'მანქანების სიის ჩატვირთვა ვერ მოხერხდა.'; owned.appendChild(error);
-    } else if (!data.ownedCars || !data.ownedCars.length) {
-      const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'მონაცემთა ბაზაში მანქანა არ გაქვს.'; owned.appendChild(empty);
-    } else {
-      const list = document.createElement('div'); list.className = 'cars';
-      const statuses = {
-        active: 'უკვე გამოყვანილია',
-        parked: 'პარკინგზეა',
-        impound: 'დაყადაღებულია',
-        stored: 'შენახული მანქანა',
-        garage: 'სახლის ავტოფარეხშია',
-        current: 'ჯერ გააჩერე მიმდინარე მანქანა'
-      };
-      data.ownedCars.forEach(car => {
-        const row = document.createElement('div'); row.className = 'car';
-        const name = document.createElement('span'); name.className = 'nm'; name.textContent = car.label;
-        const details = document.createElement('span'); details.className = 'fu';
-        details.textContent = '#' + car.id + (car.plate ? ' · ' + car.plate : '') + ' · ' + car.fuel + '%';
-        row.appendChild(name); row.appendChild(details);
-        const button = document.createElement('button');
-        button.textContent = car.status === 'available' ? 'გამოყვანა — ' + fmt(data.summonFee) : (statuses[car.status] || 'მიუწვდომელია');
-        button.disabled = car.status !== 'available' || data.money < data.summonFee;
-        if (!button.disabled) button.onclick = () => trigger('parking:ui:summonOwned', car.id);
-        row.appendChild(button); list.appendChild(row);
-      });
-      owned.appendChild(list);
-    }
-    extra.appendChild(owned);
-    if (data.impoundCount > 0) extra.appendChild(goButton('დაყადაღებულის გამოტანა (' + data.impoundCount + ') — ' + fmt(data.impoundFee), '', data.money < data.impoundFee, () => trigger('parking:ui:impound')));
-    dyn.appendChild(extra);
 
     if (data.isAdmin && data.editable) {
       const admin = section('ადმინი');
@@ -200,7 +179,7 @@
   };
 
   if (RAGE) mp.trigger('parking:ui:ready');
-  else window.setParkingData({ id: 'Parking#1', status: 'free', price: 50, money: 3200, maxDays: 30, maxSlots: 5, autoSlots: 2, hasPersonalCar: true, summonFee: 100, impoundFee: 250, impoundCount: 1, isAdmin: true, editable: true, cars: [], ownedCars: [{ id: '1', label: 'BMW M5', plate: 'TEST', fuel: 100, status: 'available' }] });
+  else window.setParkingData({ id: 'Parking#1', status: 'mine', price: 50, carCount: 2, money: 3200, maxDays: 30, timeLeft: '2 დღე', recallFee: 1000, activeOnSpot: true, isAdmin: true, editable: true, ownedCars: [{ id: '1', label: 'BMW M5', plate: 'TEST', fuel: 100, status: 'available' }, { id: '2', label: 'Audi RS7', plate: 'OUT', fuel: 60, status: 'active' }] });
 </script>
 </body>
 </html>

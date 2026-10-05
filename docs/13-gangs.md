@@ -67,18 +67,37 @@ Each rank holds a capability list; the leader has `*` (all). Capabilities:
 | `/gdisband` | Disband the gang (leader; not allowed for static gangs) |
 | `/gc <msg>` | Gang-only chat |
 | `/gsetleader <id> <key\|tag>` | **Admin:** appoint/replace a gang's leader (bootstraps a static gang) |
+| `/gsethq <key\|tag>` | **Admin:** capture the HQ interior teleport point (stand inside the interior) |
+| `/pos` | Print your current X/Y/Z/heading (from `packages/freeroam`) — handy when placing the HQ |
 
-## Base & panel
+## Base, HQ interior & panel
 
-The leader sets the base with `/gsetbase`. It gets a red blip + ground marker. Members standing on the
-base (on foot, within ~4 m) see **“Press E — ბანდის ბაზა”** → opens the CEF panel with tabs:
+The base is a map location (static gangs: fixed in config; player gangs: `/gsetbase`).
 
-- **Overview** — members/treasury/stash summary; treasury **deposit/withdraw** (perm: treasury).
+- **Map blip** — a **skull** (sprite 84) in the gang's colour (Greens/Ballas = purple, index 7). Blips
+  are **client-local and visibility-restricted**: only the gang's own **members** and **admins** ever
+  see a gang on the map — nobody else. There is **no ground marker**.
+- **Base door** — the base coordinate is the house **front door**. On foot at the door, **members and
+  admins** see **“Press E — სახლში შესვლა”** → **E enters** the members-only HQ interior (teleport into
+  a private per-gang dimension). Non-members get no blip, no prompt, and the server refuses entry.
+- **Inside the HQ** — **E** opens the CEF management panel (**“Press E — ბანდის მენიუ”**). Leave via the
+  Overview **“გასვლა”** button or the **`/gexit`** command (works for admins too). Anyone who logs out
+  inside is moved back to the door on next login so they can't get stranded.
+- **Pointing the HQ at an interior mod** — the teleport target is `gang.interior {x,y,z,h}`. It comes
+  from a code default (`STATIC_GANGS`) but is overridden by a point captured in-game: stand inside the
+  installed interior and run **`/gsethq <key>`** (admin). That saves to the DB (`gangs.interior`) and
+  wins over the default. The **Ballas gang house** interior is installed as a map DLC at
+  `client_packages/game_resources/dlcpacks/gcom_ballas_gang/dlc.rpf` (ymap `ballas1756`); its geometry
+  exists in every dimension, so the private per-gang HQ copy shows it too.
+
+Panel tabs:
+
+- **Overview** — members/treasury/stash summary; treasury **deposit/withdraw** (perm: treasury); Enter/Exit HQ.
 - **Members** — roster with ranks/online.
 - **Stash** — withdraw stashed items into your personal inventory (perm: stash_use).
 - **Crafting** — buy raw materials and craft.
 
-All panel actions are re-validated server-side (member + at base + permission).
+All panel actions are re-validated server-side (member + at base/HQ + permission).
 
 ## Crafting chain
 

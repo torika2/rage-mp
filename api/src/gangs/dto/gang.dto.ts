@@ -34,6 +34,7 @@ export class UpdateGangDto {
   @IsOptional() @IsArray() members?: unknown[];
   @IsOptional() @IsArray() ranks?: unknown[];
   @IsOptional() @IsObject() base?: Record<string, unknown> | null;
+  @IsOptional() @IsObject() interior?: Record<string, unknown> | null;
   @IsOptional() @IsInt() @Min(0) treasury?: number;
   @IsOptional() @IsObject() stash?: Record<string, number>;
   @IsOptional() @IsObject() crafting?: Record<string, unknown> | null;

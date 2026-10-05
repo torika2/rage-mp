@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>გარდერობი</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c; --green: #8ed17a; --red: #ff6b6b; --gang: #7d3cb5;
+    --text: #f3f0e8; --muted: #aaa79e; --line: rgba(255,255,255,.12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; }
+  body { color: var(--text); user-select:none; background: transparent; display:flex; align-items:center; justify-content:center; }
+  .panel { width: min(640px, 94vw); max-height: 88vh; background: linear-gradient(180deg,#160f1f,#0c0f13);
+    border:1px solid rgba(125,60,181,.55); border-radius:14px; box-shadow:0 24px 70px rgba(0,0,0,.6); display:flex; flex-direction:column; overflow:hidden; }
+  .head { display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid var(--line); }
+  .head h1 { margin:0; font-size:16px; font-weight:800; }
+  .head .sub { font-size:12px; color:var(--muted); }
+  .head .spacer { flex:1; }
+  .close { width:32px; height:32px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--muted); border-radius:8px; font-size:17px; cursor:pointer; }
+  .close:hover { color: var(--red); border-color: var(--red); }
+  .tabs { display:flex; gap:4px; padding:10px 14px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .tab { padding:8px 13px; border:0; background:transparent; color:var(--muted); font-weight:700; font-size:13px; cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.on { color:var(--text); border-bottom-color:var(--gang); }
+  .body { overflow-y:auto; padding:14px 16px 10px; }
+  .body::-webkit-scrollbar { width:8px; } .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:4px; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .item { border:1px solid var(--line); border-radius:11px; background:rgba(255,255,255,.03); padding:12px 13px; display:flex; align-items:center; gap:10px; }
+  .item.on { border-color:var(--gang); background:rgba(125,60,181,.14); }
+  .item .grow { flex:1; min-width:0; }
+  .item .name { font-weight:700; font-size:14px; }
+  .item .idx { color:var(--muted); font-size:11px; margin-top:2px; font-variant-numeric:tabular-nums; }
+  button.act { padding:7px 12px; border:0; border-radius:8px; cursor:pointer; font-weight:800; font-size:12px; color:#120b1c; background:linear-gradient(180deg,#c89bf0,var(--gang)); }
+  button.act.worn { background:rgba(255,107,107,.12); color:var(--red); border:1px solid var(--line); }
+  .foot { padding:10px 16px 16px; border-top:1px solid var(--line); }
+  button.off { width:100%; padding:11px; border:1px solid var(--line); background:rgba(255,107,107,.08); color:var(--red); border-radius:10px; font-weight:800; font-size:13px; cursor:pointer; }
+  button.off:disabled { opacity:.4; cursor:default; }
+  .hint { color:var(--muted); font-size:12px; padding:2px 2px 12px; }
+  .empty { color:var(--muted); font-size:13px; padding:12px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="head">
+      <div>
+        <h1 id="title">გარდერობი</h1>
+        <div class="sub">სამორიგეო ფორმა — უფასო, ვაჭრობის გარეშე</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="close" onclick="closeUI()">✕</button>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="body" id="body"></div>
+    <div class="foot"><button class="off" id="offBtn" onclick="offDuty()">სამსახურიდან გასვლა</button></div>
+  </div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (n, ...a) => { if (RAGE) mp.trigger(n, ...a); };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+  // Georgian labels for each clothing category key.
+  const CAT_LABELS = { top:'ზედა', undershirt:'მაისური', pants:'შარვალი', shoes:'ფეხსაცმელი', mask:'ნიღაბი', hat:'ქუდი', glasses:'სათვალე', bag:'ჩანთა', neck:'აქსესუარი', decal:'ემბლემა', ears:'საყურე', watch:'საათი', bracelet:'სამაჯური' };
+  let state = null, tab = null;
+
+  window.setWardrobe = (data) => {
+    state = data || {};
+    if (state.color) document.documentElement.style.setProperty('--gang', state.color);
+    document.getElementById('title').textContent = esc(state.gang || '') + ' — გარდერობი';
+    const cats = Object.keys(state.catalog || {});
+    if (!tab || cats.indexOf(tab) < 0) tab = cats[0] || null;
+    renderTabs(cats);
+    renderBody();
+    const hasAny = state.current && Object.keys(state.current).length > 0;
+    document.getElementById('offBtn').disabled = !hasAny;
+  };
+
+  function renderTabs(cats) {
+    document.getElementById('tabs').innerHTML = cats.map((c) =>
+      '<button class="tab ' + (c === tab ? 'on' : '') + '" onclick="setTab(\'' + esc(c) + '\')">' + esc(CAT_LABELS[c] || c) + '</button>'
+    ).join('');
+  }
+  function setTab(c) { tab = c; renderTabs(Object.keys(state.catalog || {})); renderBody(); }
+
+  function renderBody() {
+    const body = document.getElementById('body');
+    if (!tab) { body.innerHTML = '<div class="empty">გარდერობი ცარიელია.</div>'; return; }
+    const list = (state.catalog && state.catalog[tab]) || [];
+    const cur = (state.current && state.current[tab]) || null; // { d, t } currently worn in this slot
+    let html = '<div class="hint">აირჩიე ნივთი — ის მაშინვე ჩაიცმება (ჩვეულებრივი ტანსაცმელი დაიმალება). #d/t ნაჩვენებია შემოწმებისთვის.</div><div class="grid">';
+    list.forEach((it) => {
+      const on = cur && Number(cur.d) === Number(it.d) && Number(cur.t) === Number(it.t);
+      html += '<div class="item ' + (on ? 'on' : '') + '">'
+        + '<div class="grow"><div class="name">' + esc(it.label) + '</div><div class="idx">#' + it.d + '/' + it.t + '</div></div>'
+        + (on ? '<button class="act worn" onclick="clearSlot(\'' + esc(tab) + '\')">მოხსნა</button>'
+              : '<button class="act" onclick="pick(\'' + esc(tab) + '\',' + it.index + ')">ჩაცმა</button>')
+        + '</div>';
+    });
+    html += '</div>';
+    if (!list.length) html += '<div class="empty">ამ კატეგორიაში ნივთი არ არის.</div>';
+    body.innerHTML = html;
+  }
+
+  function pick(cat, index) { trigger('gangs:wardrobe:pick', cat, index); }
+  function clearSlot(cat) { trigger('gangs:wardrobe:clear', cat); }
+  function offDuty() { trigger('gangs:wardrobe:off'); }
+  function closeUI() { trigger('gangs:wardrobe:close'); }
+  window.onload = () => { trigger('gangs:wardrobe:ready'); };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUI(); });
+</script>
+</body>
+</html>

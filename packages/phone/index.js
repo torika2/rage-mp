@@ -48,6 +48,13 @@ function sendState(player) {
 mp.events.add('playerJoin', (player) => player.setVariable('phone:number', getRec(player).number));
 mp.events.add('phone:request', (player) => sendState(player));
 
+// Parking finder: recompute on demand (distances change as the player moves). Returns free spots +
+// the player's own, nearest-first, via the parking package.
+mp.events.add('phone:parkingRequest', (player) => {
+    const list = (typeof global.parkingPhoneData === 'function') ? global.parkingPhoneData(player) : [];
+    player.call('phone:parking', [JSON.stringify(list)]);
+});
+
 // Player pulled the phone out — show a local RP action to nearby players.
 mp.events.add('phone:taken', (player) => {
     if (global.chatLocalAction) global.chatLocalAction(player, 'იღებს მობილუს');

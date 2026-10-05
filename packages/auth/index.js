@@ -124,6 +124,16 @@ function doSpawn(player, pos) {
     const character = player.character;
     const name = character ? `${character.firstName} ${character.lastName}` : scNameOf(player);
     player.outputChatBox(`!{#8ed17a}[ავტორიზაცია] !{#ffffff}კეთილი იყოს თქვენი დაბრუნება, ${name}.`);
+    // Show the character's name + database id on the HUD.
+    try {
+        player.call('hud:identity', [JSON.stringify({
+            name,
+            residentId: (player.account && player.account.residentNumber) || '',
+            charId: character ? character.id : null,
+        })]);
+    } catch (e) {}
+    // Synced character name so other players' clients can draw it as an overhead nametag.
+    try { player.setVariable('char:name', name); } catch (e) {}
     console.log(`[auth] ${scNameOf(player)} authenticated as user #${player.account.id} (${player.account.userType})`);
     // Release the death-suppression a moment after spawn so the model-change playerDeath (queued
     // during the spawn above) is ignored, but real deaths right after are handled normally.

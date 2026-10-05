@@ -215,6 +215,7 @@ function parkRot(u, v, rx, ry, rz) {
     return [x3, y3, z2];
 }
 const PARK_DRAW_DIST = 60;        // only draw/scan spots within this many metres (perf)
+const PARK_LABEL_DIST = 6;        // only show a spot's id text when this close (footprint still draws from afar)
 const PARK_DEF_W = 2.6, PARK_DEF_L = 5.2;
 const halfW = (s) => (s.w || PARK_DEF_W) / 2;
 const halfL = (s) => (s.l || PARK_DEF_L) / 2;
@@ -222,14 +223,6 @@ const halfL = (s) => (s.l || PARK_DEF_L) / 2;
 mp.events.add('parking:spots', (json) => { try { parkingSpots = JSON.parse(json) || []; } catch (e) { parkingSpots = []; } });
 mp.events.add('parking:admin', (flag) => { parkingAdmin = !!flag; });
 
-// Snap the slot to the real ground so it lies flat at foot level, whatever z was captured at placement.
-function parkGroundZ(spot) {
-    try {
-        const gz = mp.game.gameplay.getGroundZFor3dCoord(spot.x, spot.y, spot.z + 1.0, false, false);
-        if (typeof gz === 'number' && gz !== 0 && Math.abs(gz - spot.z) < 5) return gz;
-    } catch (e) {}
-    return spot.z;
-}
 // Is a world position inside this spot's rectangle (with a small entry margin)?
 function pointInSpot(pos, spot, margin) {
     const hr = (spot.h || 0) * Math.PI / 180;
@@ -262,25 +255,34 @@ mp.events.add('render', () => {
     let nearest = null;
     for (const spot of parkingSpots) {
         const dx = spot.x - pos.x, dy = spot.y - pos.y;
-        if (dx * dx + dy * dy > PARK_DRAW_DIST * PARK_DRAW_DIST) continue;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > PARK_DRAW_DIST * PARK_DRAW_DIST) continue;
         const editingThis = parkEditing && parkEditing.id === spot.id;
         const drawSpot = editingThis ? parkEditing : spot;
-        const groundZ = parkGroundZ(drawSpot);
+        // Draw at the spot's stored Z (WYSIWYG) so R/F height edits persist and apply after saving,
+        // instead of re-snapping to the detected ground (which reverted small height changes).
+        const groundZ = drawSpot.z;
         drawParkQuad(drawSpot, groundZ, editingThis ? [245, 205, 60, 130] : null);
-        drawParkLabel(drawSpot, groundZ, spot.id, editingThis ? [255, 225, 120, 240] : null);
+        // The id text only shows up close (or while editing this spot), so labels don't clutter from afar.
+        if (editingThis || dist2 <= PARK_LABEL_DIST * PARK_LABEL_DIST) {
+            drawParkLabel(drawSpot, groundZ, spot.id, editingThis ? [255, 225, 120, 240] : null);
+        }
         if (!parkEditing && pointInSpot(pos, spot, 0.4)) nearest = spot;
     }
     parkNearby = nearest;
 
     // Georgian text can't render via native drawText, so the prompt + edit help go through the CEF HUD.
     if (parkEditing) {
-        // Block movement is done by freezing the ped; also stop Esc from opening the pause menu.
-        try { mp.game.controls.disableControlAction(0, 199, true); mp.game.controls.disableControlAction(0, 200, true); mp.game.controls.disableControlAction(0, 322, true); } catch (e) {}
+        // Freeze the ped completely: position is frozen in enterParkEdit; here we kill every control
+        // (group 0) each frame so the ped can't walk, turn, aim or play input-driven animations. Esc
+        // (322) is in this group too, so the pause menu stays shut. The editor hotkeys are raw key
+        // binds (mp.keys), independent of control actions, so they still fire.
+        try { mp.game.controls.disableAllControlActions(0); } catch (e) {}
         parkHudPrompt = null;
         if (parkEditConfirm) {
             parkHudEdit = '<b>' + parkEditing.id + '</b> — ცვლილების შენახვა? · <span class="dim">Enter = კი · Backspace = არა · Esc = გაგრძელება</span>';
         } else {
-            parkHudEdit = 'რედაქტირება <b>' + parkEditing.id + '</b> · <span class="dim">ისრები: მოძრაობა · Q/E: Z · ,/.: X · [ ]: Y · −/+: სიგანე · PgUp/PgDn: სიგრძე · Home/End: 5 ასლი · Del: წაშლა · Esc: დასრულება</span> · W ' + parkEditing.w.toFixed(1) + ' L ' + parkEditing.l.toFixed(1) + ' · Z' + Math.round(parkEditing.h) + '° X' + Math.round(parkEditing.rx) + '° Y' + Math.round(parkEditing.ry) + '°';
+            parkHudEdit = 'რედაქტირება <b>' + parkEditing.id + '</b> · <span class="dim">ისრები: ასლის დადება (↑↓→←) · WASD: გადაადგილება · R/F: სიმაღლე · Q/E: კუთხე · ,/.: დახრა X · [ ]: დახრა Y · −/+: სიგანე · PgUp/PgDn: სიგრძე · Home/End: 5 ასლი · Del: წაშლა · Esc: დასრულება</span> · W ' + parkEditing.w.toFixed(1) + ' L ' + parkEditing.l.toFixed(1) + ' · სიმ ' + parkEditing.z.toFixed(2) + ' · Z' + Math.round(parkEditing.h) + '° X' + Math.round(parkEditing.rx) + '° Y' + Math.round(parkEditing.ry) + '°';
         }
     } else if (parkNearby && !parkingBrowser && !chatting && !adminBrowser && !inventoryBrowser && !vehicleMenuBrowser && !shopBrowser && !clothingBrowser && !bankBrowser && !fuelUIOpen) {
         parkHudPrompt = parkNearby.id;
@@ -305,13 +307,11 @@ function closeParkingUI() {
 }
 mp.events.add('parking:ui:ready', () => { if (currentParkSpotId) mp.events.callRemote('parking:uiData', currentParkSpotId); });
 mp.events.add('parking:ui:data', (json) => { if (parkingBrowser) parkingBrowser.execute('window.setParkingData(' + json + ')'); });
-mp.events.add('parking:ui:rent', (days, slots) => { if (currentParkSpotId) mp.events.callRemote('parking:rent', currentParkSpotId, Number(days), Number(slots)); });
+mp.events.add('parking:ui:rent', (days) => { if (currentParkSpotId) mp.events.callRemote('parking:rent', currentParkSpotId, Number(days)); });
 mp.events.add('parking:ui:renew', (days) => { if (currentParkSpotId) mp.events.callRemote('parking:renew', currentParkSpotId, Number(days)); });
-mp.events.add('parking:ui:park', () => { if (currentParkSpotId) mp.events.callRemote('parking:park', currentParkSpotId); });
-mp.events.add('parking:ui:unpark', (index) => { if (currentParkSpotId) mp.events.callRemote('parking:unpark', currentParkSpotId, Number(index)); });
-mp.events.add('parking:ui:summon', () => { if (currentParkSpotId) mp.events.callRemote('parking:summon', currentParkSpotId); });
 mp.events.add('parking:ui:summonOwned', (vehicleId) => { if (currentParkSpotId) mp.events.callRemote('parking:summonOwned', currentParkSpotId, String(vehicleId)); });
-mp.events.add('parking:ui:impound', () => { if (currentParkSpotId) mp.events.callRemote('parking:impound', currentParkSpotId); });
+mp.events.add('parking:ui:recall', () => { if (currentParkSpotId) mp.events.callRemote('parking:recall', currentParkSpotId); });
+mp.events.add('parking:ui:store', () => { if (currentParkSpotId) mp.events.callRemote('parking:store', currentParkSpotId); });
 mp.events.add('parking:ui:delete', () => { if (currentParkSpotId) { mp.events.callRemote('parking:removeSpot', currentParkSpotId); closeParkingUI(); } });
 mp.events.add('parking:ui:close', () => closeParkingUI());
 mp.events.add('parking:ui:edit', () => {
@@ -322,7 +322,9 @@ mp.events.add('parking:ui:edit', () => {
 function enterParkEdit(s) {
     parkEditing = { id: s.id, x: s.x, y: s.y, z: s.z, h: s.h || 0, rx: s.rx || 0, ry: s.ry || 0, w: s.w || PARK_DEF_W, l: s.l || PARK_DEF_L };
     parkEditConfirm = false;
+    parkStampReset();
     try { mp.game.invoke('0x428CA6DBD1094446', mp.players.local.handle, true); } catch (e) {} // FREEZE_ENTITY_POSITION — no walking while editing
+    try { mp.players.local.clearTasksImmediately(); } catch (e) {} // drop any in-progress walk/run anim so the ped stands still
 }
 function exitParkEdit(saveIt) {
     if (!parkEditing) return;
@@ -332,12 +334,34 @@ function exitParkEdit(saveIt) {
 }
 
 // --- Admin editor keybinds. Nudges only apply while editing and not in the confirm dialog. ---
-const MOVE_STEP = 0.15, ROT_STEP = 5, SIZE_STEP = 0.2;
-function nudge(fn) { if (parkEditing && !parkEditConfirm) fn(); }
-bindKey(0x25, true, () => nudge(() => parkEditing.x -= MOVE_STEP)); // Left  -X
-bindKey(0x27, true, () => nudge(() => parkEditing.x += MOVE_STEP)); // Right +X
-bindKey(0x26, false, () => nudge(() => parkEditing.y += MOVE_STEP)); // Up    +Y (keyup so it never opens the phone)
-bindKey(0x28, false, () => nudge(() => parkEditing.y -= MOVE_STEP)); // Down  -Y
+const MOVE_STEP = 0.15, ROT_STEP = 1, SIZE_STEP = 0.2, Z_STEP = 0.1;
+function nudge(fn) { if (parkEditing && !parkEditConfirm) { fn(); parkStampReset(); } }
+
+// Arrow "copy by gap": each press stamps a new spot one gapped slot away in that direction, relative
+// to the spot being edited. An accumulator (u = width steps, v = length steps) lets repeated presses
+// walk a row/column instead of stacking copies on top of each other. Reset when the base spot moves.
+let parkStampU = 0, parkStampV = 0;
+function parkStampReset() { parkStampU = 0; parkStampV = 0; }
+function parkStamp(du, dv) {
+    if (!parkEditing || parkEditConfirm) return;
+    parkStampU += du; parkStampV += dv;
+    const hr = (parkEditing.h || 0) * Math.PI / 180, gap = 0.7;
+    const wStep = (parkEditing.w || PARK_DEF_W) + gap, lStep = (parkEditing.l || PARK_DEF_L) + gap;
+    // width axis = (cos h, sin h); length axis = (-sin h, cos h) — matches parkRot's yaw.
+    const ox = parkStampU * wStep * Math.cos(hr) + parkStampV * lStep * (-Math.sin(hr));
+    const oy = parkStampU * wStep * Math.sin(hr) + parkStampV * lStep * (Math.cos(hr));
+    const copy = Object.assign({}, parkEditing, { x: parkEditing.x + ox, y: parkEditing.y + oy });
+    mp.events.callRemote('parking:stamp', JSON.stringify(copy));
+}
+bindKey(0x26, true, () => parkStamp(0, 1));   // Up    — copy one slot toward the length front (top)
+bindKey(0x28, true, () => parkStamp(0, -1));  // Down  — copy one slot toward the length back (bottom)
+bindKey(0x27, true, () => parkStamp(1, 0));   // Right — copy one slot to the right (width +)
+bindKey(0x25, true, () => parkStamp(-1, 0));  // Left  — copy one slot to the left (width -)
+// WASD — move the spot (X/Y). Ped controls are disabled while editing, so these don't walk the ped.
+bindKey(0x41, false, () => nudge(() => parkEditing.x -= MOVE_STEP)); // A  -X
+bindKey(0x44, false, () => nudge(() => parkEditing.x += MOVE_STEP)); // D  +X
+bindKey(0x57, false, () => nudge(() => parkEditing.y += MOVE_STEP)); // W  +Y
+bindKey(0x53, false, () => nudge(() => parkEditing.y -= MOVE_STEP)); // S  -Y
 bindKey(0x51, true, () => nudge(() => parkEditing.h = (parkEditing.h - ROT_STEP + 360) % 360)); // Q  yaw (Z) -
 bindKey(0x45, true, () => nudge(() => parkEditing.h = (parkEditing.h + ROT_STEP) % 360));       // E  yaw (Z) + (E-interact is disabled while editing)
 bindKey(0xBC, true, () => nudge(() => parkEditing.rx = Math.max(-45, parkEditing.rx - ROT_STEP))); // ,  pitch (X) -
@@ -348,6 +372,8 @@ bindKey(0xBB, true, () => nudge(() => parkEditing.w = Math.min(6, parkEditing.w 
 bindKey(0xBD, true, () => nudge(() => parkEditing.w = Math.max(1.6, parkEditing.w - SIZE_STEP)));  // -  width
 bindKey(0x21, true, () => nudge(() => parkEditing.l = Math.min(12, parkEditing.l + SIZE_STEP)));   // PageUp   length
 bindKey(0x22, true, () => nudge(() => parkEditing.l = Math.max(3, parkEditing.l - SIZE_STEP)));    // PageDown length
+bindKey(0x52, true, () => nudge(() => parkEditing.z += Z_STEP)); // R  raise  (+Z height)
+bindKey(0x46, true, () => nudge(() => parkEditing.z -= Z_STEP)); // F  lower  (-Z height)
 bindKey(0x0D, true, () => { if (parkEditing) exitParkEdit(true); });  // Enter — save (also confirms the dialog)
 bindKey(0x08, true, () => { if (parkEditing) exitParkEdit(false); }); // Backspace — discard
 // Home / End — duplicate this slot 5 times to the left / right (gapped). Uses the live edited geometry.
@@ -397,6 +423,38 @@ function isNearPosition(position, target, range) {
 // ---------- Persistent HUD browser (speedometer + money) ----------
 const hudBrowser = mp.browsers.new('package://ui/hud/index.html');
 let hudAccum = 0;
+
+// Character identity (name + database "real ID") pushed by the server on spawn; shown top-left on the HUD.
+// Re-applied if it arrives before the CEF page finished loading.
+let hudIdentity = null;
+function applyHudIdentity() { if (hudBrowser && hudIdentity) hudBrowser.execute(`window.hudIdentity(${JSON.stringify(hudIdentity)})`); }
+mp.events.add('hud:identity', (json) => {
+    try { hudIdentity = JSON.parse(json); } catch (e) { return; }
+    applyHudIdentity();
+    setTimeout(applyHudIdentity, 1500); // in case the HUD CEF wasn't ready on first push
+});
+
+// ---- Reusable interaction label (CEF, so Georgian renders — GTA's drawText font has no Georgian glyphs).
+// Many interaction sources (shops, gang stations, house doors, …) each "want" a prompt per frame via
+// setInteract(label[, key, prio]); the highest-priority want wins and flushInteract() (registered LAST,
+// at the end of the file) pushes it to the HUD once per frame, or clears it when no one wants anything.
+// So sources only ever call setInteract when they HAVE something — they never need to clear it.
+let interactWant = null;                               // { text, key, prio } chosen this frame
+let interactShownText = null, interactShownKey = 'E';  // last value pushed to CEF (change-guard)
+function setInteract(text, key, prio) {
+    if (!text) return; // nothing from this source; it auto-clears if no source sets a want this frame
+    prio = prio || 0;
+    if (!interactWant || prio >= interactWant.prio) interactWant = { text: String(text), key: key || 'E', prio };
+}
+function flushInteract() {
+    const t = interactWant ? interactWant.text : null;
+    const k = interactWant ? interactWant.key : 'E';
+    if (t !== interactShownText || (t && k !== interactShownKey)) {
+        interactShownText = t; interactShownKey = k;
+        if (hudBrowser) hudBrowser.execute(`window.hudPrompt(${t === null ? 'null' : JSON.stringify(t)}, ${JSON.stringify(k)})`);
+    }
+    interactWant = null; // reset for next frame
+}
 
 // ---------- Radio fully off + apply octane power on enter ----------
 // Radio is disabled server-wide: the player's radio wheel/control and the phone radio are turned off
@@ -1085,32 +1143,87 @@ function canTuneHere() {
 mp.events.add('render', () => {
     if (cartuningBrowser || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || fuelUIOpen) return;
     if (!canTuneHere()) return;
-    mp.game.graphics.drawText('Press E to tune', [0.5, 0.86], {
-        font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
-    });
+    setInteract('ტუნინგი'); // CEF interaction label
 });
 
-// ---------- Gang base panel (membership, ranks, stash, crafting, treasury) ----------
-// The server sends this player's gang base coords (gangs:zone); standing within range on foot shows a
-// "Press E" prompt that opens the CEF panel. All actions relay to the server, which is authoritative.
+// ---------- Gang house door + panel (membership, ranks, stash, crafting, treasury) ----------
+// The server pushes the gang bases this player may see/use (gangs:blips) — their own gang for members,
+// all gangs for admins; nobody else gets any. Each entry becomes a local map blip AND a door: on foot
+// at the door, E enters the members-only HQ. Inside, E opens the CEF management panel. The server is
+// authoritative on every action (re-checks membership/admin + proximity).
 let gangBrowser = null;
-let gangZone = null; // { x, y, z, dim } of this player's gang base, or null
-mp.events.add('gangs:zone', (json) => { try { gangZone = JSON.parse(json); } catch (e) { gangZone = null; } });
-function requestGangZone(attempt) {
-    if (gangZone || attempt > 12) return;
+let inGangHouse = false;       // inside the members-only HQ interior (server-driven)
+let gangBlips = [];            // local map blip handles (only this client sees them)
+let gangStationMarkers = [];   // local ground rings at each base station (craft table / storage / wardrobe)
+let gangStations = [];         // [{ id, kind, x, y, z, dim }] interaction stations this player may use
+let pendingGangTab = null;     // tab to force-open the panel on (set by the station the player used)
+let gangListReady = false;
+
+function hexToRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!m) return [192, 57, 43];
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+mp.events.add('gangs:blips', (json) => {
+    gangBlips.forEach((b) => { try { b.destroy(); } catch (e) {} });
+    gangStationMarkers.forEach((m) => { try { m.destroy(); } catch (e) {} });
+    gangBlips = []; gangStationMarkers = []; gangStations = [];
+    let list; try { list = JSON.parse(json) || []; } catch (e) { list = []; }
+    list.forEach((entry) => {
+        try {
+            const blip = mp.blips.new(entry.sprite, new mp.Vector3(entry.x, entry.y, entry.z),
+                { name: entry.name, color: entry.color, shortRange: false, scale: 0.9 });
+            gangBlips.push(blip);
+        } catch (e) {}
+        const dim = Number(entry.dim || 0);
+        const [r, g, b] = hexToRgb(entry.hex);
+        (entry.stations || []).forEach((station) => {
+            gangStations.push({ id: entry.id, kind: station.kind, x: station.x, y: station.y, z: station.z, dim });
+            try {
+                // A ground ring at the station, in the gang's colour (type 27 = the "interact here" ring).
+                const marker = mp.markers.new(27, new mp.Vector3(station.x, station.y, station.z - 0.95), 1.0,
+                    { color: [r, g, b, 160], dimension: dim, visible: true });
+                gangStationMarkers.push(marker);
+            } catch (e) {}
+        });
+    });
+    gangListReady = true;
+});
+function requestGangData(attempt) {
+    if (gangListReady || attempt > 12) return;
     try { mp.events.callRemote('gangs:zonesRequest'); } catch (e) {}
-    setTimeout(() => requestGangZone(attempt + 1), 3000);
+    setTimeout(() => requestGangData(attempt + 1), 3000);
 }
-mp.events.add('playerReady', () => requestGangZone(0));
-setTimeout(() => requestGangZone(0), 2500);
-function atGangBase() {
+mp.events.add('playerReady', () => requestGangData(0));
+setTimeout(() => requestGangData(0), 2500);
+
+// Brief fade so the transition reads clearly (the HQ sits at the same coords in a private dimension,
+// so without a fade "entering" would look like nothing moved).
+function gangFade() {
+    try {
+        mp.game.cam.doScreenFadeOut(250);
+        setTimeout(() => { try { mp.game.cam.doScreenFadeIn(350); } catch (e) {} }, 350);
+    } catch (e) {}
+}
+mp.events.add('gangs:entered', () => { inGangHouse = true; gangFade(); });  // teleported into the HQ
+mp.events.add('gangs:exited', () => { inGangHouse = false; gangFade(); });  // left the HQ
+mp.events.add('playerSpawn', () => { inGangHouse = false; });   // respawn/death leaves the interior
+
+// The gang station the player is standing at (on foot, same dimension, ~2 m), or null. Returns the
+// station object so the caller knows its kind (craft / stash / wardrobe).
+function nearestGangStation() {
     const me = mp.players.local;
-    if (!gangZone || me.vehicle) return false;
-    if (Number(me.dimension) !== Number(gangZone.dim || 0)) return false;
-    const p = me.position;
-    const dx = p.x - gangZone.x, dy = p.y - gangZone.y, dz = p.z - gangZone.z;
-    return dx * dx + dy * dy + dz * dz <= 25; // ~5m (server gate is 4; a touch wider so the prompt shows first)
+    if (me.vehicle) return null;
+    const mdim = Number(me.dimension), p = me.position;
+    for (const station of gangStations) {
+        if (Number(station.dim) !== mdim) continue;
+        const dx = p.x - station.x, dy = p.y - station.y, dz = p.z - station.z;
+        if (dx * dx + dy * dy + dz * dz <= 4) return station; // ~2 m (server gate is 2.2)
+    }
+    return null;
 }
+const GANG_STATION_PROMPT = { craft: 'იარაღის დამზადება', stash: 'საცავი', wardrobe: 'სამორიგეო ფორმა' };
 function openGangPanel() {
     if (gangBrowser) return;
     gangBrowser = mp.browsers.new('package://ui/gang/index.html');
@@ -1122,9 +1235,33 @@ function closeGangPanel() {
     mp.gui.cursor.show(false, false);
     try { mp.events.callRemote('gangs:close'); } catch (e) {}
 }
+// Duty wardrobe menu (curated uniforms). The server validates proximity/membership and pushes the list.
+let gangWardrobeBrowser = null, gangWardrobePayload = null;
+mp.events.add('gangs:wardrobe:open', (json) => {
+    gangWardrobePayload = json;
+    if (gangWardrobeBrowser) { gangWardrobeBrowser.execute(`window.setWardrobe(${json})`); return; }
+    gangWardrobeBrowser = mp.browsers.new('package://ui/gangwardrobe/index.html');
+    mp.gui.cursor.show(true, true);
+});
+function closeGangWardrobe() {
+    if (!gangWardrobeBrowser) return;
+    gangWardrobeBrowser.destroy(); gangWardrobeBrowser = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('gangs:wardrobe:ready', () => { if (gangWardrobeBrowser && gangWardrobePayload) gangWardrobeBrowser.execute(`window.setWardrobe(${gangWardrobePayload})`); }); // CEF loaded
+// Equip a piece / clear a slot — the server re-sends the wardrobe so the UI stays open and updates live.
+mp.events.add('gangs:wardrobe:pick', (cat, index) => mp.events.callRemote('gangs:duty:pick', String(cat), String(index)));
+mp.events.add('gangs:wardrobe:clear', (cat) => mp.events.callRemote('gangs:duty:clear', String(cat)));
+mp.events.add('gangs:wardrobe:off', () => mp.events.callRemote('gangs:duty:off'));
+mp.events.add('gangs:wardrobe:close', closeGangWardrobe);
+
 mp.events.add('gangs:open', openGangPanel);          // server opened the panel (E at base validated)
 mp.events.add('gangs:forceClose', closeGangPanel);   // server kicked/disbanded — shut the UI
-mp.events.add('gangs:data', (json) => { if (gangBrowser) gangBrowser.execute(`window.setGang(${json})`); });
+mp.events.add('gangs:data', (json) => {
+    if (!gangBrowser) return;
+    gangBrowser.execute(`window.setGang(${json})`);
+    if (pendingGangTab) { const t = pendingGangTab; pendingGangTab = null; gangBrowser.execute(`setTab(${JSON.stringify(t)})`); }
+});
 mp.events.add('gangs:ui:ready', () => mp.events.callRemote('gangs:ui:ready'));     // CEF -> server (request data)
 mp.events.add('gangs:buyMaterial', (id, qty) => mp.events.callRemote('gangs:buyMaterial', String(id), String(qty)));
 mp.events.add('gangs:craft', (key) => mp.events.callRemote('gangs:craft', String(key)));
@@ -1132,14 +1269,15 @@ mp.events.add('gangs:stashTake', (id, qty) => mp.events.callRemote('gangs:stashT
 mp.events.add('gangs:stashPut', (id, qty) => mp.events.callRemote('gangs:stashPut', String(id), String(qty)));
 mp.events.add('gangs:deposit', (amt) => mp.events.callRemote('gangs:deposit', String(amt)));
 mp.events.add('gangs:withdraw', (amt) => mp.events.callRemote('gangs:withdraw', String(amt)));
+mp.events.add('gangs:enterHouse', () => mp.events.callRemote('gangs:enterHouse')); // CEF "Enter HQ"
+mp.events.add('gangs:exitHouse', () => mp.events.callRemote('gangs:exitHouse'));    // CEF "Exit HQ"
 mp.events.add('gangs:closeUI', closeGangPanel); // CEF close button
 mp.events.add('render', () => {
-    if (gangBrowser) { mp.gui.cursor.show(true, true); mp.game.controls.disableAllControlActions(0); return; }
+    if (gangBrowser || gangWardrobeBrowser) { mp.gui.cursor.show(true, true); mp.game.controls.disableAllControlActions(0); return; }
     if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || fuelUIOpen) return;
-    if (!atGangBase()) return;
-    mp.game.graphics.drawText('Press E — ბანდის ბაზა', [0.5, 0.86], {
-        font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
-    });
+    if (inGangHouse) { setInteract('ბანდის მენიუ'); return; }
+    const station = nearestGangStation();
+    if (station) setInteract(GANG_STATION_PROMPT[station.kind]); // CEF label (Georgian-readable)
 });
 
 // /vehmods diagnostic: dump mod variations (type: current/count) + extras of the car you're in, so we
@@ -1195,6 +1333,7 @@ function readVehVisual(veh) {
     try { const col = mp.game.vehicle.getVehicleColours(h, 0, 0); if (col) { out.colors.primary = (col.colorPrimary != null ? col.colorPrimary : (col[0] != null ? col[0] : 0)); out.colors.secondary = (col.colorSecondary != null ? col.colorSecondary : (col[1] != null ? col[1] : 0)); } } catch (e) {}
     try { out.windowTint = mp.game.vehicle.getVehicleWindowTint(h); } catch (e) {}
     try { out.wheelType = mp.game.vehicle.getVehicleWheelType(h); } catch (e) {}
+    try { let lv = mp.game.vehicle.getVehicleMod(h, 48); if (lv == null || lv < 0) lv = mp.game.vehicle.getVehicleLivery(h); out.livery = (lv != null ? lv : -1); } catch (e) { out.livery = -1; }
     return out;
 }
 // Live-preview a full visual config on the local car (not synced/charged). Forces every mod slot so
@@ -1206,10 +1345,48 @@ function previewVisual(veh, cfg) {
     const mods = cfg.mods || {};
     VISUAL_MOD_TYPES.forEach(t => { try { mp.game.vehicle.setVehicleMod(h, t, (mods[t] != null ? Number(mods[t]) : -1), false); } catch (e) {} });
     const c = cfg.colors || {};
-    if (typeof c.primary === 'number' && typeof c.secondary === 'number') { try { mp.game.vehicle.setVehicleColours(h, c.primary, c.secondary); } catch (e) {} }
+    if (typeof c.primary === 'number' && typeof c.secondary === 'number') {
+        try { mp.game.vehicle.setVehicleColours(h, c.primary, c.secondary); } catch (e) {}
+        applyCustomColour(h, 'primary', c.primary);   // add-on paint fallback (same as applyVehicleVisual)
+        applyCustomColour(h, 'secondary', c.secondary);
+    }
     if (typeof c.pearl === 'number' || typeof c.wheel === 'number') { try { mp.game.vehicle.setVehicleExtraColours(h, c.pearl || 0, c.wheel || 0); } catch (e) {} }
     if (typeof cfg.windowTint === 'number') { try { mp.game.vehicle.setVehicleWindowTint(h, cfg.windowTint); } catch (e) {} }
     if (typeof cfg.wheelType === 'number') { try { mp.game.vehicle.setVehicleWheelType(h, cfg.wheelType); } catch (e) {} }
+    applyLivery(h, cfg.livery); // preview the livery too
+}
+
+// Palette index -> [r,g,b], mirroring the swatch hex in ui/cartuning (the only indices a player can pick).
+// Used to ALSO force the colour via the custom-RGB natives: many add-on cars ignore GTA's palette index
+// (setVehicleColours) but DO honour a custom RGB colour, so this is what makes modded cars actually paint.
+const COLOR_RGB = (() => {
+    const hex = {
+        0:'#0f1115',1:'#1e2024',2:'#272a2e',3:'#33373c',4:'#5b5f66',5:'#9a9ea3',6:'#73777b',8:'#b9b9b9',9:'#51565a',111:'#ffffff',157:'#b0a99a',158:'#1f1f22',
+        27:'#f26f1f',11:'#c00e1a',12:'#d71e20',14:'#a0282c',17:'#7e1a1f',22:'#db1b2a',88:'#f6d84a',89:'#fbe70f',99:'#d9a40e',90:'#b89b5e',38:'#5e3f27',96:'#4a4636',
+        49:'#13263a',64:'#304b73',70:'#0a86c9',73:'#6ea6d8',83:'#8fb6d4',68:'#2a5d8c',146:'#3b1a63',145:'#6b1f7d',135:'#c42e6f',137:'#f3a9c8',134:'#cabfa8',128:'#653f23',
+        53:'#13402f',55:'#1a6b3d',51:'#2d4a30',151:'#436b36',92:'#355f2c'
+    };
+    const map = {};
+    for (const k in hex) { const n = parseInt(hex[k].slice(1), 16); map[k] = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+    return map;
+})();
+// Apply a car's livery (paint/colour variant). -1/absent = leave as-is. Sets both the mod-type-48 slot
+// (newer liveries) and the legacy livery native so whichever the car uses takes effect.
+function applyLivery(h, livery) {
+    if (livery == null || Number(livery) < 0) return;
+    const i = Number(livery);
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    try { mp.game.vehicle.setVehicleMod(h, 48, i, false); } catch (e) {}
+    try { mp.game.vehicle.setVehicleLivery(h, i); } catch (e) {}
+}
+// Force a colour channel via the custom-RGB native (paints add-ons that ignore palette indices).
+function applyCustomColour(h, which, index) {
+    const rgb = COLOR_RGB[index];
+    if (!rgb) return; // unmapped index → leave the palette set() to handle it (stock cars)
+    try {
+        if (which === 'primary') mp.game.vehicle.setVehicleCustomPrimaryColour(h, rgb[0], rgb[1], rgb[2]);
+        else mp.game.vehicle.setVehicleCustomSecondaryColour(h, rgb[0], rgb[1], rgb[2]);
+    } catch (e) {}
 }
 
 function applyVehicleVisual(veh, cfg) {
@@ -1219,12 +1396,15 @@ function applyVehicleVisual(veh, cfg) {
     const c = cfg.colors || {};
     if (typeof c.primary === 'number' && typeof c.secondary === 'number') {
         try { mp.game.vehicle.setVehicleColours(h, c.primary, c.secondary); } catch (e) {}
+        applyCustomColour(h, 'primary', c.primary);   // add-on paint fallback
+        applyCustomColour(h, 'secondary', c.secondary);
     }
     if (typeof c.pearl === 'number' || typeof c.wheel === 'number') {
         try { mp.game.vehicle.setVehicleExtraColours(h, c.pearl || 0, c.wheel || 0); } catch (e) {}
     }
     if (typeof cfg.windowTint === 'number') try { mp.game.vehicle.setVehicleWindowTint(h, cfg.windowTint); } catch (e) {}
     if (typeof cfg.wheelType === 'number') try { mp.game.vehicle.setVehicleWheelType(h, cfg.wheelType); } catch (e) {}
+    applyLivery(h, cfg.livery); // car's built-in paint/colour variant (FLAG_HAS_LIVERY add-ons)
     if (cfg.mods && typeof cfg.mods === 'object') {
         for (const type in cfg.mods) {
             const idx = Number(cfg.mods[type]);
@@ -1241,7 +1421,7 @@ function applyVehicleVisual(veh, cfg) {
 }
 // How many options each mod type offers for this specific car (indices 0..count-1, plus -1 = stock).
 function enumerateVehicleOptions(veh) {
-    const opts = { mods: {}, wheelTypes: 13, windowTints: 7 };
+    const opts = { mods: {}, wheelTypes: 13, windowTints: 7, liveries: 0 };
     if (!veh || !mp.vehicles.exists(veh)) return opts;
     const h = veh.handle;
     try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
@@ -1250,6 +1430,12 @@ function enumerateVehicleOptions(veh) {
         try { count = mp.game.vehicle.getNumVehicleMods(h, t); } catch (e) {}
         opts.mods[t] = count;
     });
+    // Liveries = a car's built-in paint/colour variants (FLAG_HAS_LIVERY add-ons). Prefer the mod-type-48
+    // count (newer liveries); fall back to the legacy livery count.
+    let liv = 0;
+    try { liv = mp.game.vehicle.getNumVehicleMods(h, 48); } catch (e) {}
+    if (!liv) { try { liv = mp.game.vehicle.getVehicleLiveryCount(h); } catch (e) {} }
+    opts.liveries = Math.max(0, liv);
     return opts;
 }
 // Apply a car's saved look when it streams in (covers other players' cars + late joiners).
@@ -1263,6 +1449,16 @@ mp.events.add('entityStreamIn', (entity) => {
     applySyncedVisual();
     setTimeout(applySyncedVisual, 500);
     setTimeout(applySyncedVisual, 1500);
+});
+// Admin /carcolor: paint a vehicle by raw RGB via the custom-colour natives (works on add-ons that
+// ignore palette indices). Applied for everyone so the whole server sees the colour.
+mp.events.add('vehicle:customColor', (vehId, r, g, b) => {
+    const veh = mp.vehicles.atRemoteId(Number(vehId));
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const h = veh.handle;
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    try { mp.game.vehicle.setVehicleCustomPrimaryColour(h, Number(r), Number(g), Number(b)); } catch (e) {}
+    try { mp.game.vehicle.setVehicleCustomSecondaryColour(h, Number(r), Number(g), Number(b)); } catch (e) {}
 });
 // Live change broadcast from the server (e.g. just bought at the garage) — re-apply for everyone nearby.
 mp.events.add('vehicle:visualApply', (vehId, json) => {
@@ -2721,7 +2917,7 @@ function setPhone(out) {
     }
 }
 function anyModalOpen() {
-    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || gangBrowser || parkEditing);
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || gangBrowser || gangWardrobeBrowser || parkEditing);
 }
 bindKey(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
 bindKey(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
@@ -2737,6 +2933,10 @@ mp.events.add('phone:ui:contactDelete', (index) => mp.events.callRemote('phone:c
 mp.events.add('phone:ui:call', (number) => mp.events.callRemote('phone:call', String(number)));
 mp.events.add('phone:ui:car', (action) => mp.events.callRemote('phone:car', String(action)));
 mp.events.add('phone:ui:locate', (x, y) => { try { mp.game.ui.setNewWaypoint(Number(x), Number(y)); notify('მანქანა მონიშნულია რუკაზე.'); } catch (e) {} });
+// Parking finder: request the nearest free/own spots, and pin one on the map.
+mp.events.add('phone:ui:parkingRequest', () => mp.events.callRemote('phone:parkingRequest'));
+mp.events.add('phone:parking', (json) => { if (phoneBrowser) phoneBrowser.execute('window.setParkingList(' + json + ')'); });
+mp.events.add('phone:ui:parkingPin', (x, y) => { try { mp.game.ui.setNewWaypoint(Number(x), Number(y)); notify('პარკინგი მონიშნულია რუკაზე.'); } catch (e) {} });
 mp.events.add('phone:ui:close', () => setPhone(false));
 
 // ---- Voice calls ----
@@ -3185,7 +3385,7 @@ function findNearDowned() {
 }
 
 bindKey(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped item, or open shop (on foot)
-    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing) return;
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || parkingBrowser || parkEditing || gangWardrobeBrowser) return;
     if (fuelUIOpen) return;
     const downedTarget = findNearDowned();
     if (downedTarget) { mp.events.callRemote('hospital:revive:attempt', downedTarget.remoteId); return; } // needs a medkit (server checks)
@@ -3193,7 +3393,13 @@ bindKey(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped ite
     const house = nearestHouseAction(mp.players.local);
     if (house) { mp.events.callRemote(house.event, house.id); return; }
     if (canTuneHere()) { mp.events.callRemote('cartuning:tryOpen'); return; } // E opens the tuning panel at a garage
-    if (atGangBase()) { mp.events.callRemote('gangs:openPanel'); return; } // E opens the gang base panel
+    if (inGangHouse) { mp.events.callRemote('gangs:openPanel'); return; } // E inside the HQ opens the panel
+    { const station = nearestGangStation(); if (station) {
+        if (station.kind === 'wardrobe') { mp.events.callRemote('gangs:wardrobe'); return; } // org duty-uniform locker (curated, free, non-tradeable)
+        pendingGangTab = station.kind === 'craft' ? 'craft' : 'stash'; // crafting table / armory storage
+        mp.events.callRemote('gangs:openPanel');
+        return;
+    } }
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
     const drop = findNearDrop();
     if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }
@@ -3224,6 +3430,7 @@ bindKey(0x1B, true, () => { // Esc closes chat input or an open modal
     else if (parkingBrowser) closeParkingUI();
     else if (parkEditing) parkEditConfirm = !parkEditConfirm; // Esc toggles the save/discard prompt
     else if (phoneBrowser) setPhone(false);
+    else if (gangWardrobeBrowser) closeGangWardrobe();
     else if (gangBrowser) closeGangPanel();
     else if (inventoryBrowser) closeInventoryUI();
     else if (vehicleMenuBrowser) closeVehicleMenu();
@@ -3233,28 +3440,20 @@ bindKey(0x1B, true, () => { // Esc closes chat input or an open modal
 mp.events.add('render', () => {
     if (shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || bankBrowser || fuelUIOpen || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser) return;
     const house = nearestHouseAction(mp.players.local);
-    if (house) {
-        mp.game.graphics.drawText(worldText('Press E  (' + house.prompt + ')'), [0.5, 0.86], {
-            font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
-        });
-        return;
-    }
+    if (house) { setInteract(house.prompt); return; } // CEF label (Georgian renders)
     if (mp.players.local.vehicle) return;
     const cityhall = nearestCityhallMode(mp.players.local.position);
-    if (cityhall) {
-        mp.game.graphics.drawText(worldText('Press E  (' + CITYHALL_MODES[cityhall].prompt + ')'), [0.5, 0.86], {
-            font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
-        });
-        return;
-    }
+    if (cityhall) { setInteract(CITYHALL_MODES[cityhall].prompt); return; }
     const mode = nearestShopMode(mp.players.local.position);
     if (!mode) return;
-    const label = mode === 'weapons' ? 'Ammu-Nation' : mode === 'clothing' ? 'Clothing Store' : mode === 'barber' ? 'Barber Shop' : mode === 'tattoo' ? 'Tattoo Salon' : mode === 'atm' ? 'ATM' : '24/7 Market';
-    const prompt = mode === 'atm' ? 'Press E for ATM' : 'Press E to shop  (' + label + ')';
-    mp.game.graphics.drawText(prompt, [0.5, 0.86], {
-        font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
-    });
+    const label = SHOP_LABELS[mode] || SHOP_LABELS.market;
+    setInteract(label);
 });
+// Georgian shop labels shown in the interaction layout.
+const SHOP_LABELS = {
+    weapons: 'Ammu-Nation', clothing: 'ტანსაცმლის მაღაზია', barber: 'დააჭირეთ სტილისტთან ვიზიტისთვის',
+    tattoo: 'ტატუს სალონი', atm: 'ბანკომატი', market: '24/7 მაღაზია'
+};
 // Weapons are equipped from the inventory (I), so GTA's own weapon wheel (TAB) and mouse-wheel
 // weapon cycling are disabled — on foot and in vehicles.
 const WEAPON_SWITCH_CONTROLS = [
@@ -3577,7 +3776,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || gangBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || gangBrowser || gangWardrobeBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -3887,8 +4086,9 @@ mp.events.add('render', () => {
     const length = Math.hypot(forward, strafe, vertical);
     if (length === 0) return;
 
-    // m/s: normal 60, Shift = fast 250, Alt = slow 10 for precise positioning.
-    const speed = mp.game.controls.isControlPressed(0, 21) ? 250 : (mp.game.controls.isControlPressed(0, 19) ? 10 : 60);
+    // m/s: normal 60, Shift = fast 150, Alt = slow 10 for precise positioning. (Fast was 250, lowered
+    // so the engine can stream collision as you pass through buildings — 250 outran it and crashed.)
+    const speed = mp.game.controls.isControlPressed(0, 21) ? 150 : (mp.game.controls.isControlPressed(0, 19) ? 10 : 60);
     const forwardX = -Math.sin(yaw) * Math.cos(pitch);
     const forwardY = Math.cos(yaw) * Math.cos(pitch);
     const forwardZ = Math.sin(pitch);
@@ -3896,11 +4096,21 @@ mp.events.add('render', () => {
     const rightY = Math.sin(yaw);
     const scale = speed * dt / length;
 
-    player.position = new mp.Vector3(
-        player.position.x + (forwardX * forward + rightX * strafe) * scale,
-        player.position.y + (forwardY * forward + rightY * strafe) * scale,
-        player.position.z + (forwardZ * forward + vertical) * scale
-    );
+    let dx = (forwardX * forward + rightX * strafe) * scale;
+    let dy = (forwardY * forward + rightY * strafe) * scale;
+    let dz = (forwardZ * forward + vertical) * scale;
+    // Clamp the per-frame jump: a frame hitch (big dt) at high speed would otherwise teleport the ped
+    // deep into/through geometry in one step, which crashes the collision/streaming system.
+    const MAX_STEP = 10; // metres per frame
+    const step = Math.hypot(dx, dy, dz);
+    if (step > MAX_STEP) { const k = MAX_STEP / step; dx *= k; dy *= k; dz *= k; }
+
+    const nx = player.position.x + dx, ny = player.position.y + dy, nz = player.position.z + dz;
+    if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)) return;
+    // Ask the engine to stream collision in at the destination so passing through buildings doesn't
+    // run the ped into unloaded geometry (the crash the user hit with invincible fly through a building).
+    try { mp.game.streaming.requestCollisionAtCoord(nx, ny, nz); } catch (e) {}
+    player.position = new mp.Vector3(nx, ny, nz);
 });
 
 let adminBrowser = null;
@@ -4377,3 +4587,39 @@ mp.events.add('render', () => {
         });
     });
 });
+
+// ===================== Player nametags =====================
+// Every nearby player shows their character name with their ID (#<id>) beneath it, above their head.
+// Georgian-safe via worldText() (GTA's drawText font has no Georgian glyphs). Hidden while in a
+// menu/chat, and skipped for admins who have ESP on (that view already labels players).
+const NAMETAG_RANGE = 22; // metres
+mp.events.add('render', () => {
+    const me = mp.players.local;
+    if (!me || chatting || anyModalOpen()) return;
+    if (me.getVariable('admin:esp') === true) return;
+    const self = me.position;
+    mp.players.forEachInStreamRange(p => {
+        if (!p || p === me) return;
+        let pos; try { pos = p.position; } catch (e) { return; }
+        const dx = pos.x - self.x, dy = pos.y - self.y, dz = pos.z - self.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist > NAMETAG_RANGE) return;
+        let screen = null;
+        try { screen = mp.game.graphics.world3dToScreen2d(pos.x, pos.y, pos.z + 1.1); } catch (e) {}
+        if (!screen) return;
+        const id = (p.remoteId != null ? p.remoteId : p.id);
+        let name = ''; try { name = p.getVariable('char:name') || ''; } catch (e) {}
+        if (!name) name = String(p.name || ('ID ' + id));
+        const scale = dist > 14 ? 0.32 : 0.4;
+        mp.game.graphics.drawText(worldText(name), [screen.x, screen.y], {
+            font: 4, color: [235, 235, 240, 220], outline: true, centre: true, scale: [scale, scale]
+        });
+        mp.game.graphics.drawText('#' + id, [screen.x, screen.y + 0.018], {
+            font: 4, color: [150, 200, 255, 210], outline: true, centre: true, scale: [scale * 0.8, scale * 0.8]
+        });
+    });
+});
+
+// Flush the interaction label ONCE per frame — registered last so it runs after every setInteract()
+// source above; pushes the highest-priority want to the HUD, or clears the label when nobody wants one.
+mp.events.add('render', flushInteract);

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package version="2.0" id="{F6D5A1DB-919B-4E2A-BDFB-925D973DAF74}" target="Five">
+<metadata>
+<name>Gerald </name>
+<version>
+<major>2</major>
+<minor>0</minor>
+<tag>Stable</tag>
+</version>
+<author>
+<displayName>Troublesome96</displayName>
+</author>
+<description><![CDATA[Adds my version of Gerald.]]></description>
+</metadata>
+<colors>
+<headerBackground useBlackTextColor="False">$FF004000</headerBackground>
+<iconBackground>$FF400040</iconBackground>
+</colors>
+<content>
+<archive path="update\x64\dlcpacks\mplowrider\dlc.rpf" createIfNotExist="True" type="RPF7">
+<archive path="\x64\models\cdimages\mplowrider.rpf" createIfNotExist="True" type="RPF7">
+<add source="0d768fdd-dfe5-4570-bbff-1d6a98977971\ig_g.ytd">\ig_g.ytd</add>
+</archive>
+<archive path="\x64\models\cdimages\mplowrider_p.rpf" createIfNotExist="True" type="RPF7">
+<add source="33468064-c1cc-47b0-89c1-62092250b4f8\ig_g_p.ytd">\ig_g_p.ytd</add>
+</archive>
+</archive>
+<archive path="x64e.rpf" createIfNotExist="True" type="RPF7">
+<archive path="\models\cdimages\componentpeds_csb.rpf" createIfNotExist="True" type="RPF7">
+<add source="fa677b5a-6bcc-4c47-a39e-f3aafd5c29d7\csb_g.ytd">\csb_g.ytd</add>
+</archive>
+<archive path="\models\cdimages\pedprops.rpf" createIfNotExist="True" type="RPF7">
+<add source="7611f5f7-8a10-41bd-b0a5-dd941b80fe29\csb_g_p.ytd">\csb_g_p.ytd</add>
+</archive>
+</archive>
+</content>
+</package>

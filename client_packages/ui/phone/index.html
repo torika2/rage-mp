@@ -37,6 +37,11 @@
   .app.contacts .ic { background: linear-gradient(160deg,#c98a2b,#9c6a1c); }
   .app.dial .ic { background: linear-gradient(160deg,#3aa76d,#26794e); }
   .app.car .ic { background: linear-gradient(160deg,#8f4fd0,#5f3494); }
+  .app.parking .ic { background: linear-gradient(160deg,#4a9ad0,#2b6a94); }
+  .item .mine { font-size: 10px; color: var(--green); font-weight: 700; }
+  .item .dist { color: var(--muted); font-size: 11px; }
+  .item .price { color: var(--gold); font-size: 12px; font-weight: 700; }
+  .icobtn.pin:hover { border-color: var(--blue); color: var(--blue); }
   /* App chrome */
   .back { background: none; border: 0; color: var(--blue); font-size: 13px; padding: 2px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
@@ -93,6 +98,7 @@
   const esc = (s) => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
   let state = { number: '—', cash: 0, bank: 0, contacts: [], car: { has: false } };
+  let parking = [];
   let app = 'home';
 
   el('home').onclick = () => { app = 'home'; render(); };
@@ -110,8 +116,13 @@
         '<button class="app dial" data-app="dial"><div class="ic">📞</div><span class="lbl">ზარი</span></button>' +
         '<button class="app contacts" data-app="contacts"><div class="ic">👥</div><span class="lbl">კონტაქტები</span></button>' +
         '<button class="app car" data-app="car"><div class="ic">🚗</div><span class="lbl">მანქანა</span></button>' +
+        '<button class="app parking" data-app="parking"><div class="ic">🅿️</div><span class="lbl">პარკინგი</span></button>' +
         '</div>';
-      v.querySelectorAll('[data-app]').forEach(b => b.onclick = () => { app = b.getAttribute('data-app'); render(); });
+      v.querySelectorAll('[data-app]').forEach(b => b.onclick = () => {
+        app = b.getAttribute('data-app');
+        if (app === 'parking') { parking = []; trigger('phone:ui:parkingRequest'); } // refresh distances each open
+        render();
+      });
       return;
     }
     if (app === 'bank') {
@@ -175,6 +186,26 @@
       }
       return;
     }
+    if (app === 'parking') {
+      // Nearest-first. Only free spots + your own are sent by the server.
+      const pin = parking.find(p => p.mine) || parking[0] || null;
+      let list = parking.length
+        ? '<div class="list">' + parking.map(p =>
+            '<div class="item"><div>' +
+              '<div class="nm">' + esc(p.id) + (p.mine ? ' <span class="mine">შენი</span>' : '') + '</div>' +
+              '<div class="dist">' + p.dist + ' მ · <span class="price">' + fmt(p.price) + '/დღე</span></div>' +
+            '</div><div class="sp"></div>' +
+            '<button class="icobtn pin" data-px="' + p.x + '" data-py="' + p.y + '">📍</button></div>').join('') + '</div>'
+        : '<div class="empty">თავისუფალი პარკინგი ვერ მოიძებნა</div>';
+      v.innerHTML =
+        '<button class="back" id="bk">‹ უკან</button><h2>პარკინგის ძებნა</h2>' +
+        (pin ? '<button class="btn" id="pinTop">📍 ' + (pin.mine ? 'ჩემი პარკინგი' : 'უახლოესი') + ' (' + pin.dist + ' მ)</button><div style="height:12px"></div>' : '') +
+        list;
+      el('bk').onclick = home;
+      if (pin) el('pinTop').onclick = () => trigger('phone:ui:parkingPin', pin.x, pin.y);
+      v.querySelectorAll('[data-px]').forEach(b => b.onclick = () => trigger('phone:ui:parkingPin', b.getAttribute('data-px'), b.getAttribute('data-py')));
+      return;
+    }
   }
   function home() { app = 'home'; render(); }
 
@@ -182,6 +213,11 @@
     state = data || state;
     el('myNum').textContent = '📱 ' + (state.number || '—');
     render();
+  };
+
+  window.setParkingList = function (list) {
+    parking = Array.isArray(list) ? list : [];
+    if (app === 'parking') render();
   };
 
   let callTimer = null;
@@ -214,7 +250,8 @@
 
   render();
   if (RAGE) mp.trigger('phone:ui:ready');
-  else window.setPhoneState({ number: '5551234', cash: 3200, bank: 15000, contacts: [{ name: 'Nika', number: '7654321' }], car: { has: true, locked: true, engine: false, x: 0, y: 0 } });
+  else { window.setPhoneState({ number: '5551234', cash: 3200, bank: 15000, contacts: [{ name: 'Nika', number: '7654321' }], car: { has: true, locked: true, engine: false, x: 0, y: 0 } });
+    window.setParkingList([{ id: 'Parking#1', price: 50, x: 10, y: 20, dist: 42, mine: true }, { id: 'Parking#3', price: 50, x: 30, y: 40, dist: 118, mine: false }]); }
 </script>
 </body>
 </html>

@@ -804,6 +804,18 @@ global.invTopArms = (player) => ({
 });
 // Re-apply the bare base + equipped clothing (e.g. after a Director-mode model change).
 global.invRestoreLook = (player) => restoreEquipped(player);
+// Apply a curated clothing look (e.g. a gang duty uniform): bare base, then each piece. `look` is
+// { catKey: { d, t } } using the clothing category keys. This is PURELY visual — it does not touch the
+// saved inventory clothing, so global.invRestoreLook(player) puts the player's real clothes back.
+global.invApplyClothingLook = (player, look) => {
+    if (!player || !look || typeof look !== 'object') return;
+    setNudeBase(player);
+    Object.keys(look).forEach((cat) => {
+        const piece = look[cat];
+        if (!piece) return;
+        applyCloth(player, cat, Math.max(0, Number(piece.d) || 0), Math.max(0, Number(piece.t) || 0));
+    });
+};
 global.invItemLabel = (id) => (ITEM_DEFS[id] && ITEM_DEFS[id].label) || id;
 global.invCapacity = (player) => ({ used: usedSlots(getInv(player)), max: MAX_SLOTS });
 

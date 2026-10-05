@@ -40,13 +40,17 @@ const SPOTS = [
     [-18.675, -1080.403, 26.672, -55.9],
     [-15.163, -1081.105, 26.672, -56.3],
     [-11.519, -1082.378, 26.672, -60.2],
+    [-8.519, -1084.646, 26.676, -63.1],
     [-10.773, -1090.039, 26.672, -10.9],
+    // [-13.470, -1094.987, 26.672, -82.5],
     [-12.698, -1098.376, 26.672, -83.3],
     [-13.827, -1101.992, 26.672, -83.5],
     [-14.736, -1105.060, 26.672, -81.5],
     [-15.705, -1108.313, 26.672, -82.5],
+    [-16.904, -1111.545, 26.672, -81.8],
+    [-17.599, -1115.496, 26.672, -84.4],
     [-51.458, -1080.361, 26.888, 68.8],
-    [-48.862, -1073.806, 26.783, 69.3], //31
+    [-48.862, -1073.806, 26.783, 69.3], //35
 ];
 // Catalog cars beyond the fixed spots go in this overflow grid in the outside lot.
 const OVERFLOW = { base: { x: -34.0, y: -1078.0, z: 26.70 }, heading: 340, cols: 6, stepRight: 4.2, stepBack: 6.0 };
@@ -80,13 +84,13 @@ const CATALOG = {
     rx7:          { model: 'fd',              label: 'Mazda RX-7 FD',        fullName: 'Mazda RX-7 FD3S',                     hp: 276,  speed: 250, tuning: 'Stage 1', price: 90000 },
     golfr:        { model: 'golf75r',         label: 'Golf R',               fullName: 'Volkswagen Golf R',                   hp: 316,  speed: 250, tuning: 'Stock',   price: 85000 },
     supra4:       { model: 'a80',             label: 'Supra MK4',            fullName: 'Toyota Supra MK4 (JZA80)',            hp: 326,  speed: 285, tuning: 'Stage 1', price: 110000 },
-    bmwe92:       { model: 'e92',             label: 'BMW M3 E92',           fullName: 'BMW M3 E92',                          hp: 414,  speed: 290, tuning: 'Stock',   price: 95000 },
-    rr14:         { model: 'rr14',            label: 'Rolls-Royce',          fullName: 'Rolls-Royce',                         hp: 453,  speed: 250, tuning: 'Stock',   price: 250000 },
     rrst:         { model: 'rrst',            label: 'RR ST',                fullName: 'RR ST',                               hp: 400,  speed: 260, tuning: 'Stock',   price: 120000 },
     skyline:      { model: 'skyline',         label: 'Nissan Skyline',       fullName: 'Nissan Skyline',                      hp: 330,  speed: 280, tuning: 'Stage 1', price: 120000 },
     wrx:          { model: 'subwrx',          label: 'Subaru WRX STI',       fullName: 'Subaru WRX STI',                      hp: 310,  speed: 255, tuning: 'Stock',   price: 80000 },
     supra90:      { model: 'supra19',         label: 'Supra A90',            fullName: 'Toyota Supra A90 (2019)',             hp: 340,  speed: 285, tuning: 'Stage 1', price: 115000 },
     g63:          { model: 'xg632019',        label: 'Mercedes G63',         fullName: 'Mercedes-AMG G63 2019',               hp: 577,  speed: 220, tuning: 'Stock',   price: 180000 },
+    contgt:       { model: 'contgt13',        label: 'Bentley Continental',  fullName: 'Bentley Continental GT 2013',         hp: 575,  speed: 290, tuning: 'Stock',   price: 175000 },
+    evo10:        { model: 'evo10',           label: 'Lancer Evo X',         fullName: 'Mitsubishi Lancer Evo X',             hp: 291,  speed: 250, tuning: 'Stage 1', price: 70000 },
 };
 
 function tell(player, message, ok) {
@@ -105,9 +109,8 @@ function atDealer(player) {
     return dx * dx + dy * dy <= AREA_RANGE * AREA_RANGE; // flat distance over the whole lot
 }
 
-// ---- marker + walk-in hint (no map blip — the Premium Deluxe/Simeon showroom icon is intentionally hidden) ----
+// ---- walk-in hint (no map blip, no ground marker — the showroom cars are the visual cue) ----
 try {
-    mp.markers.new(1, new mp.Vector3(DEALER.x, DEALER.y, DEALER.z - 1.0), 1.6, { color: [90, 200, 250, 120] });
     const zone = mp.colshapes.newSphere(DEALER.x, DEALER.y, DEALER.z, HINT_RANGE);
     zone.onEnter = (player) => { if (mp.players.exists(player)) tell(player, 'მანქანაში შესვლით ნახავთ მის დეტალებს, ან აკრიფეთ /buycar'); };
 } catch (e) { console.log('[carshop] setup failed: ' + e); }
@@ -129,28 +132,36 @@ function gridSpots(group, count) {
     return out;
 }
 const displayVehicles = [];
+const DISPLAY_SPAWN_DELAY_MS = 800; // stagger display-car spawns: streaming ~30 add-on models in one tick
+                                    // froze players near the showroom. One car per ~0.8s is well-spaced
+                                    // enough to avoid the hitch while filling the lot ~2x faster than 1.5s.
 function spawnDisplays() {
     const keys = Object.keys(CATALOG);
     const overflow = gridSpots(OVERFLOW, Math.max(0, keys.length - SPOTS.length));
     // Fill spots in key order 0,1,2… with no gaps: `spot` only advances when a car actually spawns,
     // so a model that fails to spawn doesn't leave an empty slot — the next car takes that spot.
-    let spot = 0;
-    for (const key of keys) {
+    let ki = 0;   // next catalog key
+    let spot = 0; // next free display spot (advances only on a successful spawn)
+    function spawnNext() {
+        if (ki >= keys.length) { console.log(`[carshop] ${displayVehicles.length} display cars spawned`); return; }
+        const key = keys[ki++];
         const s = spot < SPOTS.length
             ? { x: SPOTS[spot][0], y: SPOTS[spot][1], z: SPOTS[spot][2], h: SPOTS[spot][3] }
             : overflow[spot - SPOTS.length];
-        if (!s) break; // ran out of spots — stop spawning
+        if (!s) { console.log(`[carshop] ${displayVehicles.length} display cars spawned (out of spots)`); return; } // ran out of spots
         let v;
         try { v = mp.vehicles.new(mp.joaat(CATALOG[key].model) >>> 0, new mp.Vector3(s.x, s.y, s.z), { heading: s.h, dimension: 0, engine: false }); }
-        catch (e) { continue; } // model failed — leave the spot free for the next car
-        if (!v) continue;
-        v.setVariable('carshop:display', key); // tag so entering pops the buy card instead of driving
-        if (CATALOG[key].visual) { try { v.setVariable('veh:visual', CATALOG[key].visual); } catch (e) {} } // show the preset look
-        v.displaySpot = { x: s.x, y: s.y, z: s.z, h: s.h }; // server-authoritative anchor (see keepDisplaysParked)
-        displayVehicles.push(v);
-        spot++; // this spot is now taken
+        catch (e) { v = null; } // model failed — leave the spot free for the next car
+        if (v) {
+            v.setVariable('carshop:display', key); // tag so entering pops the buy card instead of driving
+            if (CATALOG[key].visual) { try { v.setVariable('veh:visual', CATALOG[key].visual); } catch (e) {} } // show the preset look
+            v.displaySpot = { x: s.x, y: s.y, z: s.z, h: s.h }; // server-authoritative anchor (see keepDisplaysParked)
+            displayVehicles.push(v);
+            spot++; // this spot is now taken
+        }
+        setTimeout(spawnNext, DISPLAY_SPAWN_DELAY_MS);
     }
-    console.log(`[carshop] ${displayVehicles.length} display cars spawned`);
+    spawnNext();
 }
 spawnDisplays();
 
@@ -240,6 +251,7 @@ function saveActiveToDb(player) {
         fuel: typeof fuel === 'number' ? fuel : 100, km: Number(km) || 0, octane,
     }).catch(() => {});
 }
+global.vehSaveActiveToDb = saveActiveToDb;
 
 // Spawn an owned DB row as the player's active car (preserving its fuel), via the existing system.
 function spawnOwnedCar(player, row, spawnPoint) {

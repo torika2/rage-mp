@@ -23,6 +23,26 @@
     padding: 8px 16px; color: var(--accent); font-weight: 800; font-size: 17px;
     letter-spacing: .3px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
   }
+  #identity {
+    position: absolute; top: 60px; right: 22px; text-align: right;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 9px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); line-height: 1.25;
+  }
+  #identity .nm { color: var(--text); font-weight: 800; font-size: 15px; letter-spacing: .2px; }
+  #identity .rid { color: var(--muted); font-weight: 700; font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  /* Reusable interaction label — centered near the bottom, Georgian-readable (web font). */
+  #interact {
+    position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%);
+    display: none; align-items: center; gap: 10px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 9px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  }
+  #interact .key {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px;
+    padding: 0 6px; border-radius: 6px; background: rgba(255,255,255,.14);
+    border: 1px solid var(--border); color: var(--text); font-weight: 800; font-size: 13px;
+  }
+  #interact .lbl { color: var(--text); font-weight: 700; font-size: 14px; white-space: nowrap; }
 
   /* Speedometer — circular, bottom right */
   #speedo {
@@ -323,6 +343,8 @@
 <div id="earn"><span class="amt">+$0</span><span class="lbl"></span></div>
 <div id="tags"></div>
   <div id="money">$0</div>
+  <div id="identity" style="display:none"><div class="nm">—</div><div class="rid"></div></div>
+  <div id="interact"><span class="key">E</span><span class="lbl"></span></div>
 
   <div id="stats">
     <div class="stat" id="stHealth" title="სიცოცხლე"><span class="ico">❤️</span><div class="track"><div class="fill"></div></div><span class="val">100</span></div>
@@ -409,6 +431,25 @@
   <div id="voice"></div>
 
 <script>
+  // Character identity (top-left): window.hudIdentity({ name, residentId, charId }).
+  window.hudIdentity = function (d) {
+    var box = document.getElementById('identity');
+    if (!d || !d.name) { box.style.display = 'none'; return; }
+    box.querySelector('.nm').textContent = d.name;
+    // Show the database id (characters.id); fall back to the resident number only if id is missing.
+    box.querySelector('.rid').textContent = (d.charId != null) ? ('ID: ' + d.charId) : (d.residentId ? ('ID: ' + d.residentId) : '');
+    box.style.display = 'block';
+  };
+
+  // Reusable interaction label: window.hudPrompt('საცავი','E') shows "[E] საცავი", window.hudPrompt(null) hides.
+  window.hudPrompt = function (text, key) {
+    var box = document.getElementById('interact');
+    if (!text) { box.style.display = 'none'; return; }
+    box.querySelector('.key').textContent = key || 'E';
+    box.querySelector('.lbl').textContent = text;
+    box.style.display = 'flex';
+  };
+
   // Ammo chip: window.hudAmmo({ clip, reserve }) shows it, window.hudAmmo(null) hides it.
   window.hudAmmo = function (a) {
     const el = document.getElementById('ammo');

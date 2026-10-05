@@ -98,7 +98,7 @@ global.vehApplyTuning = function (veh, dbId, levels) {
 // Each change is paid. Config shape: { colors:{primary,secondary,pearl,wheel}, windowTint, wheelType,
 // mods:{ "<modType>": index } } — index -1 = stock.
 const VISUAL_PRICES = {
-    primary: 2000, secondary: 2000, pearl: 2500, wheel: 1500,
+    primary: 2000, secondary: 2000, pearl: 2500, wheel: 1500, livery: 2000,
     windowTint: 1500, wheelType: 4000,
     'mod:0': 3000,  // spoiler
     'mod:1': 3500,  // front bumper
@@ -138,6 +138,8 @@ function applyCategoryToCfg(cfg, category, rawValue) {
         cfg.colors[category] = clampInt(value, 0, 159);
         if (category === 'primary' && cfg.colors.secondary === undefined) cfg.colors.secondary = cfg.colors.primary;
         if (category === 'secondary' && cfg.colors.primary === undefined) cfg.colors.primary = cfg.colors.secondary;
+    } else if (category === 'livery') {
+        cfg.livery = clampInt(value, -1, 64); // -1 = none; client bounds it by the real livery count
     } else if (category === 'windowTint') {
         cfg.windowTint = clampInt(value, 0, 6);
     } else if (category === 'wheelType') {
@@ -249,11 +251,31 @@ try {
     });
 } catch (e) { console.log('[cartuning] setup failed: ' + e); }
 
+// Make sure this car's saved tuning/visual is loaded into memory (and applied to the car) before we show
+// the panel. The in-memory caches are lost on a server restart and some spawn paths don't restore them,
+// which made /tune show a fully-upgraded car as stock (0/5). Pull the row from the DB and re-apply.
+async function hydrateFromDb(player) {
+    const dbId = Number(player.activeVehId);
+    if (!dbId || !player.character || !global.api) return;
+    if (levelsByDbId.has(dbId) && visualByDbId.has(dbId)) return; // already in memory
+    let row = null;
+    try {
+        const list = await global.api.loadVehicles(player.character.id);
+        row = (Array.isArray(list) ? list : []).find((v) => Number(v.id) === dbId) || null;
+    } catch (e) { return; }
+    if (!row) return;
+    const veh = player.vehicle;
+    if (!levelsByDbId.has(dbId) && global.vehApplyTuning) global.vehApplyTuning(veh, dbId, row.tuning); // fills cache + veh:tune
+    if (!visualByDbId.has(dbId) && global.vehApplyVisual) global.vehApplyVisual(veh, dbId, row.visual); // fills cache + veh:visual
+}
+
 // ---- events ----
 // CEF asks for data once it's open; also used to refresh after a purchase.
-mp.events.add('cartuning:request', (player) => {
+mp.events.add('cartuning:request', async (player) => {
     const veh = tunableCar(player);
     if (!veh) { player.call('cartuning:denied'); return; }
+    await hydrateFromDb(player);
+    if (!mp.players.exists(player)) return;
     player.call('cartuning:data', [JSON.stringify(buildData(player))]);
 });
 

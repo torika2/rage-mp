@@ -1,44 +1,39 @@
-// ===================== Parking: rentable assigned spots =====================
-// Players rent a specific numbered parking spot (upfront, for N days). While the rental is active
-// they can /park their own car there (stored & despawned) and /unpark to get it back. When the rent
-// lapses the spot is freed for others and any stored car is impounded (retrieve with /impound for a
-// fee). Rentals + stored/impounded cars persist to parking.json across restarts.
+// ===================== Parking: rentable personal spots =====================
+// Players rent a specific numbered parking spot (upfront, for N days). While the rental is active the
+// spot is their private garage point: they can spawn any car they own there for FREE, and if a car is
+// already out in the world they can RECALL it (teleport it to the spot) for a fee. Nothing is stored
+// on the spot — the canonical fleet is the MySQL vehicles table (what /mycars lists). Rentals persist
+// to parking.json across restarts.
 //
-// Money API: global.getMoney/setMoney (economy). Car handoff: global.vehForget / global.vehAdopt
-// (vehicles). Nearby RP lines: global.chatLocalAction (chat).
+// Money API: global.getMoney/setMoney (economy). Owned-car spawn: global.carshopSpawnOwnedCar
+// (carshop). Car persistence: global.vehPersist (vehicles). Nearby RP lines: global.chatLocalAction.
 
 const fs = require('fs');
 const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'parking.json');
 const DAY_MS = 24 * 60 * 60 * 1000;
-const SPOT_RANGE = 4.5;          // metres you must be within to rent / park / unpark
+const SPOT_RANGE = 4.5;          // metres you must be within to rent / spawn / recall
 const MAX_RENT_DAYS = 30;
-const MAX_SLOTS = 5;       // most car-slots a single spot can be rented with
-const IMPOUND_FEE = 250;
-const SUMMON_FEE = 100;    // bring your personal car to a spot without having parked it
+const RECALL_FEE = 1000;         // bring a car that is already out in the world to your spot
 
 // ---- Config: parking lots and their spots. Add your own here — grab coords in-game with /pos. ----
-// Each spot: id, x/y/z (ground level), h (heading a parked car faces), price (per day).
-// No fixed lots — the C1–C5 legion lot was removed. Parking spots are now admin-placed
-// (stored in parking.json customSpots). Add a fixed lot back here if ever needed.
+// Each spot: id, x/y/z (ground level), h (heading a spawned car faces), price (per day).
+// No fixed lots — parking spots are now admin-placed (stored in parking.json customSpots).
 const LOTS = [];
-// Impounded cars are released at the old legion location.
-const IMPOUND_POINT = { x: 266.0, y: -1261.0, z: 29.3, h: 0 };
 
 // ---- Persistence ----
-// spots: spotId -> rental; impound: key -> [carData...]; customSpots: admin-placed spot definitions.
-let store = { spots: {}, impound: {}, customSpots: [] };
+// spots: spotId -> rental { owner, ownerName, expiresAt }; customSpots: admin-placed spot definitions.
+let store = { spots: {}, customSpots: [] };
 try {
     const loaded = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    if (loaded && typeof loaded === 'object') store = { spots: loaded.spots || {}, impound: loaded.impound || {}, customSpots: loaded.customSpots || [] };
-} catch (e) { store = { spots: {}, impound: {}, customSpots: [] }; }
-// Migrate old single-car rentals (r.car) to the multi-car model (r.cars[] + r.slots capacity).
+    if (loaded && typeof loaded === 'object') store = { spots: loaded.spots || {}, customSpots: loaded.customSpots || [] };
+} catch (e) { store = { spots: {}, customSpots: [] }; }
+// Storage was removed: drop any legacy stored-car blobs / slot capacities left on rentals. The cars
+// still exist as DB rows (parking only ever despawned them), so they stay respawnable for free.
 Object.keys(store.spots).forEach(id => {
     const r = store.spots[id];
-    if (!Array.isArray(r.cars)) r.cars = r.car ? [r.car] : [];
-    delete r.car;
-    if (!r.slots) r.slots = Math.max(1, r.cars.length);
+    delete r.cars; delete r.car; delete r.slots;
 });
 function save() {
     const temporaryFile = DATA_FILE + '.tmp';
@@ -88,28 +83,6 @@ function playerActiveSpot(player) {
     }
     return null;
 }
-// How many cars the player owns: the canonical fleet is the MySQL vehicles table (what /mycars lists,
-// via global.api). Parking capacity is auto-set to this so the player's whole fleet fits. Falls back
-// to a local estimate (active car + stored + impounded) if the API/character isn't available.
-async function ownedCarCount(player) {
-    try {
-        if (global.api && player.character && player.character.id) {
-            const list = await global.api.loadVehicles(player.character.id);
-            if (Array.isArray(list)) return list.length;
-        }
-    } catch (e) {}
-    let count = 0;
-    if (player.myCar && mp.vehicles.exists(player.myCar)) count++;
-    const mine = playerActiveSpot(player);
-    if (mine) count += mine.rental.cars.length;
-    count += (store.impound[keyOf(player)] || []).length;
-    return count;
-}
-// Capacity the player would get on a fresh rental: their owned-car count, at least 1, capped at MAX_SLOTS.
-async function autoSlotsFor(player, knownCount) {
-    const count = Number.isInteger(knownCount) ? knownCount : await ownedCarCount(player);
-    return Math.max(1, Math.min(MAX_SLOTS, count));
-}
 function timeLeftLabel(expiresAt) {
     const ms = expiresAt - Date.now();
     if (ms <= 0) return 'ვადაგასული';
@@ -119,24 +92,43 @@ function timeLeftLabel(expiresAt) {
     return Math.max(1, Math.floor(ms / 60000)) + ' წთ';
 }
 
-// ---- Blips + ground markers (server-side, visible to everyone) ----
-// Map blip per spot (the car-footprint area itself is drawn client-side — see client_packages).
-const spotVisuals = new Map(); // spotId -> { blip }
-function createSpotVisuals(lot, spot) {
-    let blip = null;
+// Phone "parking finder" data: the player's OWN rented spot (if any) plus every FREE spot, each with
+// its daily price and straight-line distance, sorted nearest-first. Spots taken by others are hidden.
+// The UI pins the player's own spot, or the nearest free one if they don't rent any.
+global.parkingPhoneData = function (player) {
+    if (!player || !mp.players.exists(player)) return [];
+    const key = keyOf(player), pos = player.position;
+    const list = [];
+    for (const { spot } of allSpots()) {
+        const rental = activeRental(spot.id);
+        const mine = !!(rental && rental.owner === key);
+        if (rental && !mine) continue; // taken by someone else — hide
+        const dx = spot.x - pos.x, dy = spot.y - pos.y;
+        list.push({
+            id: spot.id, price: spot.price, x: round3(spot.x), y: round3(spot.y),
+            dist: Math.round(Math.sqrt(dx * dx + dy * dy)), mine
+        });
+    }
+    list.sort((a, b) => a.dist - b.dist);
+    return list;
+};
+
+// ---- Map blips: one garage icon per big parking lot (visible to everyone) ----
+// Individual spots intentionally have NO map symbol — their car-footprint areas are drawn client-side.
+// Only these labelled garage markers show on the map. Add a lot here to give it a map marker.
+const GARAGE_BLIPS = [
+    { x: 233.936, y: -781.141, z: 30.681, sprite: 50, color: 3, name: 'დიდი პარკინგი' },
+    { x: 419.115, y: -1332.447, z: 31.053, sprite: 50, color: 3, name: 'დიდი პარკინგი' },
+];
+GARAGE_BLIPS.forEach(b => {
     try {
-        blip = mp.blips.new((lot.blip && lot.blip.sprite) || 50, new mp.Vector3(spot.x, spot.y, spot.z),
-            { name: spot.id, color: (lot.blip && lot.blip.color) || 3, scale: 0.7, shortRange: true });
+        mp.blips.new(b.sprite, new mp.Vector3(b.x, b.y, b.z),
+            { name: b.name, color: b.color, scale: 0.9, shortRange: false });
     } catch (e) {}
-    spotVisuals.set(spot.id, { blip });
-}
-function removeSpotVisuals(spotId) {
-    const v = spotVisuals.get(spotId);
-    if (!v) return;
-    try { if (v.blip && v.blip.destroy) v.blip.destroy(); } catch (e) {}
-    spotVisuals.delete(spotId);
-}
-allSpots().forEach(({ lot, spot }) => createSpotVisuals(lot, spot));
+});
+// Per-spot blips were removed; these stay as no-ops so the add/edit/remove spot paths stay simple.
+function createSpotVisuals() {}
+function removeSpotVisuals() {}
 
 // ---- Push spot geometry + live free/rented status to clients so they can draw the footprints ----
 const DEFAULT_W = 2.6, DEFAULT_L = 5.2; // car-sized footprint in metres
@@ -160,11 +152,8 @@ mp.events.add('playerReady', (player) => {
         try { player.call('parking:admin', [!!(global.isProtectedAdmin && global.isProtectedAdmin(player))]); } catch (e) {}
     }, 3000);
 });
-mp.events.add('playerEnterVehicle', (player, vehicle, seat) => { player.parkingVehicleSeat = seat; });
-mp.events.add('playerExitVehicle', (player) => { player.parkingVehicleSeat = null; });
 
 // ---- Detail for the CEF UI: the requesting player's context for one spot ----
-function carLabel(car, i) { return car.plate ? String(car.plate).trim() : ('მანქანა ' + (i + 1)); }
 async function ownedVehiclesFor(player) {
     if (!player.character || !player.character.id || !global.api || typeof global.api.loadVehicles !== 'function') {
         throw new Error('character vehicle API is unavailable');
@@ -173,75 +162,65 @@ async function ownedVehiclesFor(player) {
     if (!Array.isArray(rows)) throw new Error('character vehicle API returned an invalid list');
     return rows;
 }
-function storedOwnedCarStatus(player, row) {
-    const owner = keyOf(player), id = String(row.id), model = Number(row.model);
+// How many cars the player owns (min 1) — the rent/renew price multiplier. Falls back to 1 if the API
+// is unavailable so renting never hard-fails.
+async function ownedCarCount(player) {
+    try { return Math.max(1, (await ownedVehiclesFor(player)).length); }
+    catch (e) { return 1; }
+}
+// Is this owned row currently sitting in a house garage? (Those can't be spawned from parking.)
+function isInGarage(player, row) {
     const garageCar = typeof global.vehGarageCar === 'function' ? global.vehGarageCar(player) : null;
-    if (garageCar && ((garageCar.dbId !== null && String(garageCar.dbId) === id) || (!garageCar.dbId && Number(garageCar.model) === model))) {
-        return 'garage';
-    }
-    let status = null;
-    const inspect = (car, storedStatus) => {
-        if (car && car.dbId !== undefined && car.dbId !== null && String(car.dbId) === id) status = storedStatus;
-        else if (car && (car.dbId === undefined || car.dbId === null) && Number(car.model) === model && !status) status = 'stored';
-    };
-    Object.keys(store.spots).forEach(spotId => {
-        const rental = store.spots[spotId];
-        if (rental && rental.owner === owner && Array.isArray(rental.cars)) rental.cars.forEach(car => inspect(car, 'parked'));
-    });
-    (store.impound[owner] || []).forEach(car => inspect(car, 'impound'));
-    return status;
+    if (!garageCar) return false;
+    const id = String(row.id), model = Number(row.model);
+    return (garageCar.dbId !== null && garageCar.dbId !== undefined && String(garageCar.dbId) === id)
+        || ((garageCar.dbId === null || garageCar.dbId === undefined) && Number(garageCar.model) === model);
 }
 async function uiDataFor(player, spotId) {
     const found = findSpot(spotId);
     if (!found) return null;
     const spot = found.spot;
     const rental = activeRental(spot.id);
-    const mine = playerActiveSpot(player);
-    const isMine = rental && rental.owner === keyOf(player);
-    const impCount = (store.impound[keyOf(player)] || []).length;
+    const isMine = !!(rental && rental.owner === keyOf(player));
+    const hasActiveCar = !!(player.myCar && mp.vehicles.exists(player.myCar));
+    // Is the active car physically on this spot? (If so it can be SAVED here for free instead of recalled.)
+    const activeOnSpot = hasActiveCar && dist2(player.myCar.position, spot) <= SPOT_RANGE * SPOT_RANGE;
+
     let ownedRows = [], ownedCarsError = false;
     try { ownedRows = await ownedVehiclesFor(player); }
     catch (e) {
         ownedCarsError = true;
         console.log(`[parking] could not load vehicles for ${player.name}: ${e && e.message}`);
     }
-    const hasCurrentCar = !!(player.myCar && mp.vehicles.exists(player.myCar));
+    const carCount = Math.max(1, ownedRows.length); // rent/renew price scales with fleet size
     return {
         id: spot.id,
         price: spot.price,
+        carCount,
         maxDays: MAX_RENT_DAYS,
-        maxSlots: MAX_SLOTS,
         status: !rental ? 'free' : (isMine ? 'mine' : 'taken'),
         ownerName: rental ? rental.ownerName : null,
         timeLeft: isMine ? timeLeftLabel(rental.expiresAt) : null,
-        slots: isMine ? rental.slots : 0,
-        autoSlots: await autoSlotsFor(player, ownedCarsError ? undefined : ownedRows.length), // capacity a fresh rental here would get (= cars owned)
-        cars: isMine ? rental.cars.map((c, i) => ({ i, label: carLabel(c, i), fuel: Math.round(c.fuel) })) : [],
-        inVehicle: !!(player.vehicle && mp.vehicles.exists(player.vehicle)),
-        hasAnotherSpot: !!(mine && mine.spotId !== spot.id),
-        hasPersonalCar: hasCurrentCar,
-        hasCurrentCar,
+        recallFee: RECALL_FEE,
+        activeOnSpot,
+        money: global.getMoney ? global.getMoney(player) : 0,
+        isAdmin: !!(global.isProtectedAdmin && global.isProtectedAdmin(player)),
+        editable: found.lot === CUSTOM_LOT, // only admin-placed spots can be geometry-edited
         ownedCarsError,
         ownedCars: ownedRows.map(row => {
             const label = typeof global.carshopLabelOf === 'function'
                 ? global.carshopLabelOf(row.modelName)
                 : (row.modelName || 'მანქანა');
-            const storedStatus = storedOwnedCarStatus(player, row);
-            const isActive = hasCurrentCar && String(player.activeVehId) === String(row.id);
+            const isActive = hasActiveCar && String(player.activeVehId) === String(row.id);
+            const status = isActive ? 'active' : (isInGarage(player, row) ? 'garage' : 'available');
             return {
                 id: String(row.id),
                 label: String(label),
                 plate: row.plate ? String(row.plate) : '',
                 fuel: Math.round(Number(row.fuel) || 0),
-                status: storedStatus || (isActive ? 'active' : (hasCurrentCar ? 'current' : 'available'))
+                status
             };
         }),
-        impoundCount: impCount,
-        summonFee: SUMMON_FEE,
-        impoundFee: IMPOUND_FEE,
-        money: global.getMoney ? global.getMoney(player) : 0,
-        isAdmin: !!(global.isProtectedAdmin && global.isProtectedAdmin(player)),
-        editable: found.lot === CUSTOM_LOT // only admin-placed spots can be geometry-edited
     };
 }
 async function sendUiData(player, spotId, message, ok) {
@@ -251,141 +230,48 @@ async function sendUiData(player, spotId, message, ok) {
     try { player.call('parking:ui:data', [JSON.stringify(data)]); } catch (e) {}
 }
 
-// Free a rental: impound any cars still stored on it (so they're never lost), then release the spot.
-// Returns how many cars were impounded. Used by the auto-swap on re-rent and the expiry sweeper.
-function releaseRental(spotId) {
-    const rental = store.spots[spotId];
-    if (!rental) return 0;
-    const cars = Array.isArray(rental.cars) ? rental.cars : (rental.car ? [rental.car] : []);
-    if (cars.length) {
-        if (!store.impound[rental.owner]) store.impound[rental.owner] = [];
-        cars.forEach(car => store.impound[rental.owner].push(Object.assign({}, car, { from: spotId, at: Date.now() })));
-    }
-    delete store.spots[spotId];
-    return cars.length;
-}
-
 // ---- Shared actions (used by both /commands and the CEF UI). Each returns { ok, msg }. ----
-// One rental per player: renting a new spot auto-releases the player's previous one. Cars stored on
-// the old spot are carried over into the new rental (up to its capacity; any overflow is impounded
-// so nothing is lost). This replaces the old "you already have a spot" rejection.
-async function doRent(player, found, days, slots) {
+// One rental per player: renting a new spot auto-releases the player's previous one.
+// Price scales with the player's fleet size: price × car_quantity × days.
+async function doRent(player, found, days) {
     if (!found) return { ok: false, msg: 'დადექი პარკინგის ადგილზე.' };
     if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'დადექი პარკინგის ადგილზე.' };
     const existing = activeRental(found.spot.id);
     if (existing) return { ok: false, msg: existing.owner === keyOf(player) ? 'ეს ადგილი უკვე შენია (გამოიყენე გაგრძელება).' : 'ეს ადგილი დაკავებულია.' };
     days = parseInt(days, 10); if (!Number.isInteger(days) || days < 1) days = 1; if (days > MAX_RENT_DAYS) days = MAX_RENT_DAYS;
-    // Capacity is automatic: it equals how many cars the player owns (min 1), so all of them fit.
-    // The `slots` argument from the UI/command is intentionally ignored.
-    slots = await autoSlotsFor(player);
+    const qty = await ownedCarCount(player);
     if (!mp.players.exists(player)) return { ok: false, msg: 'მოთამაშე აღარ არის დაკავშირებული.' };
-    if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'დადექი პარკინგის ადგილზე.' };
+    const cost = found.spot.price * qty * days;
+    if (global.getMoney(player) < cost) return { ok: false, msg: `არასაკმარისი თანხა — საჭიროა $${cost}.` };
+    // Re-check the spot wasn't taken while we awaited the car count.
     const occupiedAfterLoad = activeRental(found.spot.id);
     if (occupiedAfterLoad) return { ok: false, msg: occupiedAfterLoad.owner === keyOf(player) ? 'ეს ადგილი უკვე შენია (გამოიყენე გაგრძელება).' : 'ეს ადგილი დაკავებულია.' };
-    const cost = found.spot.price * slots * days;
-    if (global.getMoney(player) < cost) return { ok: false, msg: `არასაკმარისი თანხა — საჭიროა $${cost}.` };
     const previous = playerActiveSpot(player); // the one-and-only spot we'll auto-free on success
     global.setMoney(player, global.getMoney(player) - cost);
-    let carriedCars = [], freedNote = '';
+    let freedNote = '';
     if (previous && previous.spotId !== found.spot.id) {
-        const oldCars = Array.isArray(previous.rental.cars) ? previous.rental.cars.slice() : [];
-        carriedCars = oldCars.slice(0, slots);             // move what fits into the new spot
-        const overflow = oldCars.slice(slots);             // the rest can't fit — impound it
-        if (overflow.length) {
-            const key = keyOf(player);
-            if (!store.impound[key]) store.impound[key] = [];
-            overflow.forEach(car => store.impound[key].push(Object.assign({}, car, { from: previous.spotId, at: Date.now() })));
-        }
         delete store.spots[previous.spotId];
-        freedNote = ` წინა ადგილი ${previous.spotId} გათავისუფლდა`;
-        if (carriedCars.length) freedNote += `, ${carriedCars.length} მანქანა გადმოვიდა`;
-        if (overflow.length) freedNote += ` (${overflow.length} ვერ დაეტია — დაყადაღდა, /impound)`;
-        freedNote += '.';
+        freedNote = ` წინა ადგილი ${previous.spotId} გათავისუფლდა.`;
     }
-    store.spots[found.spot.id] = { owner: keyOf(player), ownerName: player.name, expiresAt: Date.now() + days * DAY_MS, slots, cars: carriedCars };
+    store.spots[found.spot.id] = { owner: keyOf(player), ownerName: player.name, expiresAt: Date.now() + days * DAY_MS };
     save(); broadcastSpots();
-    return { ok: true, msg: `იქირავე ${found.spot.id} — ${slots} ადგილი, ${days} დღით — $${cost}.${freedNote}` };
+    return { ok: true, msg: `იქირავე ${found.spot.id} — ${qty} მანქ. × ${days} დღით — $${cost}.${freedNote}` };
 }
-function doRenew(player, days) {
+async function doRenew(player, days) {
     const mine = playerActiveSpot(player);
     if (!mine) return { ok: false, msg: 'ნაქირავები ადგილი არ გაქვს.' };
     const spotDef = findSpot(mine.spotId);
     if (!spotDef || dist2(player.position, spotDef.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი შენს პარკინგის ადგილთან.' };
     days = parseInt(days, 10); if (!Number.isInteger(days) || days < 1) days = 1; if (days > MAX_RENT_DAYS) days = MAX_RENT_DAYS;
-    const cost = spotDef.spot.price * mine.rental.slots * days;
+    const qty = await ownedCarCount(player);
+    if (!mp.players.exists(player)) return { ok: false, msg: 'მოთამაშე აღარ არის დაკავშირებული.' };
+    const cost = spotDef.spot.price * qty * days;
     if (global.getMoney(player) < cost) return { ok: false, msg: `არასაკმარისი თანხა — საჭიროა $${cost}.` };
     global.setMoney(player, global.getMoney(player) - cost);
     mine.rental.expiresAt += days * DAY_MS; save(); broadcastSpots();
-    return { ok: true, msg: `გააგრძელე ${mine.spotId} +${days} დღით — $${cost}. დარჩა ${timeLeftLabel(mine.rental.expiresAt)}.` };
+    return { ok: true, msg: `გააგრძელე ${mine.spotId} +${days} დღით (${qty} მანქ.) — $${cost}. დარჩა ${timeLeftLabel(mine.rental.expiresAt)}.` };
 }
-function doPark(player) {
-    const mine = playerActiveSpot(player);
-    if (!mine) return { ok: false, msg: 'ჯერ იქირავე ადგილი.' };
-    if (mine.rental.cars.length >= mine.rental.slots) return { ok: false, msg: `ადგილი სავსეა (${mine.rental.cars.length}/${mine.rental.slots}).` };
-    const vehicle = player.vehicle;
-    if (!vehicle || !mp.vehicles.exists(vehicle)) return { ok: false, msg: 'უნდა იჯდე მანქანაში.' };
-    if (!player.myCar || Number(player.myCar.id) !== Number(vehicle.id)) return { ok: false, msg: 'მხოლოდ საკუთარ მანქანას აჩერებ.' };
-    if (player.parkingVehicleSeat !== 0) return { ok: false, msg: 'მანქანა მხოლოდ მძღოლის ადგილიდან შეგიძლია დააყენო.' };
-    const spotDef = findSpot(mine.spotId);
-    if (dist2(vehicle.position, spotDef.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: `მიიყვანე მანქანა ${mine.spotId}-ზე.` };
-    const fuelVar = vehicle.getVariable('veh:fuel');
-    mine.rental.cars.push({
-        model: vehicle.model, plate: vehicle.numberPlate || null,
-        fuel: (typeof fuelVar === 'number') ? fuelVar : 100,
-        dbId: player.activeVehId || null
-    });
-    save();
-    if (global.vehForget) global.vehForget(player);
-    try { vehicle.destroy(); } catch (e) {}
-    player.myCar = null;
-    player.activeVehId = null;
-    if (global.chatLocalAction) global.chatLocalAction(player, 'აყენებს მანქანას პარკინგზე');
-    return { ok: true, msg: `მანქანა დააყენე — ${mine.rental.cars.length}/${mine.rental.slots} ადგილზე ${mine.spotId}.` };
-}
-function spawnCarAt(player, car, spot) {
-    if (spotIsOccupied(spot)) return null;
-    let vehicle;
-    try {
-        vehicle = mp.vehicles.new(car.model, new mp.Vector3(spot.x, spot.y, spot.z), { heading: spot.h || 0, dimension: 0, numberPlate: car.plate || undefined });
-    } catch (e) { return null; }
-    if (!vehicle) return null;
-    if (global.vehAdopt) global.vehAdopt(player, vehicle, car.modelName || null, car.fuel, car.dbId); else player.myCar = vehicle;
-    player.activeVehId = car.dbId || null;
-    if (player.activeVehId && global.vehApplyTuning) global.vehApplyTuning(vehicle, player.activeVehId, car.tuning);
-    if (player.activeVehId && global.vehApplyVisual) global.vehApplyVisual(vehicle, player.activeVehId, car.visual);
-    return vehicle;
-}
-function doUnpark(player, index) {
-    const mine = playerActiveSpot(player);
-    if (!mine) return { ok: false, msg: 'ნაქირავები ადგილი არ გაქვს.' };
-    const cars = mine.rental.cars;
-    index = parseInt(index, 10); if (!Number.isInteger(index) || index < 0) index = 0;
-    if (!cars.length) return { ok: false, msg: 'ამ ადგილზე მანქანა არ დგას.' };
-    if (index >= cars.length) index = 0;
-    const spotDef = findSpot(mine.spotId);
-    if (dist2(player.position, spotDef.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი შენს ადგილთან.' };
-    if (player.myCar && mp.vehicles.exists(player.myCar)) return { ok: false, msg: 'ჯერ მოიშორე მიმდინარე მანქანა.' };
-    const car = cars[index];
-    if (!spawnCarAt(player, car, spotDef.spot)) return { ok: false, msg: 'მანქანის აღდგენა ვერ მოხერხდა.' };
-    cars.splice(index, 1); save(); broadcastSpots();
-    if (global.chatLocalAction) global.chatLocalAction(player, 'იღებს მანქანას პარკინგიდან');
-    return { ok: true, msg: `გამოიყვანე მანქანა (საწვავი: ${Math.round(car.fuel)}%).` };
-}
-// Pay to bring your personal car to this spot even if you never parked it here.
-function doSummon(player, spotId) {
-    const found = findSpot(spotId);
-    if (!found) return { ok: false, msg: 'უცნობი ადგილი.' };
-    if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი პარკინგის ადგილთან.' };
-    if (!player.myCar || !mp.vehicles.exists(player.myCar)) return { ok: false, msg: 'შენი მანქანა ვერ მოიძებნა (გამოიძახე /car-ით).' };
-    if (global.getMoney(player) < SUMMON_FEE) return { ok: false, msg: `საჭიროა $${SUMMON_FEE}.` };
-    global.setMoney(player, global.getMoney(player) - SUMMON_FEE);
-    try {
-        player.myCar.position = new mp.Vector3(found.spot.x, found.spot.y, found.spot.z);
-        player.myCar.rotation = new mp.Vector3(0, 0, found.spot.h || 0);
-        if (global.vehPersist) global.vehPersist(player);
-    } catch (e) { return { ok: false, msg: 'გადმოტანა ვერ მოხერხდა.' }; }
-    return { ok: true, msg: `მანქანა გადმოტანილია აქ — $${SUMMON_FEE}.` };
-}
+// Is a (non-display) vehicle already sitting on the spot? Keeps us from spawning cars on top of each other.
 function spotIsOccupied(spot) {
     let occupied = false;
     mp.vehicles.forEach(vehicle => {
@@ -394,53 +280,77 @@ function spotIsOccupied(spot) {
     });
     return occupied;
 }
-async function doSummonOwned(player, spotId, vehicleId) {
+// Spawn one of the player's owned cars at their rented spot — FREE. Spawning while another car is out
+// just swaps it (carshopSpawnOwnedCar saves the old one to its DB row first).
+async function doSpawnOwned(player, spotId, vehicleId) {
     if (player.ownedVehicleSpawnInProgress) return { ok: false, msg: 'მანქანის გამოყვანა უკვე მიმდინარეობს.' };
     player.ownedVehicleSpawnInProgress = true;
     try {
         const found = findSpot(spotId);
         if (!found) return { ok: false, msg: 'უცნობი ადგილი.' };
-        if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი პარკინგის ადგილთან.' };
-        if (player.myCar && mp.vehicles.exists(player.myCar)) return { ok: false, msg: 'ჯერ გააჩერე მიმდინარე მანქანა.' };
+        const rental = activeRental(found.spot.id);
+        if (!rental || rental.owner !== keyOf(player)) return { ok: false, msg: 'ჯერ იქირავე ეს ადგილი.' };
+        if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი შენს პარკინგის ადგილთან.' };
         if (!/^\d+$/.test(String(vehicleId || ''))) return { ok: false, msg: 'მანქანის ID არასწორია.' };
-        if (typeof global.getMoney !== 'function' || typeof global.setMoney !== 'function') return { ok: false, msg: 'გადახდის სისტემა მიუწვდომელია.' };
-        if (global.getMoney(player) < SUMMON_FEE) return { ok: false, msg: `საჭიროა $${SUMMON_FEE}.` };
         if (typeof global.carshopSpawnOwnedCar !== 'function') return { ok: false, msg: 'მანქანის გამოყვანის სისტემა მიუწვდომელია.' };
 
         const rows = await ownedVehiclesFor(player);
         if (!mp.players.exists(player)) return { ok: false, msg: 'მოთამაშე აღარ არის დაკავშირებული.' };
         const row = rows.find(vehicle => String(vehicle.id) === String(vehicleId));
         if (!row) return { ok: false, msg: 'ეს მანქანა შენს ანგარიშზე ვერ მოიძებნა.' };
-        if (storedOwnedCarStatus(player, row)) return { ok: false, msg: 'ეს მანქანა უკვე პარკინგზე ან დაყადაღებულ მანქანებშია.' };
-        if (player.myCar && mp.vehicles.exists(player.myCar)) return { ok: false, msg: 'ჯერ გააჩერე მიმდინარე მანქანა.' };
-        if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი პარკინგის ადგილთან.' };
-        if (global.getMoney(player) < SUMMON_FEE) return { ok: false, msg: `საჭიროა $${SUMMON_FEE}.` };
+        if (hasActiveId(player, row.id)) return { ok: false, msg: 'ეს მანქანა უკვე გამოყვანილია (გამოიყენე დაბრუნება).' };
+        if (isInGarage(player, row)) return { ok: false, msg: 'ეს მანქანა სახლის ავტოფარეხშია.' };
+        if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი შენს პარკინგის ადგილთან.' };
         if (spotIsOccupied(found.spot)) return { ok: false, msg: 'პარკინგის ადგილი დაკავებულია.' };
 
         const vehicle = global.carshopSpawnOwnedCar(player, row, found.spot);
         if (!vehicle || !mp.vehicles.exists(vehicle)) return { ok: false, msg: 'მანქანის გამოყვანა ვერ მოხერხდა.' };
-        global.setMoney(player, global.getMoney(player) - SUMMON_FEE);
-        return { ok: true, msg: `${typeof global.carshopLabelOf === 'function' ? global.carshopLabelOf(row.modelName) : 'მანქანა'} გამოყვანილია — $${SUMMON_FEE}.` };
+        if (global.chatLocalAction) global.chatLocalAction(player, 'იღებს მანქანას პარკინგიდან');
+        return { ok: true, msg: `${typeof global.carshopLabelOf === 'function' ? global.carshopLabelOf(row.modelName) : 'მანქანა'} გამოყვანილია.` };
     } catch (e) {
-        console.log(`[parking] could not summon owned vehicle for ${player.name}: ${e && e.message}`);
+        console.log(`[parking] could not spawn owned vehicle for ${player.name}: ${e && e.message}`);
         return { ok: false, msg: 'მანქანის სიის ჩატვირთვა ან გამოყვანა ვერ მოხერხდა.' };
     } finally {
         player.ownedVehicleSpawnInProgress = false;
     }
 }
-// Pay to pull an impounded car; spawn it at `spot` (or IMPOUND_POINT for the /impound command).
-function doImpound(player, spot) {
-    const key = keyOf(player);
-    const list = store.impound[key] || [];
-    if (!list.length) return { ok: false, msg: 'დაყადაღებული მანქანა არ გაქვს.' };
-    if (player.myCar && mp.vehicles.exists(player.myCar)) return { ok: false, msg: 'ჯერ მოიშორე მიმდინარე მანქანა.' };
-    if (global.getMoney(player) < IMPOUND_FEE) return { ok: false, msg: `საჭიროა $${IMPOUND_FEE}.` };
-    if (!spawnCarAt(player, list[0], spot)) return { ok: false, msg: 'გამოტანა ვერ მოხერხდა.' };
-    global.setMoney(player, global.getMoney(player) - IMPOUND_FEE);
-    list.shift();
-    if (!list.length) delete store.impound[key]; else store.impound[key] = list;
-    save();
-    return { ok: true, msg: `მანქანა გამოტანილია — $${IMPOUND_FEE}.` };
+function hasActiveId(player, id) {
+    return !!(player.myCar && mp.vehicles.exists(player.myCar) && String(player.activeVehId) === String(id));
+}
+// Recall your currently-spawned car to your rented spot for a fee.
+function doRecall(player, spotId) {
+    const found = findSpot(spotId);
+    if (!found) return { ok: false, msg: 'უცნობი ადგილი.' };
+    const rental = activeRental(found.spot.id);
+    if (!rental || rental.owner !== keyOf(player)) return { ok: false, msg: 'ჯერ იქირავე ეს ადგილი.' };
+    if (dist2(player.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მიდი შენს პარკინგის ადგილთან.' };
+    if (!player.myCar || !mp.vehicles.exists(player.myCar)) return { ok: false, msg: 'გამოყვანილი მანქანა არ გაქვს.' };
+    if (global.getMoney(player) < RECALL_FEE) return { ok: false, msg: `საჭიროა $${RECALL_FEE}.` };
+    global.setMoney(player, global.getMoney(player) - RECALL_FEE);
+    try {
+        player.myCar.position = new mp.Vector3(found.spot.x, found.spot.y, found.spot.z);
+        player.myCar.rotation = new mp.Vector3(0, 0, found.spot.h || 0);
+        if (global.vehPersist) global.vehPersist(player);
+    } catch (e) { return { ok: false, msg: 'დაბრუნება ვერ მოხერხდა.' }; }
+    if (global.chatLocalAction) global.chatLocalAction(player, 'იბრუნებს მანქანას პარკინგზე');
+    return { ok: true, msg: `მანქანა დაბრუნდა აქ — $${RECALL_FEE}.` };
+}
+// Save (put away) the car you brought onto your spot: persist its live state to its DB row, then
+// despawn it. Free. It stays in your fleet and can be respawned here (or anywhere) later.
+function doStoreCar(player, spotId) {
+    const found = findSpot(spotId);
+    if (!found) return { ok: false, msg: 'უცნობი ადგილი.' };
+    const rental = activeRental(found.spot.id);
+    if (!rental || rental.owner !== keyOf(player)) return { ok: false, msg: 'ჯერ იქირავე ეს ადგილი.' };
+    if (!player.myCar || !mp.vehicles.exists(player.myCar)) return { ok: false, msg: 'გამოყვანილი მანქანა არ გაქვს.' };
+    if (dist2(player.myCar.position, found.spot) > SPOT_RANGE * SPOT_RANGE) return { ok: false, msg: 'მანქანა პარკინგის ადგილზე უნდა იდგეს.' };
+    if (player.activeVehId && typeof global.vehSaveActiveToDb === 'function') global.vehSaveActiveToDb(player); // persist fuel/km/pos to DB
+    if (global.vehForget) global.vehForget(player); // stop local persistence
+    try { player.myCar.destroy(); } catch (e) {}
+    player.myCar = null;
+    player.activeVehId = null;
+    if (global.chatLocalAction) global.chatLocalAction(player, 'აყენებს მანქანას პარკინგზე');
+    return { ok: true, msg: 'მანქანა შენახულია.' };
 }
 function say(player, r) { player.outputChatBox((r.ok ? '!{#8ed17a}' : '!{#ff6b6b}') + '[პარკინგი] ' + r.msg); }
 
@@ -469,7 +379,7 @@ function doDuplicate(player, base, side, count) {
 }
 
 // ---- Commands ----
-// /parkings — overview of lots, your rental and any impounded cars.
+// /parkings — overview of lots and your rental.
 mp.events.addCommand('parkings', (player) => {
     player.outputChatBox('!{#7ec8ff}[პარკინგი] !{#ffffff}ხელმისაწვდომი პარკინგები:');
     LOTS.forEach(lot => {
@@ -478,34 +388,54 @@ mp.events.addCommand('parkings', (player) => {
     });
     const mine = playerActiveSpot(player);
     if (mine) {
-        player.outputChatBox(`!{#8ed17a}შენი ადგილი: ${mine.spotId} · მანქანები ${mine.rental.cars.length}/${mine.rental.slots} (დარჩა ${timeLeftLabel(mine.rental.expiresAt)})`);
+        player.outputChatBox(`!{#8ed17a}შენი ადგილი: ${mine.spotId} (დარჩა ${timeLeftLabel(mine.rental.expiresAt)})`);
     } else {
         player.outputChatBox('!{#9aa4ad}დადექი თავისუფალ ადგილზე და დააჭირე E-ს.');
     }
-    const imp = store.impound[keyOf(player)] || [];
-    if (imp.length) player.outputChatBox(`!{#ffb42e}დაყადაღებული მანქანები: ${imp.length} — /impound (მოსაკრებელი $${IMPOUND_FEE}).`);
 });
 
 // Chat commands remain as a fallback; the CEF UI (press E on a spot) is the main path.
-mp.events.addCommand('rentspot', async (player, _, daysArg, slotsArg) => say(player, await doRent(player, nearestSpot(player), daysArg, slotsArg)));
-mp.events.addCommand('renewspot', (player, _, daysArg) => say(player, doRenew(player, daysArg)));
-mp.events.addCommand('park', (player) => say(player, doPark(player)));
-mp.events.addCommand('unpark', (player, _, idxArg) => say(player, doUnpark(player, (parseInt(idxArg, 10) || 1) - 1)));
-mp.events.addCommand('impound', (player) => say(player, doImpound(player, IMPOUND_POINT)));
+mp.events.addCommand('rentspot', async (player, _, daysArg) => say(player, await doRent(player, nearestSpot(player), daysArg)));
+mp.events.addCommand('renewspot', async (player, _, daysArg) => say(player, await doRenew(player, daysArg)));
+mp.events.addCommand('recallcar', (player) => {
+    const mine = playerActiveSpot(player);
+    say(player, mine ? doRecall(player, mine.spotId) : { ok: false, msg: 'ნაქირავები ადგილი არ გაქვს.' });
+});
+mp.events.addCommand('storecar', (player) => {
+    const mine = playerActiveSpot(player);
+    say(player, mine ? doStoreCar(player, mine.spotId) : { ok: false, msg: 'ნაქირავები ადგილი არ გაქვს.' });
+});
 
 // ---- CEF UI wiring: press E on a spot opens ui/parking; these drive its buttons ----
 mp.events.add('parking:uiData', (player, spotId) => sendUiData(player, String(spotId)));
-mp.events.add('parking:rent', async (player, spotId, days, slots) => { const r = await doRent(player, findSpot(String(spotId)), days, slots); sendUiData(player, String(spotId), r.msg, r.ok); });
-mp.events.add('parking:renew', (player, spotId, days) => { const r = doRenew(player, days); sendUiData(player, String(spotId), r.msg, r.ok); });
-mp.events.add('parking:park', (player, spotId) => { const r = doPark(player); sendUiData(player, String(spotId), r.msg, r.ok); });
-mp.events.add('parking:unpark', (player, spotId, index) => { const r = doUnpark(player, index); sendUiData(player, String(spotId), r.msg, r.ok); });
-mp.events.add('parking:summon', (player, spotId) => { const r = doSummon(player, String(spotId)); sendUiData(player, String(spotId), r.msg, r.ok); });
+mp.events.add('parking:rent', async (player, spotId, days) => { const r = await doRent(player, findSpot(String(spotId)), days); sendUiData(player, String(spotId), r.msg, r.ok); });
+mp.events.add('parking:renew', async (player, spotId, days) => { const r = await doRenew(player, days); sendUiData(player, String(spotId), r.msg, r.ok); });
 mp.events.add('parking:summonOwned', async (player, spotId, vehicleId) => {
-    const r = await doSummonOwned(player, String(spotId), vehicleId);
+    const r = await doSpawnOwned(player, String(spotId), vehicleId);
     sendUiData(player, String(spotId), r.msg, r.ok);
 });
-mp.events.add('parking:impound', (player, spotId) => { const f = findSpot(String(spotId)); const r = doImpound(player, f ? f.spot : IMPOUND_POINT); sendUiData(player, String(spotId), r.msg, r.ok); });
+mp.events.add('parking:recall', (player, spotId) => { const r = doRecall(player, String(spotId)); sendUiData(player, String(spotId), r.msg, r.ok); });
+mp.events.add('parking:store', (player, spotId) => { const r = doStoreCar(player, String(spotId)); sendUiData(player, String(spotId), r.msg, r.ok); });
 mp.events.add('parking:duplicate', (player, json, side, count) => { let d; try { d = JSON.parse(json); } catch (e) { return; } say(player, doDuplicate(player, d, String(side), count)); });
+
+// Arrow "copy by gap": create ONE spot at the client-computed position (full geometry carried over).
+// No chat spam — arrows are pressed rapidly while laying out a lot; the copy just appears as a blip.
+mp.events.add('parking:stamp', (player, json) => {
+    if (!(global.isProtectedAdmin && global.isProtectedAdmin(player))) return;
+    let d; try { d = JSON.parse(json); } catch (e) { return; }
+    if (typeof d.x !== 'number' || typeof d.y !== 'number') return;
+    const existing = store.customSpots.find(s => s.id === d.id);
+    const price = existing ? existing.price : (typeof d.price === 'number' ? d.price : 50);
+    const spot = {
+        id: nextSpotId(),
+        x: round3(d.x), y: round3(d.y), z: round3(d.z || 0),
+        h: Math.round(d.h || 0), rx: Math.round(d.rx || 0), ry: Math.round(d.ry || 0),
+        price, w: round3(d.w || DEFAULT_W), l: round3(d.l || DEFAULT_L)
+    };
+    store.customSpots.push(spot);
+    createSpotVisuals(CUSTOM_LOT, spot);
+    save(); broadcastSpots();
+});
 
 // ---- Admin geometry edit (move / rotate / resize), applied from the client editor ----
 mp.events.add('parking:edit', (player, json) => {
@@ -586,19 +516,17 @@ mp.events.addCommand('parkspots', (player) => {
     });
 });
 
-// ---- Expiry sweeper: free lapsed spots, impound any car left on them ----
+// ---- Expiry sweeper: free lapsed spots ----
 setInterval(() => {
     const now = Date.now();
     let changed = false;
     for (const spotId of Object.keys(store.spots)) {
         const r = store.spots[spotId];
         if (r.expiresAt > now) continue;
-        const impounded = releaseRental(spotId); // frees the spot and impounds any stored cars
-        if (impounded) {
-            let owner = null;
-            mp.players.forEach(p => { if (!owner && keyOf(p) === r.owner) owner = p; });
-            if (owner) owner.outputChatBox(`!{#ffb42e}[პარკინგი] ${spotId}-ის ქირა ამოიწურა — მანქანა დაყადაღდა. /impound რომ დაიბრუნო.`);
-        }
+        delete store.spots[spotId];
+        let owner = null;
+        mp.players.forEach(p => { if (!owner && keyOf(p) === r.owner) owner = p; });
+        if (owner) owner.outputChatBox(`!{#ffb42e}[პარკინგი] ${spotId}-ის ქირა ამოიწურა.`);
         changed = true;
     }
     if (changed) { save(); broadcastSpots(); }

@@ -65,10 +65,17 @@ exposes the existing engine, light, seatbelt, and door-close controls. On foot,
 it only opens for your own empty spawned car within five metres; seatbelt is
 available only while seated.
 
-At a parking spot, the UI lists vehicles owned by the current character in the
-database. Choose an available car to spawn it at that spot for **$100**. The
-server verifies ownership; cars already parked or impounded cannot be summoned
-again, and you must park your current car before retrieving another one.
+A parking spot is a rentable personal garage point: rent it for N days
+(`$price × car_quantity × days`, where car_quantity is how many cars you own,
+min 1) and it becomes yours. At **your** spot the UI lists the
+vehicles owned by the current character in the database — choose any one to
+spawn it there for **free** (spawning swaps out whatever car you currently have
+out). A car that is already out in the world shows a **Recall** button that
+teleports it to the spot for **$1,000** — unless it's parked right on the spot,
+in which case the button becomes **Save** (free): its state is persisted to the
+DB and it's despawned, ready to respawn later. Cars sitting in a house garage
+can't be spawned from parking. There is no legacy storage or impound — the DB
+fleet (`/mycars`) is the single source of truth.
 
 > Keybinds and movement are disabled while the chat input is open, so typing letters no longer
 > triggers actions or walking. Handled by a `chatting` flag + `disableAllControlActions` in the render loop.

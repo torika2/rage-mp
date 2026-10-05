@@ -49,6 +49,11 @@ export class Gang {
   @Column({ type: 'json', nullable: true })
   base: Record<string, unknown> | null;
 
+  // { x, y, z, h } teleport target inside the members-only HQ interior, or null. Captured in-game with
+  // /gsethq (admin) — overrides the code default so the HQ can be aimed at an installed interior mod.
+  @Column({ type: 'json', nullable: true })
+  interior: Record<string, unknown> | null;
+
   // Shared gang bank balance.
   @Column({ type: 'bigint', default: 0, transformer: bigintToNumber })
   treasury: number;

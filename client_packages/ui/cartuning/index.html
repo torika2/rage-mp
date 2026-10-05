@@ -150,6 +150,7 @@
     if (c.indexOf('mod:') === 0) return modCur(c.slice(4));
     if (c === 'windowTint') return (state.visual.windowTint != null ? state.visual.windowTint : 0);
     if (c === 'wheelType') return (state.visual.wheelType != null ? state.visual.wheelType : -1);
+    if (c === 'livery') return (state.visual.livery != null ? state.visual.livery : -1);
     return state.visual.colors[c];
   }
   const effVal = (c) => (c in cart) ? cart[c] : savedVal(c);
@@ -162,6 +163,7 @@
       if (c === 'primary' || c === 'secondary' || c === 'pearl' || c === 'wheel') v.colors[c] = val;
       else if (c === 'windowTint') v.windowTint = val;
       else if (c === 'wheelType') v.wheelType = val;
+      else if (c === 'livery') v.livery = val;
       else if (c.indexOf('mod:') === 0) v.mods[c.slice(4)] = val;
     }
     if (v.colors.primary != null && v.colors.secondary == null) v.colors.secondary = v.colors.primary;
@@ -209,9 +211,25 @@
         return '<div class="eng"><div class="nm">' + esc(p.label) + '</div><div class="sub">' + esc(p.effect) + ' · დონე ' + p.level + '/' + p.max + '</div><div class="pips">' + pips + '</div>' + btn + '</div>';
       }).join('');
     } else if (cat === 'colors') {
+      // Livery cars (FLAG_HAS_LIVERY add-ons like the z28) change colour by LIVERY, not palette paint —
+      // their palette slot is baked. So for those, offer the car's actual liveries as the colour choice.
+      const livCount = (state.options && state.options.liveries) || 0;
+      let html = '';
+      if (livCount > 0) {
+        const curLiv = effVal('livery');
+        html += '<div class="picker"><div class="picker-label"><span>ფერი / ლაქი (ამ მანქანის ვარიანტები)</span><b>' + fmt(price('livery')) + ' / ცვლილება</b></div><div class="styles">';
+        for (let i = 0; i < livCount; i++) {
+          const staged = ('livery' in cart) && cart['livery'] === i;
+          const on = !staged && curLiv === i;
+          html += '<button class="style' + (staged ? ' cart' : (on ? ' on' : '')) + '" data-cat="livery" data-val="' + i + '"><span>ვარიანტი ' + (i + 1) + '</span><span class="tag">' + (staged ? 'კალათაში' : (on ? 'არჩეული' : fmt(price('livery')))) + '</span></button>';
+        }
+        html += '</div></div>';
+      }
+      // Palette paint (works on stock + paintable add-ons; baked add-ons ignore it — that's why liveries
+      // are offered above for cars that have them).
       const chans = [['primary', 'ძირითადი'], ['secondary', 'მეორადი'], ['pearl', 'პერლამუტრი'], ['wheel', 'დისკები']];
       const cur = effVal(colorChannel);
-      host.innerHTML =
+      html +=
         '<div class="picker"><div class="picker-label"><span>არხი</span><b>' + fmt(price(colorChannel)) + ' / ცვლილება</b></div>' +
         '<div class="chanrow">' + chans.map(c => '<button class="tagbtn' + (colorChannel === c[0] ? ' on' : '') + '" data-chan="' + c[0] + '">' + esc(c[1]) + '<small>' + fmt(price(c[0])) + '</small></button>').join('') + '</div></div>' +
         '<div class="picker"><div class="picker-label"><span>ფერი</span></div><div class="swatches">' +
@@ -220,12 +238,23 @@
           const on = !staged && cur === p[0];
           return '<button class="swatch' + (staged ? ' cart' : (on ? ' on' : '')) + '" style="background:' + p[1] + '" data-color="' + p[0] + '" title="#' + p[0] + '"></button>';
         }).join('') + '</div></div>';
+      host.innerHTML = html;
     } else if (cat === 'wheels') {
-      host.innerHTML = listPicker('wheelType', 'დისკის ტიპი', WHEEL_TYPES) + modPicker('23', 'დისკის დიზაინი');
+      // Guard: a car with no wheel-design options has no mod kit for wheels — changing wheel type would
+      // charge without any visible effect (common on add-on cars). Show it as unavailable instead.
+      const wheelMods = (state.options.mods && state.options.mods['23']) || 0;
+      host.innerHTML = wheelMods > 0
+        ? (listPicker('wheelType', 'დისკის ტიპი', WHEEL_TYPES) + modPicker('23', 'დისკის დიზაინი'))
+        : '<div class="picker"><div class="picker-label"><span>დისკები</span></div><div class="style none"><span>ამ მანქანას დისკების შეცვლა არ აქვს (მოდის ნაკრების გარეშე)</span></div></div>';
     } else if (cat === 'body') {
-      host.innerHTML = BODY.map(b => modPicker(b[0], b[1])).join('');
+      // Only offer body mods the car actually has; if none, say so (no wasted purchases on add-ons).
+      const avail = BODY.filter(b => ((state.options.mods && state.options.mods[b[0]]) || 0) > 0);
+      host.innerHTML = avail.length
+        ? avail.map(b => modPicker(b[0], b[1])).join('')
+        : '<div class="picker"><div class="picker-label"><span>ქარხანა</span></div><div class="style none"><span>ამ მანქანას ქარხნული დეტალების შეცვლა არ აქვს</span></div></div>';
     } else if (cat === 'extras') {
-      host.innerHTML = EXTRAS.map(b => modPicker(b[0], b[1])).join('') + listPicker('windowTint', 'მინების ტონირება', TINTS);
+      const avail = EXTRAS.filter(b => ((state.options.mods && state.options.mods[b[0]]) || 0) > 0);
+      host.innerHTML = avail.map(b => modPicker(b[0], b[1])).join('') + listPicker('windowTint', 'მინების ტონირება', TINTS);
     }
   }
 

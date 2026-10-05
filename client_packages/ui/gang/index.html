@@ -112,8 +112,18 @@
         <button class="act" onclick="bank('deposit')">შეტანა</button>
         <button class="act alt" onclick="bank('withdraw')">გამოტანა</button>` : ''}</div>
       <div class="row"><div class="grow"><div class="name">საცავი</div><div class="meta">${state.capacity.used} / ${state.capacity.max} ერთეული</div></div></div>
+      ${hqRow()}
       ${c}
       <div class="hint">ლიდერი ანაწილებს რანგებს ჩატის ბრძანებებით: /gpromote, /gdemote, /gkick, /ginvite. ბაზის დაყენება: /gsetbase.</div>`;
+  }
+
+  function hqRow() {
+    if (!state.gang.hasInterior) return '';
+    if (state.inHouse) return `<div class="row"><div class="grow"><div class="name">შტაბი (HQ)</div><div class="meta">ხარ შტაბში</div></div>
+      <button class="act alt" onclick="exitHQ()">გასვლა</button></div>`;
+    if (state.canEnter) return `<div class="row"><div class="grow"><div class="name">შტაბი (HQ)</div><div class="meta">კარი — მხოლოდ წევრებისთვის</div></div>
+      <button class="act" onclick="enterHQ()">შესვლა</button></div>`;
+    return `<div class="row"><div class="grow"><div class="name">შტაბი (HQ)</div><div class="meta">შესასვლელად მიდი ბაზის კართან</div></div></div>`;
   }
 
   function renderMembers() {
@@ -187,6 +197,8 @@
   function craft(key) { trigger('gangs:craft', key); }
   function takeItem(id) { trigger('gangs:stashTake', id, qtyVal('take_' + id)); }
   function bank(dir) { trigger(dir === 'deposit' ? 'gangs:deposit' : 'gangs:withdraw', qtyVal('bankAmt')); }
+  function enterHQ() { trigger('gangs:enterHouse'); }
+  function exitHQ() { trigger('gangs:exitHouse'); }
 
   window.onload = () => { trigger('gangs:ui:ready'); };
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUI(); });
