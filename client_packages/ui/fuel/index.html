@@ -62,6 +62,8 @@
           padding: 8px 0; text-align: center; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s; }
   .chip:hover { background: rgba(255,255,255,0.12); }
 
+  .switchnote { display: none; margin: 2px 0 12px; padding: 10px 12px; border: 1px solid rgba(242,193,92,.5); background: rgba(242,193,92,.1); color: #f2c15c; font-size: 12px; line-height: 1.45; border-radius: 8px; }
+  .switchnote.show { display: block; }
   .drain { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; cursor: pointer; }
   .sw { width: 40px; height: 22px; border-radius: 999px; background: rgba(255,255,255,0.14);
         position: relative; transition: background .15s; flex: none; }
@@ -103,13 +105,10 @@
 
       <div class="label">აირჩიე საწვავი</div>
       <div class="octanes" id="octanes"></div>
+      <div class="switchnote" id="switchNote"></div>
 
       <div class="label">რაოდენობა</div>
       <div class="amount">
-        <div class="drain" id="drainRow">
-          <div class="sw" id="drainSw"><i></i></div>
-          <div class="dtxt">ჯერ დაცალე ავზი<small id="drainNote"></small></div>
-        </div>
         <div class="top">
           <div class="liters"><span id="litersVal">0</span><small> ლ</small></div>
           <div class="cost" id="costVal">$0</div>
@@ -138,13 +137,17 @@
   let data = { money: 0, fuelPct: 0, tankLiters: 65, octanes: [] };
   let sel = 1;          // selected octane index
   let liters = 0;
-  let drainFirst = false; // empty tank before filling
 
   const $ = id => document.getElementById(id);
 
+  // Picking a grade different from what's in the tank forces an empty + full refill (you can't mix).
+  function isSwitching() {
+    return !!(data && data.currentOctane >= 0 && data.currentOctane !== sel && data.fuelPct > 0);
+  }
+  // Litres of free space to fill — a grade switch means the whole tank (drain + refill).
   function spaceLiters() {
-    return drainFirst ? Math.floor(data.tankLiters)
-                      : Math.floor((100 - data.fuelPct) / 100 * data.tankLiters);
+    if (isSwitching()) return Math.floor(data.tankLiters);
+    return Math.floor((100 - data.fuelPct) / 100 * data.tankLiters);
   }
   function priceOf(i) { return data.octanes[i] ? data.octanes[i].price : 0; }
   function maxLiters() {
@@ -165,22 +168,26 @@
   }
   function clamp() { liters = Math.max(0, Math.min(liters, maxLiters())); }
   function render() {
+    const sw = isSwitching();
+    if (sw) liters = Math.floor(data.tankLiters); // grade switch → whole tank, locked
     $('balance').textContent = '$' + data.money.toLocaleString();
     $('tankTxt').textContent = data.fuelPct + '%';
     $('tankBar').style.width = data.fuelPct + '%';
     document.querySelectorAll('.oct').forEach((el, i) => el.classList.toggle('sel', i === sel));
-    const mx = maxLiters();
-    const s = $('slider'); s.max = mx; s.value = liters;
+    const mx = sw ? Math.floor(data.tankLiters) : maxLiters();
+    const s = $('slider'); s.max = mx; s.value = liters; s.disabled = sw;
     $('litersVal').textContent = liters;
     $('costVal').textContent = '$' + cost();
     const buy = $('buyBtn');
     buy.textContent = 'ყიდვა — $' + cost();
-    buy.disabled = liters <= 0;
-    // drain toggle visuals
-    $('drainSw').className = 'sw' + (drainFirst ? ' on' : '');
-    $('drainNote').textContent = drainFirst
-      ? (data.fuelPct > 0 ? 'გადაყრის მიმდინარე ' + data.fuelPct + '%-ს და ჩაასხამს სუფთას' : 'ავზი უკვე ცარიელია')
-      : 'შეერევა არსებულ საწვავს';
+    buy.disabled = liters <= 0 || cost() > data.money;
+    // Warn BEFORE buying when switching grade (names the fuel currently in the tank).
+    const note = $('switchNote');
+    note.className = 'switchnote' + (sw ? ' show' : '');
+    if (sw) {
+      const curName = data.octanes[data.currentOctane] ? data.octanes[data.currentOctane].name : '';
+      note.textContent = 'თქვენ გისხიათ ' + curName + ' საწვავი და ასხავთ სხვა საწვავს რა შემთხვევაში ბაკის თავიდან გადავსება მოგიწევთ.';
+    }
   }
 
   // called from the client
@@ -199,16 +206,15 @@
     liters = Math.min(Math.round(spaceLiters() * q / 100), maxLiters());
     render();
   });
-  $('drainRow').onclick = () => { drainFirst = !drainFirst; clamp(); render(); };
   $('cancelBtn').onclick = () => { if (RAGE) mp.trigger('fuel:close'); };
-  $('buyBtn').onclick = () => { if (liters > 0 && RAGE) mp.trigger('fuel:purchase', sel, liters, drainFirst); };
+  $('buyBtn').onclick = () => { if (liters > 0 && RAGE) mp.trigger('fuel:purchase', sel, liters); };
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && RAGE) {
       e.preventDefault();
       e.stopPropagation();
       mp.trigger('fuel:close');
     }
-    if (e.key === 'Enter' && liters > 0 && RAGE) mp.trigger('fuel:purchase', sel, liters, drainFirst);
+    if (e.key === 'Enter' && liters > 0 && RAGE) mp.trigger('fuel:purchase', sel, liters);
   });
 
   // ask the client for data once the page is up

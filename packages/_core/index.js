@@ -65,6 +65,17 @@ try {
     }
 } catch (e) { console.log('[_core] outputChatBox redirect failed: ' + e); }
 
+// Map/blip text: GTA's map font has no Georgian glyphs, so Georgian blip names render blank on the
+// map. Route every server-created blip name through global.worldText (defined above) so labels are
+// readable. (Client blips are patched the same way in client_packages/index.js.)
+try {
+    const _blipsNew = mp.blips.new.bind(mp.blips);
+    mp.blips.new = function (sprite, position, options) {
+        if (options && typeof options.name === 'string') options = Object.assign({}, options, { name: global.worldText(options.name) });
+        return _blipsNew(sprite, position, options);
+    };
+} catch (e) { console.log('[_core] blip name patch failed: ' + e); }
+
 // ===================== Backend API client =====================
 // Thin wrapper so any package can persist/load data via the NestJS API (which owns MySQL).
 // Config (base URL + API key) lives in packages/_core/api.config.json (gitignored).
@@ -184,6 +195,12 @@ global.api = {
     createHouse: (data) => apiRequest('POST', '/houses', data),
     updateHouse: (houseId, data) => apiRequest('PUT', `/houses/${houseId}`, data),
     deleteHouse: (houseId) => apiRequest('DELETE', `/houses/${houseId}`),
+
+    // --- gangs (player-run gangs: membership, ranks, base, treasury, stash, crafting) ---
+    loadGangs: () => apiRequest('GET', '/gangs'),
+    createGang: (data) => apiRequest('POST', '/gangs', data),
+    updateGang: (gangId, data) => apiRequest('PUT', `/gangs/${gangId}`, data),
+    deleteGang: (gangId) => apiRequest('DELETE', `/gangs/${gangId}`),
 
     // --- parking ---
     loadParking: () => apiRequest('GET', '/parking'),

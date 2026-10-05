@@ -9,8 +9,6 @@ const CAR_NAMES = {
     'gclass':       'XG632019',  // Mercedes-Benz G-Class 2019
     'demon':        'dcd',       // Dodge Challenger SRT Demon (folder: demon)
     'm8':           'mansm8c',   // BMW M8 Competition (Mansory)
-    'm8duck':       'mansm8c',   // BMW M8 Competition (Ducktail spoiler)
-    'm8nospoiler':  'mansm8c',   // BMW M8 Competition (no spoiler)
     'm5e39':        'bmwm5e39',  // BMW M5 E39
     'cls':          'cls2015',   // Mercedes-Benz CLS 6.3 AMG 2015
     'r8':           'r820',      // Audi R8 2020 (RsMods)
@@ -28,14 +26,21 @@ const CAR_NAMES = {
     'yumi':         'yumi',      // yumi
     'colorado':     'ccadd',     // Chevy Colorado ZR2 ADD (HAMMER)
     'reventon':     'polrevent', // Lamborghini Reventon SCPD (police)
-    'amggtr':       'polamggtr'  // Mercedes-AMG GT R Police (SCRAT)
+    'amggtr':       'polamggtr', // Mercedes-AMG GT R Police (SCRAT)
+    // --- Allmods pack (added Oct 2026) · friendly alias -> spawn model ---
+    's1000rr':      'bs17',       // BMW S1000RR (bike)
+    'cbr':          'cbr1000rrr', // Honda CBR1000RR (bike)
+    'rx7':          'fd',         // Mazda RX-7 (FD)
+    'golfr':        'golf75r',    // VW Golf R
+    'supra4':       'a80',        // Toyota Supra MK4 (JZA80)
+    'e92':          'e92',        // BMW M3 E92 (rrst pack — 3 cars in one dlc)
+    'rr14':         'rr14',       // Rolls-Royce (rrst pack)
+    'rrst':         'rrst',       // rrst pack main
+    'skyline':      'skyline',    // Nissan Skyline
+    'wrx':          'subwrx',     // Subaru WRX STI
+    'supra':        'supra19',    // Toyota Supra A90 (2019)
+    'g63':          'xg632019'    // Mercedes-AMG G63 (2019)
 };
-const CAR_VISUALS = {
-    m8: { mods: { '0': 0 } },
-    m8duck: { mods: { '0': 1 } },
-    m8nospoiler: { mods: { '0': -1 } }
-};
-
 // Friendly labels for add-on cars that aren't in the buyable carshop catalog (police / service),
 // so they read nicely in the admin Cars tab. Anything without an entry falls back to its /car alias.
 const ADDON_LABELS = {
@@ -126,6 +131,7 @@ mp.events.addCommand('vehmods', (player) => {
     player.call('vehmods:dump');
 });
 
+
 // /pos - show the current world position and heading
 mp.events.addCommand('pos', (player) => {
     const position = player.position;
@@ -162,7 +168,6 @@ mp.events.addCommand('car', (player, _, name) => {
 
     const key = name.toLowerCase();
     const model = CAR_NAMES[key] || key;
-    const visual = CAR_VISUALS[key] || null;
 
     // remove this player's previous car so the map doesn't fill up
     if (player.myCar && mp.vehicles.exists(player.myCar)) player.myCar.destroy();
@@ -172,20 +177,31 @@ mp.events.addCommand('car', (player, _, name) => {
         dimension: player.dimension
     });
     player.myCar = car;
-    if (typeof global.vehOnSpawn === 'function') global.vehOnSpawn(player, car, key, visual); // persist this car and its preset
-    if (visual && typeof global.vehApplyVisual === 'function') {
-        const applyVisual = () => {
-            if (mp.vehicles.exists(car)) global.vehApplyVisual(car, null, visual);
-        };
-        setTimeout(applyVisual, 500);
-        setTimeout(applyVisual, 1500);
-    }
+    if (typeof global.vehOnSpawn === 'function') global.vehOnSpawn(player, car, key); // persist this car
     player.putIntoVehicle(car, 0);
     // Add-on models may not be streamed to the client on the very first spawn, so the instant
     // seat can miss — retry once the vehicle has had a moment to stream in.
     setTimeout(() => {
         if (mp.players.exists(player) && mp.vehicles.exists(car) && !player.vehicle) player.putIntoVehicle(car, 0);
     }, 700);
+    player.outputChatBox(`!{#8ed17a}გამოძახდა: ${name}`);
+});
+
+// /bike <name> - spawn a motorcycle and get on (admins only). Bikes aren't sold at the dealership.
+const BIKE_NAMES = { 's1000rr': 'bs17', 'bs17': 'bs17', 'cbr': 'cbr1000rrr', 'cbr1000rr': 'cbr1000rrr' };
+mp.events.addCommand('bike', (player, _, name) => {
+    if (!(global.isProtectedAdmin && global.isProtectedAdmin(player))) {
+        return player.outputChatBox('!{#ffb42e}/bike მხოლოდ ადმინისთვისაა.');
+    }
+    if (!name) return player.outputChatBox('!{#ffb42e}გამოყენება: /bike <სახელი> — s1000rr, cbr');
+    const key = name.toLowerCase();
+    const model = BIKE_NAMES[key] || CAR_NAMES[key] || key;
+    if (player.myCar && mp.vehicles.exists(player.myCar)) player.myCar.destroy();
+    const bike = mp.vehicles.new(mp.joaat(model), player.position, { heading: player.heading, dimension: player.dimension });
+    player.myCar = bike;
+    if (typeof global.vehOnSpawn === 'function') global.vehOnSpawn(player, bike, key);
+    player.putIntoVehicle(bike, 0);
+    setTimeout(() => { if (mp.players.exists(player) && mp.vehicles.exists(bike) && !player.vehicle) player.putIntoVehicle(bike, 0); }, 700);
     player.outputChatBox(`!{#8ed17a}გამოძახდა: ${name}`);
 });
 
@@ -199,7 +215,7 @@ mp.events.addCommand('drift', (player) => {
 mp.events.addCommand('cars', (player) => {
     global.chatSend(player, {
         ch: 'system',
-        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, gclass, demon, m8/m8duck/m8nospoiler, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado, reventon, amggtr (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
+        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, gclass, demon, m8, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado, reventon, amggtr, s1000rr, cbr, rx7, golfr, supra4, e92, rr14, rrst, skyline, wrx, supra, g63 (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
         ts: Date.now()
     });
     global.chatSend(player, {

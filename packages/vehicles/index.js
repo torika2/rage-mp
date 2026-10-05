@@ -67,6 +67,14 @@ function persist(player) {
     record.plate = vehicle.numberPlate || record.plate;
     const fuelVar = vehicle.getVariable('veh:fuel');
     if (fuelVar !== undefined && fuelVar !== null) record.fuel = fuelVar;
+    let octaneVar; try { octaneVar = vehicle.getVariable('veh:octane'); } catch (e) {}
+    if (octaneVar !== undefined) record.octane = octaneVar; // persist the fuel grade too (null = default)
+    // Capture the garage effects (performance + visual) so the auto-restore brings them back, not just
+    // the DB /getcar path. veh:tune is the resolved {power,topMult,kick}; veh:visual the colors/mods.
+    let tuneVar; try { tuneVar = vehicle.getVariable('veh:tune'); } catch (e) {}
+    if (tuneVar !== undefined) record.tune = tuneVar;
+    let visualVar; try { visualVar = vehicle.getVariable('veh:visual'); } catch (e) {}
+    if (visualVar !== undefined) record.visual = visualVar;
     save();
 }
 global.vehPersist = persist;
@@ -127,6 +135,8 @@ global.vehGarageTake = function (player, position, heading) {
     const fuel = (typeof record.fuel === 'number') ? record.fuel : FUEL_MAX;
     try { vehicle.setVariable('veh:fuel', fuel); } catch (e) {}
     try { vehicle.setVariable('veh:visual', record.visual || null); } catch (e) {}
+    try { vehicle.setVariable('veh:octane', record.octane || null); } catch (e) {} // restore the fuel grade
+    try { vehicle.setVariable('veh:tune', record.tune || null); } catch (e) {} // restore garage performance
     setKmVar(vehicle, record);
     player.myCar = vehicle;
     player.activeVehId = record.dbId || null;
@@ -177,6 +187,8 @@ function restore(player) {
     const fuel = (typeof record.fuel === 'number') ? record.fuel : FUEL_MAX;
     try { vehicle.setVariable('veh:fuel', fuel); } catch (e) {}
     try { vehicle.setVariable('veh:visual', record.visual || null); } catch (e) {}
+    try { vehicle.setVariable('veh:octane', record.octane || null); } catch (e) {} // restore the fuel grade
+    try { vehicle.setVariable('veh:tune', record.tune || null); } catch (e) {} // restore garage performance
     setKmVar(vehicle, record);
     player.myCar = vehicle;
     player.activeVehId = record.dbId || null;

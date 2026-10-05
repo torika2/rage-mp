@@ -16,7 +16,12 @@ function getTeam(player) {
     if (player.getVariable('police:duty') === true) return 'police';
     return null;
 }
-function nameOf(player) { return player.name || ('Player_' + player.id); }
+function nameOf(player) {
+    // Prefer the in-character name (First Last); fall back to Social Club only if unauthenticated.
+    const c = player.character;
+    if (c && c.firstName) return (c.firstName + ' ' + (c.lastName || '')).trim();
+    return player.name || ('Player_' + player.id);
+}
 
 // Broadcast an RP action (like /me) to players near `player` in the same dimension.
 // Used by e.g. the phone taking out a handset. Rendered as an action line in the local channel.

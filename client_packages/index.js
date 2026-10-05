@@ -63,6 +63,14 @@ function worldText(text) {
     return String(text == null ? '' : text).replace(/[\u10D0-\u10FF]/g, ch => GEO_LATIN[ch] || '').replace(/[—…]/g, ch => (ch === '—' ? '-' : '...'));
 }
 
+// Blip names use the game font too (no Georgian glyphs) → they'd show blank on the map. Route every
+// client-created blip name through worldText so map labels are readable. One patch covers all blips.
+const _blipsNew = mp.blips.new.bind(mp.blips);
+mp.blips.new = function (sprite, position, options) {
+    if (options && typeof options.name === 'string') options = Object.assign({}, options, { name: worldText(options.name) });
+    return _blipsNew(sprite, position, options);
+};
+
 // Tiered fuel. eff = fuel-burn (higher burns faster / less range).
 // power = engine power multiplier (>=1 only; SET_VEHICLE_ENGINE_POWER_MULTIPLIER
 // ignores values <1, so Regular is the 1.0 baseline and higher grades add power/speed).
@@ -412,6 +420,11 @@ function killRadio(vehicle) {
 let radioKillTimer = null;
 mp.events.add('playerEnterVehicle', (vehicle) => {
     if (!vehicle) return;
+    // Re-seed THIS car's fuel/octane from its own server synced vars, overwriting any cached value for
+    // this remoteId. RAGE:MP recycles remoteIds when a car is destroyed/respawned (e.g. /getcar), so
+    // without this a new car could inherit the previous car's fuel/octane.
+    try { const f = vehicle.getVariable('veh:fuel'); fuelByVeh[vehicle.remoteId] = (typeof f === 'number') ? f : CFG.fuelMax; } catch (e) { fuelByVeh[vehicle.remoteId] = CFG.fuelMax; }
+    try { const o = vehicle.getVariable('veh:octane'); octaneByVeh[vehicle.remoteId] = (o && typeof o === 'object') ? o : null; } catch (e) { octaneByVeh[vehicle.remoteId] = null; }
     applyOctanePower(vehicle);
     launchKickUntil = 0; launchArmed = true; // fresh launch kick available in the new car
     // GTA keeps re-enabling the radio for ~1–2s after entry — hammer it OFF for ~3s so it never plays.
@@ -440,7 +453,7 @@ function octaneProfile(veh) {
 // Keyed by model hash; the admin assigns a stage to plain model names (e.g. "23rs7abt"), hashed here.
 //   power   — engine-power multiplier (acceleration) · topMult — top-speed multiplier (× stock top,
 //   0 = untuned) · kick — launch burst off the line (1 = none).
-const NO_TUNE = { power: 1, topMult: 0, kick: 1 };
+const NO_TUNE = { power: 1, topMult: 0, kick: 1, brake: 1, handling: 1 };
 let speedTuneByHash = {};
 function modelTune(veh) {
     // Per-vehicle garage tuning (synced var veh:tune, set server-side by packages/cartuning) wins over
@@ -448,7 +461,7 @@ function modelTune(veh) {
     try {
         const own = veh.getVariable('veh:tune');
         if (own && typeof own === 'object') {
-            return { power: Number(own.power) || 1, topMult: Number(own.topMult) || 0, kick: Number(own.kick) || 1 };
+            return { power: Number(own.power) || 1, topMult: Number(own.topMult) || 0, kick: Number(own.kick) || 1, brake: Number(own.brake) || 1, handling: Number(own.handling) || 1 };
         }
     } catch (e) {}
     return speedTuneByHash[(veh.model >>> 0)] || NO_TUNE;
@@ -462,7 +475,9 @@ mp.events.add('speed:mods', (json) => {
             next[mp.game.joaat(name) >>> 0] = {
                 power: Number(value.power) || 1,
                 topMult: Number(value.topMult) || 0,
-                kick: Number(value.kick) || 1
+                kick: Number(value.kick) || 1,
+                brake: Number(value.brake) || 1,
+                handling: Number(value.handling) || 1
             };
         }
     } catch (e) {}
@@ -584,6 +599,12 @@ let launchKickUntil = 0, launchArmed = true;
 // launches harder AND reaches a higher top — felt across the whole range, like a real car.
 // e.g. a Stage 3 + ×2.5 car (power ≈ 4.0) peaks around 3.2 × 4.0 ≈ 13 m/s² (~1.3 g) off the line.
 const ACCEL_PEAK = 3.2;
+// Brake-upgrade strength: extra per-second velocity bleed while braking, per unit of (tune.brake-1).
+// A maxed brake tune (brake 1.75 → +0.75) sheds ~0.75×2.5 = ~1.9×/s extra on top of native braking.
+const BRAKE_ASSIST = 2.5;
+// Handling-upgrade grip: how fast sideways slide is bled off, per unit of (tune.handling-1). Higher =
+// grippier/less drift. Kept mild so cars feel planted, not on-rails.
+const GRIP_ASSIST = 1.6;
 function launchControl(veh, speed, now) {
     let driver = true;
     try { driver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
@@ -639,6 +660,7 @@ function currentFuelData(veh) {
         money: getMoney(),
         fuelPct: Math.round(getFuel(veh)),
         tankLiters: CFG.tankLiters,
+        currentOctane: currentOctaneIndex(veh), // grade in the tank now (-1 = empty) → UI warns on a switch
         octanes: OCTANES.map(o => ({ name: o.name, price: o.price }))
     };
 }
@@ -938,16 +960,57 @@ mp.events.add('render', () => {
 // its data on load and relays buys; the server charges money, saves levels on the car's DB row, and
 // pushes the new effect via the synced var veh:tune (applied live below).
 let cartuningBrowser = null;
+let tuningBaseline = null; // snapshot of the car's visual on open, to revert staged-but-unbought previews
 mp.events.add('cartuning:open', () => {
     if (cartuningBrowser || chatting) return;
     cartuningBrowser = mp.browsers.new('package://ui/cartuning/index.html');
     mp.gui.cursor.show(true, true);
+    tuningBaseline = readVehVisual(mp.players.local.vehicle);
+    startTuneCam(); // orbit camera so the player can see the car (drag to spin)
 });
 function closeCartuning() {
     if (!cartuningBrowser) return;
+    const veh = mp.players.local.vehicle;
     cartuningBrowser.destroy(); cartuningBrowser = null;
     mp.gui.cursor.show(false, false);
+    stopTuneCam();
+    if (veh && mp.vehicles.exists(veh) && tuningBaseline) previewVisual(veh, tuningBaseline); // undo any unbought preview
+    tuningBaseline = null;
 }
+
+// ---- Orbit camera around the car while the tuning UI is open (drag on the world to spin) ----
+let tuneCam = null, tuneCamOrbit = 0;
+function startTuneCam() {
+    if (tuneCam) return;
+    const veh = mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    const p = veh.position;
+    tuneCamOrbit = 160; // start looking at the car's front-left three-quarter
+    try {
+        tuneCam = mp.cameras.new('default', new mp.Vector3(p.x, p.y, p.z + 2), new mp.Vector3(0, 0, 0), 48);
+        tuneCam.setActive(true);
+        mp.game.cam.renderScriptCams(true, false, 0, true, false);
+        updateTuneCam();
+    } catch (e) { stopTuneCam(); }
+}
+function updateTuneCam() {
+    if (!tuneCam) return;
+    const veh = mp.players.local.vehicle;
+    const c = (veh && mp.vehicles.exists(veh)) ? veh.position : null;
+    if (!c) return;
+    const dist = 5.5, height = 1.4, rad = tuneCamOrbit * Math.PI / 180;
+    try {
+        tuneCam.setCoord(c.x + Math.sin(rad) * dist, c.y - Math.cos(rad) * dist, c.z + height);
+        tuneCam.pointAtCoord(c.x, c.y, c.z + 0.1);
+    } catch (e) {}
+}
+function rotateTuneCam(deltaDeg) { tuneCamOrbit = (tuneCamOrbit + deltaDeg) % 360; updateTuneCam(); }
+function stopTuneCam() {
+    if (tuneCam) { try { tuneCam.destroy(); } catch (e) {} tuneCam = null; }
+    try { mp.game.cam.renderScriptCams(false, false, 0, true, false); } catch (e) {}
+    tuneCamOrbit = 0;
+}
+mp.events.add('cartuning:rotate', (deltaPixels) => { if (tuneCam) rotateTuneCam(Number(deltaPixels) * 0.5); });
 mp.events.add('cartuning:data', (json) => {
     if (!cartuningBrowser) return;
     let data; try { data = JSON.parse(json); } catch (e) { return; }
@@ -960,13 +1023,26 @@ mp.events.add('cartuning:result', (json) => {
     // Re-apply power/top-speed live so the just-bought upgrade takes effect without re-entering the car.
     try {
         const r = JSON.parse(json);
-        if (r && r.applied) { const veh = mp.players.local.vehicle; if (veh && mp.vehicles.exists(veh)) applyOctanePower(veh); }
+        if (r && r.applied) {
+            const veh = mp.players.local.vehicle;
+            if (veh && mp.vehicles.exists(veh)) {
+                applyOctanePower(veh);
+                tuningBaseline = readVehVisual(veh); // purchase committed → that's the new revert point
+            }
+        }
     } catch (e) {}
 });
 mp.events.add('cartuning:denied', () => { closeCartuning(); notify('ტუნინგი ხელმისაწვდომია მხოლოდ შენს მანქანაში, ავტოსახელოსნოში.'); });
 mp.events.add('cartuning:uiReady', () => mp.events.callRemote('cartuning:request')); // CEF -> server
-mp.events.add('cartuning:buy', (partKey) => mp.events.callRemote('cartuning:buy', String(partKey))); // CEF -> server
-mp.events.add('cartuning:buyVisual', (category, value) => mp.events.callRemote('cartuning:buyVisual', String(category), Number(value))); // CEF -> server
+mp.events.add('cartuning:buy', (partKey) => mp.events.callRemote('cartuning:buy', String(partKey))); // CEF -> server (engine)
+// Live-preview the staged cart on the player's own car (not charged/synced) — like trying on clothes.
+mp.events.add('cartuning:preview', (json) => {
+    const veh = mp.players.local.vehicle;
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    let cfg; try { cfg = JSON.parse(json); } catch (e) { return; }
+    previewVisual(veh, cfg);
+});
+mp.events.add('cartuning:checkout', (json) => mp.events.callRemote('cartuning:checkout', String(json))); // CEF -> server (pay the cart)
 mp.events.add('cartuning:close', closeCartuning); // CEF
 mp.events.add('render', () => {
     if (!cartuningBrowser) return;
@@ -1014,6 +1090,58 @@ mp.events.add('render', () => {
     });
 });
 
+// ---------- Gang base panel (membership, ranks, stash, crafting, treasury) ----------
+// The server sends this player's gang base coords (gangs:zone); standing within range on foot shows a
+// "Press E" prompt that opens the CEF panel. All actions relay to the server, which is authoritative.
+let gangBrowser = null;
+let gangZone = null; // { x, y, z, dim } of this player's gang base, or null
+mp.events.add('gangs:zone', (json) => { try { gangZone = JSON.parse(json); } catch (e) { gangZone = null; } });
+function requestGangZone(attempt) {
+    if (gangZone || attempt > 12) return;
+    try { mp.events.callRemote('gangs:zonesRequest'); } catch (e) {}
+    setTimeout(() => requestGangZone(attempt + 1), 3000);
+}
+mp.events.add('playerReady', () => requestGangZone(0));
+setTimeout(() => requestGangZone(0), 2500);
+function atGangBase() {
+    const me = mp.players.local;
+    if (!gangZone || me.vehicle) return false;
+    if (Number(me.dimension) !== Number(gangZone.dim || 0)) return false;
+    const p = me.position;
+    const dx = p.x - gangZone.x, dy = p.y - gangZone.y, dz = p.z - gangZone.z;
+    return dx * dx + dy * dy + dz * dz <= 25; // ~5m (server gate is 4; a touch wider so the prompt shows first)
+}
+function openGangPanel() {
+    if (gangBrowser) return;
+    gangBrowser = mp.browsers.new('package://ui/gang/index.html');
+    mp.gui.cursor.show(true, true);
+}
+function closeGangPanel() {
+    if (!gangBrowser) return;
+    gangBrowser.destroy(); gangBrowser = null;
+    mp.gui.cursor.show(false, false);
+    try { mp.events.callRemote('gangs:close'); } catch (e) {}
+}
+mp.events.add('gangs:open', openGangPanel);          // server opened the panel (E at base validated)
+mp.events.add('gangs:forceClose', closeGangPanel);   // server kicked/disbanded — shut the UI
+mp.events.add('gangs:data', (json) => { if (gangBrowser) gangBrowser.execute(`window.setGang(${json})`); });
+mp.events.add('gangs:ui:ready', () => mp.events.callRemote('gangs:ui:ready'));     // CEF -> server (request data)
+mp.events.add('gangs:buyMaterial', (id, qty) => mp.events.callRemote('gangs:buyMaterial', String(id), String(qty)));
+mp.events.add('gangs:craft', (key) => mp.events.callRemote('gangs:craft', String(key)));
+mp.events.add('gangs:stashTake', (id, qty) => mp.events.callRemote('gangs:stashTake', String(id), String(qty)));
+mp.events.add('gangs:stashPut', (id, qty) => mp.events.callRemote('gangs:stashPut', String(id), String(qty)));
+mp.events.add('gangs:deposit', (amt) => mp.events.callRemote('gangs:deposit', String(amt)));
+mp.events.add('gangs:withdraw', (amt) => mp.events.callRemote('gangs:withdraw', String(amt)));
+mp.events.add('gangs:closeUI', closeGangPanel); // CEF close button
+mp.events.add('render', () => {
+    if (gangBrowser) { mp.gui.cursor.show(true, true); mp.game.controls.disableAllControlActions(0); return; }
+    if (chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || fuelUIOpen) return;
+    if (!atGangBase()) return;
+    mp.game.graphics.drawText('Press E — ბანდის ბაზა', [0.5, 0.86], {
+        font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
+    });
+});
+
 // /vehmods diagnostic: dump mod variations (type: current/count) + extras of the car you're in, so we
 // can identify which mod index / extra controls a model's "two versions" (e.g. M8 spoiler vs ducktail).
 const VEH_MOD_NAMES = { 0: 'Spoiler', 1: 'FrontBumper', 2: 'RearBumper', 3: 'Skirts', 4: 'Exhaust', 5: 'Chassis', 6: 'Grille', 7: 'Hood', 8: 'FenderL', 9: 'FenderR', 10: 'Roof', 23: 'Wheels', 24: 'RearWheels' };
@@ -1021,22 +1149,34 @@ mp.events.add('vehmods:dump', () => {
     const v = mp.players.local.vehicle;
     if (!v) { notify('ჩაჯექი მანქანაში.'); return; }
     const h = v.handle;
-    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
-    notify('--- ' + '/vehmods' + ' (type: current / count) ---');
+    // Read the AS-SPAWNED state FIRST — do not call setVehicleModKit before this or it wipes the
+    // random variation the car spawned with (that was the bug: we read the post-reset state).
+    let kit = -99, mod0 = -99, liv = -99;
+    try { kit = mp.game.vehicle.getVehicleModKit(h); } catch (e) {}
+    try { mod0 = mp.game.vehicle.getVehicleMod(h, 0); } catch (e) {}
+    try { liv = mp.game.vehicle.getVehicleLivery(h); } catch (e) {}
+    const spawnedMods = [];
     for (let t = 0; t <= 49; t++) {
-        let count = 0;
-        try { count = mp.game.vehicle.getNumVehicleMods(h, t); } catch (e) {}
-        if (count > 0) {
-            let cur = -1;
-            try { cur = mp.game.vehicle.getVehicleMod(h, t); } catch (e) {}
-            notify((VEH_MOD_NAMES[t] || ('mod' + t)) + ':  ' + cur + ' / ' + count);
-        }
+        let cur = -2; try { cur = mp.game.vehicle.getVehicleMod(h, t); } catch (e) {}
+        if (cur >= 0) spawnedMods.push((VEH_MOD_NAMES[t] || ('mod' + t)) + '=' + cur);
     }
     const extras = [];
-    for (let e = 0; e <= 20; e++) {
+    for (let e = 0; e <= 30; e++) {
         try { if (mp.game.vehicle.doesExtraExist(h, e)) extras.push(e + '=' + (mp.game.vehicle.isVehicleExtraTurnedOn(h, e) ? 'ON' : 'off')); } catch (err) {}
     }
-    notify('extras:  ' + (extras.join(', ') || 'none'));
+    notify('--- /vehmods AS-SPAWNED ---');
+    notify('modkit: ' + kit + '   spoiler(mod0): ' + mod0 + '   livery: ' + liv);
+    notify('set mods: ' + (spawnedMods.join(', ') || 'none'));
+    notify('extras: ' + (extras.join(', ') || 'none'));
+    // Now enable the kit and list what's AVAILABLE (counts).
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    const avail = [];
+    for (let t = 0; t <= 49; t++) {
+        let c = 0; try { c = mp.game.vehicle.getNumVehicleMods(h, t); } catch (e) {}
+        if (c > 0) avail.push((VEH_MOD_NAMES[t] || ('mod' + t)) + ':' + c);
+    }
+    let livN = 0; try { livN = mp.game.vehicle.getVehicleLiveryCount(h); } catch (e) {}
+    notify('available mods: ' + (avail.join(', ') || 'none') + '   liveryCount: ' + livN);
 });
 
 // ===================== Vehicle visual customization (LS Customs) =====================
@@ -1044,6 +1184,34 @@ mp.events.add('vehmods:dump', () => {
 // players, so a customized car looks the same to everyone. Driven by the synced var (stream-in) and a
 // server broadcast (live change). The garage UI reads option counts via enumerateVehicleOptions().
 const VISUAL_MOD_TYPES = [0, 1, 2, 3, 4, 7, 10, 23]; // spoiler, bumpers, skirts, exhaust, hood, roof, wheels
+
+// Read a car's current visual into a config (used as the revert point while the garage UI is open).
+function readVehVisual(veh) {
+    const out = { mods: {}, colors: {} };
+    if (!veh || !mp.vehicles.exists(veh)) return out;
+    const h = veh.handle;
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    VISUAL_MOD_TYPES.forEach(t => { try { out.mods[t] = mp.game.vehicle.getVehicleMod(h, t); } catch (e) { out.mods[t] = -1; } });
+    try { const col = mp.game.vehicle.getVehicleColours(h, 0, 0); if (col) { out.colors.primary = (col.colorPrimary != null ? col.colorPrimary : (col[0] != null ? col[0] : 0)); out.colors.secondary = (col.colorSecondary != null ? col.colorSecondary : (col[1] != null ? col[1] : 0)); } } catch (e) {}
+    try { out.windowTint = mp.game.vehicle.getVehicleWindowTint(h); } catch (e) {}
+    try { out.wheelType = mp.game.vehicle.getVehicleWheelType(h); } catch (e) {}
+    return out;
+}
+// Live-preview a full visual config on the local car (not synced/charged). Forces every mod slot so
+// un-staging reverts cleanly, unlike the sync applier which only touches fields that are present.
+function previewVisual(veh, cfg) {
+    if (!veh || !mp.vehicles.exists(veh) || !cfg) return;
+    const h = veh.handle;
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    const mods = cfg.mods || {};
+    VISUAL_MOD_TYPES.forEach(t => { try { mp.game.vehicle.setVehicleMod(h, t, (mods[t] != null ? Number(mods[t]) : -1), false); } catch (e) {} });
+    const c = cfg.colors || {};
+    if (typeof c.primary === 'number' && typeof c.secondary === 'number') { try { mp.game.vehicle.setVehicleColours(h, c.primary, c.secondary); } catch (e) {} }
+    if (typeof c.pearl === 'number' || typeof c.wheel === 'number') { try { mp.game.vehicle.setVehicleExtraColours(h, c.pearl || 0, c.wheel || 0); } catch (e) {} }
+    if (typeof cfg.windowTint === 'number') { try { mp.game.vehicle.setVehicleWindowTint(h, cfg.windowTint); } catch (e) {} }
+    if (typeof cfg.wheelType === 'number') { try { mp.game.vehicle.setVehicleWheelType(h, cfg.wheelType); } catch (e) {} }
+}
+
 function applyVehicleVisual(veh, cfg) {
     if (!veh || !mp.vehicles.exists(veh) || !cfg || typeof cfg !== 'object') return;
     const h = veh.handle;
@@ -2553,7 +2721,7 @@ function setPhone(out) {
     }
 }
 function anyModalOpen() {
-    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || parkEditing);
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || gangBrowser || parkEditing);
 }
 bindKey(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
 bindKey(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
@@ -2885,9 +3053,28 @@ mp.events.add('vehicle:menu:apply', (vehicleId, action) => {
     applyVehicleMenuAction(action, vehicleMenuVehicle, true);
     sendVehicleMenuState();
 });
+// Current octane grade in the tank, matched to the nearest OCTANES entry by rating (-1 = empty/none).
+function currentOctaneIndex(veh) {
+    const prof = octaneByVeh[veh.remoteId];
+    if (!prof || typeof prof.rating !== 'number') return -1;
+    let best = -1, bestDiff = Infinity;
+    OCTANES.forEach((o, i) => { const d = Math.abs(o.rating - prof.rating); if (d < bestDiff) { bestDiff = d; best = i; } });
+    return best;
+}
 mp.events.add('fuel:purchase', (octane, liters, drain) => {
+    octane = parseInt(octane); liters = parseInt(liters);
+    const veh = mp.players.local.vehicle;
+    // You can't mix grades: if the tank already holds a DIFFERENT grade, you must empty it and refill
+    // the whole tank with the new grade. Force a full drain+fill and warn naming the current grade.
+    if (veh && mp.vehicles.exists(veh)) {
+        const cur = currentOctaneIndex(veh);
+        if (getFuel(veh) > 0.5 && cur >= 0 && cur !== octane) {
+            drain = true;
+            liters = CFG.tankLiters; // full tank (the UI already warned before this buy)
+        }
+    }
     pendingDrain = (drain === true || drain === 'true' || drain === 1 || drain === '1');
-    mp.events.callRemote('fuel:buy', parseInt(octane), parseInt(liters));
+    mp.events.callRemote('fuel:buy', octane, liters);
 });
 mp.events.add('fuel:close', () => closeFuelUI());
 
@@ -2918,12 +3105,8 @@ mp.events.add('fuel:confirm', (octaneIndex, liters, cost) => {
         try { mp.events.callRemote('vehicle:fuelReport', Math.round(getFuel(veh))); } catch (e) {}
         try { mp.events.callRemote('vehicle:octaneReport', JSON.stringify(octaneByVeh[veh.remoteId] || null)); } catch (e) {}
     }
-    if (fuelUIOpen && fuelBrowser) {
-        sendFuelData();
-        fuelBrowser.execute(`window.fuelToast(${JSON.stringify('შეივსო ' + liters + 'ლ · $' + cost)}, true)`);
-    } else {
-        notify(`შეივსო ${liters}ლ · $${cost}`);
-    }
+    closeFuelUI(); // successful purchase → close the pump UI
+    notify(`შეივსო ${liters}ლ · $${cost}`);
     pendingDrain = false;
 });
 mp.events.add('fuel:deny', (msg) => {
@@ -3010,6 +3193,7 @@ bindKey(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped ite
     const house = nearestHouseAction(mp.players.local);
     if (house) { mp.events.callRemote(house.event, house.id); return; }
     if (canTuneHere()) { mp.events.callRemote('cartuning:tryOpen'); return; } // E opens the tuning panel at a garage
+    if (atGangBase()) { mp.events.callRemote('gangs:openPanel'); return; } // E opens the gang base panel
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
     const drop = findNearDrop();
     if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }
@@ -3040,6 +3224,7 @@ bindKey(0x1B, true, () => { // Esc closes chat input or an open modal
     else if (parkingBrowser) closeParkingUI();
     else if (parkEditing) parkEditConfirm = !parkEditConfirm; // Esc toggles the save/discard prompt
     else if (phoneBrowser) setPhone(false);
+    else if (gangBrowser) closeGangPanel();
     else if (inventoryBrowser) closeInventoryUI();
     else if (vehicleMenuBrowser) closeVehicleMenu();
 });
@@ -3392,7 +3577,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || gangBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -3455,10 +3640,29 @@ mp.events.add('render', () => {
         // car accelerates normally and horizontal velocity is only clamped if it ever exceeds the cap (e.g.
         // downhill). Vertical velocity is left alone. Stock (untuned) cars are untouched.
         const tune = modelTune(veh);
-        if (tune.topMult > 0 || tune.kick > 1) {
+        if (tune.topMult > 0 || tune.kick > 1 || tune.brake > 1 || tune.handling > 1) {
             let isDriver = true;
             try { isDriver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
             if (isDriver) {
+                // (d) handling — damp sideways (lateral) velocity so the car grips and slides less.
+                if (tune.handling > 1 && speed > 3) {
+                    try {
+                        const fwd = mp.game.entity.getEntityForwardVector(veh.handle);
+                        const v = veh.getVelocity();
+                        const fdot = v.x * fwd.x + v.y * fwd.y;              // speed along the car's forward axis
+                        const fx = fwd.x * fdot, fy = fwd.y * fdot;          // forward component
+                        const lx = v.x - fx, ly = v.y - fy;                  // lateral (slide) component
+                        const grip = Math.max(0, 1 - (tune.handling - 1) * GRIP_ASSIST * dt); // bleed the slide
+                        mp.game.entity.setEntityVelocity(veh.handle, fx + lx * grip, fy + ly * grip, v.z);
+                    } catch (e) {}
+                }
+                // (c) brakes — stronger deceleration while braking/handbraking (garage brake upgrade).
+                if (tune.brake > 1 && speed > 2 && (mp.game.controls.isControlPressed(0, 72) || mp.game.controls.isControlPressed(0, 76))) {
+                    const bv = veh.getVelocity();
+                    const bscale = Math.max(0, 1 - (tune.brake - 1) * BRAKE_ASSIST * dt);
+                    try { mp.game.entity.setEntityVelocity(veh.handle, bv.x * bscale, bv.y * bscale, bv.z); }
+                    catch (e) { try { mp.game.invoke('0x1C99BB7B6E96D16F', veh.handle, bv.x * bscale, bv.y * bscale, bv.z); } catch (e2) {} } // SET_ENTITY_VELOCITY
+                }
                 // (a) launch kick — fire a brief power burst when flooring it away from a near-stop.
                 if (tune.kick > 1) {
                     if (speed > 8) launchArmed = true; // moving well (~29 km/h) → re-arm for the next launch

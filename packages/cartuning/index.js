@@ -41,22 +41,26 @@ const PARTS = {
                 effect: (lvl) => lvl ? `+${lvl * 10}% მაქს. სიჩქარე` : 'სტოკი' },
     launch:   { label: 'სტარტი',        field: 'kick',    step: 0.20, prices: [8000, 15000, 25000, 38000, 55000],
                 effect: (lvl) => lvl ? `+${lvl * 20}% აჩქარება სტარტზე` : 'სტოკი' },
+    brakes:   { label: 'მუხრუჭები',     field: 'brake',   step: 0.15, prices: [9000, 16000, 26000, 40000, 58000],
+                effect: (lvl) => lvl ? `+${lvl * 15}% დამუხრუჭება` : 'სტოკი' },
+    handling: { label: 'მართვადობა',    field: 'handling', step: 0.12, prices: [11000, 19000, 30000, 46000, 66000],
+                effect: (lvl) => lvl ? `+${lvl * 12}% საჭესთან აკვრა` : 'სტოკი' },
 };
-const PART_ORDER = ['engine', 'topSpeed', 'launch'];
+const PART_ORDER = ['engine', 'topSpeed', 'launch', 'brakes', 'handling'];
 
 function tell(player, message, ok) {
     player.outputChatBox((ok === false ? '!{#ff6b6b}' : '!{#8ed17a}') + '[ტუნინგი] !{#ffffff}' + message);
 }
 
-function zeroLevels() { return { engine: 0, topSpeed: 0, launch: 0 }; }
+function zeroLevels() { return { engine: 0, topSpeed: 0, launch: 0, brakes: 0, handling: 0 }; }
 function clampLevel(v) { const n = Math.round(Number(v) || 0); return Math.max(0, Math.min(MAX_LEVEL, n)); }
 function normalizeLevels(levels) {
     const L = levels || {};
-    return { engine: clampLevel(L.engine), topSpeed: clampLevel(L.topSpeed), launch: clampLevel(L.launch) };
+    return { engine: clampLevel(L.engine), topSpeed: clampLevel(L.topSpeed), launch: clampLevel(L.launch), brakes: clampLevel(L.brakes), handling: clampLevel(L.handling) };
 }
 
-// levels -> the { power, topMult, kick } the client applies (1 = stock). power/topMult default to 1 so
-// an engine-only upgrade keeps stock top speed; kick 1 = no launch burst.
+// levels -> the { power, topMult, kick, brake } the client applies (1 = stock). power/topMult default
+// to 1 so an engine-only upgrade keeps stock top speed; kick 1 = no launch burst; brake 1 = stock.
 function resolveTuning(levels) {
     const L = normalizeLevels(levels);
     const r4 = (n) => Math.round(n * 10000) / 10000;
@@ -64,6 +68,8 @@ function resolveTuning(levels) {
         power:   r4(1 + L.engine   * PARTS.engine.step),
         topMult: r4(1 + L.topSpeed * PARTS.topSpeed.step),
         kick:    r4(1 + L.launch   * PARTS.launch.step),
+        brake:   r4(1 + L.brakes   * PARTS.brakes.step),
+        handling: r4(1 + L.handling * PARTS.handling.step),
     };
 }
 
@@ -75,7 +81,7 @@ const levelsByDbId = new Map();
 function applyToVehicle(veh, levels) {
     if (!veh || !mp.vehicles.exists(veh)) return;
     const L = normalizeLevels(levels);
-    const any = L.engine > 0 || L.topSpeed > 0 || L.launch > 0;
+    const any = L.engine > 0 || L.topSpeed > 0 || L.launch > 0 || L.brakes > 0 || L.handling > 0;
     try { veh.setVariable('veh:tune', any ? resolveTuning(L) : null); } catch (e) {}
 }
 
@@ -123,27 +129,13 @@ global.vehApplyVisual = function (veh, dbId, visual) {
     pushVisual(veh, cfg);
 };
 
-mp.events.add('cartuning:buyVisual', (player, category, rawValue) => {
-    const reply = (ok, msg) => player.call('cartuning:result', [JSON.stringify({ ok, msg, applied: !!ok })]);
-    const reason = tuningBlockReason(player);
-    if (reason) return reply(false, reason);
-    category = String(category);
-    const price = VISUAL_PRICES[category];
-    if (price === undefined) return reply(false, 'უცნობი კატეგორია.');
-    if (typeof global.getMoney !== 'function' || !global.canAfford(player, price)) {
-        return reply(false, `არასაკმარისი თანხა — საჭიროა $${price}.`);
-    }
+// Write one staged change into a config object (shared by checkout). Returns false if the category is
+// unknown. Pairs primary/secondary so the client applier always has both.
+function applyCategoryToCfg(cfg, category, rawValue) {
     const value = Math.round(Number(rawValue));
-    if (!Number.isFinite(value)) return reply(false, 'არასწორი მნიშვნელობა.');
-
-    const dbId = Number(player.activeVehId);
-    const cfg = Object.assign({}, visualByDbId.get(dbId) || {});
-    cfg.colors = Object.assign({}, cfg.colors || {});
-    cfg.mods = Object.assign({}, cfg.mods || {});
-
+    if (!Number.isFinite(value)) return false;
     if (COLOR_CHANNELS.includes(category)) {
         cfg.colors[category] = clampInt(value, 0, 159);
-        // Pair primary/secondary so the client applier always has both to pass to setVehicleColours.
         if (category === 'primary' && cfg.colors.secondary === undefined) cfg.colors.secondary = cfg.colors.primary;
         if (category === 'secondary' && cfg.colors.primary === undefined) cfg.colors.primary = cfg.colors.secondary;
     } else if (category === 'windowTint') {
@@ -152,19 +144,50 @@ mp.events.add('cartuning:buyVisual', (player, category, rawValue) => {
         cfg.wheelType = clampInt(value, 0, 25);
     } else if (category.indexOf('mod:') === 0) {
         const type = category.slice(4);
-        if (!MOD_CATEGORIES[type]) return reply(false, 'უცნობი დეტალი.');
+        if (!MOD_CATEGORIES[type]) return false;
         cfg.mods[type] = clampInt(value, -1, 200); // -1 = stock; client bounds it by the real option count
     } else {
-        return reply(false, 'უცნობი კატეგორია.');
+        return false;
+    }
+    return true;
+}
+
+// Cart checkout: a batch of staged visual changes { category: value, ... }. Charges the summed price,
+// applies everything at once, persists, and syncs to all players. (Colors/wheels/body/extras use this
+// "add to cart → გადახდა" flow like the clothing/tattoo shops; engine upgrades still buy directly.)
+mp.events.add('cartuning:checkout', (player, cartJson) => {
+    const reply = (ok, msg) => player.call('cartuning:result', [JSON.stringify({ ok, msg, applied: !!ok, checkout: true })]);
+    const reason = tuningBlockReason(player);
+    if (reason) return reply(false, reason);
+
+    let cart;
+    try { cart = JSON.parse(cartJson); } catch (e) { return reply(false, 'კალათა დაზიანდა.'); }
+    const entries = cart && typeof cart === 'object' ? Object.entries(cart) : [];
+    if (!entries.length) return reply(false, 'კალათა ცარიელია.');
+
+    let total = 0;
+    for (const [category] of entries) {
+        const price = VISUAL_PRICES[category];
+        if (price === undefined) return reply(false, 'უცნობი კატეგორია: ' + category);
+        total += price;
+    }
+    if (typeof global.getMoney !== 'function' || !global.canAfford(player, total)) {
+        return reply(false, `არასაკმარისი თანხა — საჭიროა $${total}.`);
     }
 
+    const dbId = Number(player.activeVehId);
+    const cfg = Object.assign({}, visualByDbId.get(dbId) || {});
+    cfg.colors = Object.assign({}, cfg.colors || {});
+    cfg.mods = Object.assign({}, cfg.mods || {});
+    for (const [category, value] of entries) applyCategoryToCfg(cfg, category, value);
+
     visualByDbId.set(dbId, cfg);
-    global.setMoney(player, global.getMoney(player) - price);
+    global.setMoney(player, global.getMoney(player) - total);
     pushVisual(player.vehicle, cfg);
     if (global.api && global.api.updateVehicle) global.api.updateVehicle(dbId, { visual: cfg }).catch(() => {});
     player.call('cartuning:data', [JSON.stringify(buildData(player))]);
-    reply(true, `განახლდა ($${price}).`);
-    console.log(`[cartuning] ${player.name} visual ${category}=${value} ($${price}) on vehicle #${dbId}`);
+    reply(true, `გადახდილია $${total} — ${entries.length} ცვლილება.`);
+    console.log(`[cartuning] ${player.name} checkout ${entries.length} change(s) ($${total}) on vehicle #${dbId}`);
 });
 
 // The car the player may tune right now: their own DB-persisted car, that they're sitting in, parked in
@@ -221,7 +244,6 @@ function buildData(player) {
 try {
     GARAGES.forEach((g) => {
         mp.blips.new(72, new mp.Vector3(g.x, g.y, g.z), { name: global.worldText('ავტოტუნინგი'), color: 5, scale: 0.9, shortRange: false });
-        mp.markers.new(1, new mp.Vector3(g.x, g.y, g.z - 1.0), 2.0, { color: [242, 193, 92, 120] });
         const zone = mp.colshapes.newSphere(g.x, g.y, g.z, RANGE);
         zone.onEnter = (player) => { if (mp.players.exists(player) && player.vehicle) tell(player, 'შენი მანქანის გასაუმჯობესებლად აკრიფე /tune'); };
     });

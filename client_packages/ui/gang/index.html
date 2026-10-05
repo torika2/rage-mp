@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ბანდა</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --gold: #f2c15c; --blue: #5ac8fa; --green: #8ed17a; --red: #ff6b6b; --gang: #c0392b;
+    --text: #f3f0e8; --muted: #aaa79e; --line: rgba(255,255,255,.12);
+    font-family: "Noto Sans Georgian", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; }
+  body { color: var(--text); user-select:none; background: transparent; display:flex; align-items:center; justify-content:center; }
+  .panel { width: min(680px, 94vw); max-height: 88vh; background: linear-gradient(180deg,#1a1012,#0c0f13);
+    border:1px solid rgba(192,57,43,.5); border-radius:14px; box-shadow:0 24px 70px rgba(0,0,0,.6); display:flex; flex-direction:column; overflow:hidden; }
+  .head { display:flex; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid var(--line); }
+  .tag { background:var(--gang); color:#fff; font-weight:800; padding:3px 9px; border-radius:6px; font-size:13px; }
+  .head h1 { margin:0; font-size:17px; font-weight:800; }
+  .head .sub { font-size:12px; color:var(--muted); }
+  .head .spacer { flex:1; }
+  .bank { color: var(--gold); font-weight:800; font-variant-numeric: tabular-nums; }
+  .close { width:32px; height:32px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--muted); border-radius:8px; font-size:17px; cursor:pointer; }
+  .close:hover { color: var(--red); border-color: var(--red); }
+  .tabs { display:flex; gap:4px; padding:10px 16px 0; border-bottom:1px solid var(--line); }
+  .tab { padding:9px 15px; border:0; background:transparent; color:var(--muted); font-weight:700; font-size:13px; cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.on { color:var(--text); border-bottom-color:var(--gang); }
+  .msg { min-height:15px; padding:8px 20px 0; font-size:12px; color: var(--red); }
+  .msg.ok { color: var(--green); }
+  .body { overflow-y:auto; padding:14px 18px 18px; }
+  .body::-webkit-scrollbar { width:8px; } .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:4px; }
+  .row { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.03); margin-bottom:8px; }
+  .row .grow { flex:1; }
+  .row .name { font-weight:700; font-size:14px; }
+  .row .meta { font-size:12px; color:var(--muted); }
+  .pill { font-size:11px; padding:2px 7px; border-radius:20px; background:rgba(255,255,255,.08); color:var(--muted); }
+  .pill.on { background:rgba(142,209,122,.15); color:var(--green); }
+  .pill.lead { background:rgba(192,57,43,.2); color:#ff8a7a; }
+  button.act { padding:7px 12px; border:0; border-radius:8px; cursor:pointer; font-weight:800; font-size:12px; color:#0b0f13; background:linear-gradient(180deg,var(--green),#6bb45a); }
+  button.act.alt { background:linear-gradient(180deg,var(--blue),#3a9bd0); }
+  button.act:disabled { opacity:.4; cursor:default; background:linear-gradient(180deg,#5a6168,#474c52); color:#cfd3d8; }
+  input.qty { width:58px; background:#0c0f13; border:1px solid var(--line); color:var(--text); border-radius:7px; padding:6px; text-align:center; font-size:13px; }
+  .needs { font-size:11px; color:var(--muted); margin-top:3px; }
+  .needs b.bad { color:var(--red); } .needs b.good { color:var(--green); }
+  .hint { color:var(--muted); font-size:12px; padding:6px 2px; }
+  .capbar { height:6px; background:rgba(255,255,255,.08); border-radius:4px; overflow:hidden; margin:2px 0 12px; }
+  .capbar > div { height:100%; background:var(--gang); }
+  .craftnow { border:1px solid rgba(242,193,92,.4); background:rgba(242,193,92,.07); }
+  .nobase { text-align:center; color:var(--red); padding:14px; font-size:13px; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="head">
+      <span class="tag" id="gtag">—</span>
+      <div>
+        <h1 id="gname">ბანდა</h1>
+        <div class="sub" id="grole">—</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="bank" id="gbank">$0</div>
+      <button class="close" onclick="closeUI()">✕</button>
+    </div>
+    <div class="tabs">
+      <button class="tab on" data-tab="overview" onclick="setTab('overview')">მიმოხილვა</button>
+      <button class="tab" data-tab="members" onclick="setTab('members')">წევრები</button>
+      <button class="tab" data-tab="stash" onclick="setTab('stash')">საცავი</button>
+      <button class="tab" data-tab="craft" onclick="setTab('craft')">წარმოება</button>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="body" id="body"></div>
+  </div>
+<script>
+  const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
+  const trigger = (n, ...a) => { if (RAGE) mp.trigger(n, ...a); };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let state = null, tab = 'overview', countdown = null;
+
+  function setTab(t) { tab = t; document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === t)); render(); }
+  function closeUI() { trigger('gangs:closeUI'); }
+  function flash(text, ok) { const m = document.getElementById('msg'); m.textContent = text || ''; m.className = 'msg' + (ok ? ' ok' : ''); }
+
+  window.setGang = (data) => {
+    state = data;
+    document.getElementById('gtag').textContent = '[' + esc(data.gang.tag) + ']';
+    document.getElementById('gname').textContent = esc(data.gang.name);
+    document.getElementById('grole').textContent = 'შენი რანგი: ' + esc(data.me.rankLabel);
+    document.getElementById('gbank').textContent = '$' + Number(data.gang.treasury).toLocaleString('en-US');
+    render();
+  };
+
+  function render() {
+    if (!state) return;
+    const b = document.getElementById('body');
+    if (tab === 'overview') b.innerHTML = renderOverview();
+    else if (tab === 'members') b.innerHTML = renderMembers();
+    else if (tab === 'stash') b.innerHTML = renderStash();
+    else if (tab === 'craft') b.innerHTML = renderCraft();
+    if (countdown) { clearInterval(countdown); countdown = null; }
+    if (tab === 'craft' && state.craft) startCountdown();
+  }
+
+  function renderOverview() {
+    const online = state.members.filter(m => m.online).length;
+    const c = state.craft ? `<div class="row craftnow"><div class="grow"><div class="name">მიმდინარე წარმოება: ${esc(state.craft.label)}</div><div class="meta" id="ovtimer">დარჩა ${state.craft.remaining}წმ</div></div></div>` : '';
+    return `
+      <div class="row"><div class="grow"><div class="name">წევრები</div><div class="meta">${state.members.length} სულ · ${online} ონლაინ</div></div></div>
+      <div class="row"><div class="grow"><div class="name">ხაზინა</div><div class="meta">$${Number(state.gang.treasury).toLocaleString('en-US')}</div></div>
+        ${state.me.perms.treasury ? `<input class="qty" style="width:90px" type="number" min="1" value="1000" id="bankAmt">
+        <button class="act" onclick="bank('deposit')">შეტანა</button>
+        <button class="act alt" onclick="bank('withdraw')">გამოტანა</button>` : ''}</div>
+      <div class="row"><div class="grow"><div class="name">საცავი</div><div class="meta">${state.capacity.used} / ${state.capacity.max} ერთეული</div></div></div>
+      ${c}
+      <div class="hint">ლიდერი ანაწილებს რანგებს ჩატის ბრძანებებით: /gpromote, /gdemote, /gkick, /ginvite. ბაზის დაყენება: /gsetbase.</div>`;
+  }
+
+  function renderMembers() {
+    return state.members.map(m => `
+      <div class="row">
+        <div class="grow"><div class="name">${esc(m.name)} ${m.online ? '<span class="pill on">ონლაინ</span>' : '<span class="pill">ოფლაინ</span>'}</div>
+        <div class="meta">${esc(m.rankLabel)}</div></div>
+        ${m.rank === 'leader' ? '<span class="pill lead">ლიდერი</span>' : ''}
+      </div>`).join('') || '<div class="hint">წევრები არ არიან.</div>';
+  }
+
+  function renderStash() {
+    if (!state.me.perms.stash) return '<div class="hint">შენს რანგს არ აქვს საცავის გამოყენების ნებართვა.</div>';
+    const cap = Math.min(100, Math.round(100 * state.capacity.used / state.capacity.max));
+    let html = `<div class="meta" style="margin-bottom:4px">საცავი: ${state.capacity.used}/${state.capacity.max}</div><div class="capbar"><div style="width:${cap}%"></div></div>`;
+    html += state.stash.map(it => `
+      <div class="row"><div class="grow"><div class="name">${esc(it.label)}</div><div class="meta">×${it.qty}</div></div>
+        <input class="qty" type="number" min="1" max="${it.qty}" value="1" id="take_${esc(it.id)}">
+        <button class="act alt" onclick="takeItem('${esc(it.id)}')">აღება</button>
+      </div>`).join('');
+    if (!state.stash.length) html += '<div class="hint">საცავი ცარიელია. იყიდე მასალა „წარმოება“ ჩანართში.</div>';
+    html += '<div class="hint">ნივთის შესანახად გამოიყენე პირადი ინვენტარი → მომავალ განახლებაში.</div>';
+    return html;
+  }
+
+  function renderCraft() {
+    let html = '';
+    if (state.craft) {
+      html += `<div class="row craftnow"><div class="grow"><div class="name">მიმდინარე: ${esc(state.craft.label)}</div><div class="meta" id="cdtimer">დარჩა ${state.craft.remaining}წმ</div></div></div>`;
+    }
+    html += '<div class="hint">1) იყიდე მასალა ხაზინიდან. 2) აწარმოე იარაღი/ჯავშანი — შედეგი ინახება საცავში.</div>';
+    html += '<div class="meta" style="margin:10px 0 4px;font-weight:700;color:var(--text)">მასალები</div>';
+    html += state.materials.map(m => `
+      <div class="row"><div class="grow"><div class="name">${esc(m.label)}</div><div class="meta">საცავში: ${m.have} · ფასი: $${m.price}</div></div>
+        <input class="qty" type="number" min="1" max="100" value="1" id="buy_${esc(m.id)}">
+        <button class="act" ${state.me.perms.buyMaterials ? '' : 'disabled'} onclick="buyMat('${esc(m.id)}')">ყიდვა</button>
+      </div>`).join('');
+    html += '<div class="meta" style="margin:14px 0 4px;font-weight:700;color:var(--text)">რეცეპტები</div>';
+    html += state.recipes.map(r => {
+      const needs = r.needs.map(n => `<b class="${n.have >= n.qty ? 'good' : 'bad'}">${esc(n.label)} ${n.have}/${n.qty}</b>`).join(' · ');
+      const out = r.out.map(o => `${esc(o.label)} ×${o.qty}`).join(', ');
+      const enough = r.needs.every(n => n.have >= n.qty);
+      const can = state.me.perms.craft && r.rankOk && enough && !state.craft;
+      let why = '';
+      if (!state.me.perms.craft) why = 'არ გაქვს წარმოების ნებართვა';
+      else if (!r.rankOk) why = 'რანგი არ არის საკმარისი';
+      else if (state.craft) why = 'უკვე მიმდინარეობს';
+      else if (!enough) why = 'არ არის მასალა';
+      return `<div class="row"><div class="grow"><div class="name">${esc(r.label)} <span class="pill">${r.time}წმ</span></div>
+        <div class="meta">შედეგი: ${esc(out)}</div>
+        <div class="needs">${needs}</div></div>
+        <button class="act" ${can ? '' : 'disabled'} title="${esc(why)}" onclick="craft('${esc(r.key)}')">წარმოება</button>
+      </div>`;
+    }).join('');
+    return html;
+  }
+
+  function startCountdown() {
+    let left = state.craft.remaining;
+    countdown = setInterval(() => {
+      left--;
+      const cd = document.getElementById('cdtimer'), ov = document.getElementById('ovtimer');
+      if (cd) cd.textContent = 'დარჩა ' + Math.max(0, left) + 'წმ';
+      if (ov) ov.textContent = 'დარჩა ' + Math.max(0, left) + 'წმ';
+      if (left <= 0) { clearInterval(countdown); countdown = null; trigger('gangs:ui:ready'); }
+    }, 1000);
+  }
+
+  function qtyVal(id) { const el = document.getElementById(id); return Math.max(1, parseInt(el && el.value, 10) || 1); }
+  function buyMat(id) { trigger('gangs:buyMaterial', id, qtyVal('buy_' + id)); }
+  function craft(key) { trigger('gangs:craft', key); }
+  function takeItem(id) { trigger('gangs:stashTake', id, qtyVal('take_' + id)); }
+  function bank(dir) { trigger(dir === 'deposit' ? 'gangs:deposit' : 'gangs:withdraw', qtyVal('bankAmt')); }
+
+  window.onload = () => { trigger('gangs:ui:ready'); };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUI(); });
+</script>
+</body>
+</html>

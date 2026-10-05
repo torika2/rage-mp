@@ -14,6 +14,7 @@ Operational docs for this RAGE:MP (GTA V multiplayer) server.
 | [10-adding-maps.md](10-adding-maps.md) | **How to add custom maps (`.ymap`) via a map DLC** |
 | [06-testing.md](06-testing.md) | Test plan for the money/fuel/engine flow |
 | [07-police-system.md](07-police-system.md) | Police ranks, commands, jail, and configuration |
+| [13-gangs.md](13-gangs.md) | **Gangs: leader/ranks/permissions, base, treasury, stash, crafting** |
 | [09-admin-panel.md](09-admin-panel.md) | Admin panel access, actions, security checks, and usage |
 | [11-tattoo-salons.md](11-tattoo-salons.md) | Tattoo salons: locations, data, pricing, saving |
 | [12-salons.md](12-salons.md) | Barber/clothing/tattoo: private instances, barber buy flow, hair-colour gotcha |

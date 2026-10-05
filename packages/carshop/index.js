@@ -72,13 +72,21 @@ const CATALOG = {
     d5:           { model: 'coquette6c',      label: 'Coquette D5',          fullName: 'Invetero Coquette D5 (Corvette)',     hp: 495,  speed: 312, tuning: 'Stock',   price: 130000 },
     audirs7abt:   { model: '23rs7abt',        label: 'Audi RS7 ABT',         fullName: 'Audi RS7 ABT',                        hp: 730,  speed: 330, tuning: 'Stage 2', price: 135000 },
     f90:          { model: '2019M5',          label: 'BMW M5 F90',           fullName: 'BMW M5 F90 Competition',              hp: 625,  speed: 305, tuning: 'Stage 1', price: 140000 },
-    // M8 spoiler presets use mod slot 0: big spoiler, ducktail, and stock/no spoiler.
-    m8:           { model: 'mansm8c',         label: 'BMW M8 (Big Spoiler)', fullName: 'BMW M8 Competition (Big Spoiler)',    hp: 823,  speed: 330, tuning: 'Stage 2', price: 150000, visual: { mods: { '0': 0 } } },
-    m8duck:       { model: 'mansm8c',         label: 'BMW M8 (Ducktail)',    fullName: 'BMW M8 Competition (Ducktail)',       hp: 823,  speed: 330, tuning: 'Stage 2', price: 150000, visual: { mods: { '0': 1 } } },
-    m8nospoiler:  { model: 'mansm8c',         label: 'BMW M8 (No Spoiler)',  fullName: 'BMW M8 Competition (No Spoiler)',     hp: 823,  speed: 330, tuning: 'Stage 2', price: 150000, visual: { mods: { '0': -1 } } },
+    m8:           { model: 'mansm8c',         label: 'BMW M8',               fullName: 'BMW M8 Competition (Mansory)',        hp: 823,  speed: 330, tuning: 'Stage 2', price: 150000 },
     sclass:       { model: 'mercedessclass27', label: 'S-Class 2027',        fullName: 'Mercedes-Benz S-Class 2027',          hp: 496,  speed: 250, tuning: 'Stock',   price: 160000 },
     r8:           { model: 'r820',            label: 'Audi R8',              fullName: 'Audi R8 2020',                        hp: 620,  speed: 331, tuning: 'Stage 1', price: 180000 },
     fenomeno:     { model: 'fenomeno',        label: 'Lamborghini',          fullName: 'Lamborghini Fenomeno 2026',           hp: 1065, speed: 350, tuning: 'Stage 3', price: 300000 },
+    // --- Allmods pack (added Oct 2026) · stats/prices are estimates — adjust as needed ---
+    rx7:          { model: 'fd',              label: 'Mazda RX-7 FD',        fullName: 'Mazda RX-7 FD3S',                     hp: 276,  speed: 250, tuning: 'Stage 1', price: 90000 },
+    golfr:        { model: 'golf75r',         label: 'Golf R',               fullName: 'Volkswagen Golf R',                   hp: 316,  speed: 250, tuning: 'Stock',   price: 85000 },
+    supra4:       { model: 'a80',             label: 'Supra MK4',            fullName: 'Toyota Supra MK4 (JZA80)',            hp: 326,  speed: 285, tuning: 'Stage 1', price: 110000 },
+    bmwe92:       { model: 'e92',             label: 'BMW M3 E92',           fullName: 'BMW M3 E92',                          hp: 414,  speed: 290, tuning: 'Stock',   price: 95000 },
+    rr14:         { model: 'rr14',            label: 'Rolls-Royce',          fullName: 'Rolls-Royce',                         hp: 453,  speed: 250, tuning: 'Stock',   price: 250000 },
+    rrst:         { model: 'rrst',            label: 'RR ST',                fullName: 'RR ST',                               hp: 400,  speed: 260, tuning: 'Stock',   price: 120000 },
+    skyline:      { model: 'skyline',         label: 'Nissan Skyline',       fullName: 'Nissan Skyline',                      hp: 330,  speed: 280, tuning: 'Stage 1', price: 120000 },
+    wrx:          { model: 'subwrx',          label: 'Subaru WRX STI',       fullName: 'Subaru WRX STI',                      hp: 310,  speed: 255, tuning: 'Stock',   price: 80000 },
+    supra90:      { model: 'supra19',         label: 'Supra A90',            fullName: 'Toyota Supra A90 (2019)',             hp: 340,  speed: 285, tuning: 'Stage 1', price: 115000 },
+    g63:          { model: 'xg632019',        label: 'Mercedes G63',         fullName: 'Mercedes-AMG G63 2019',               hp: 577,  speed: 220, tuning: 'Stock',   price: 180000 },
 };
 
 function tell(player, message, ok) {
@@ -138,12 +146,55 @@ function spawnDisplays() {
         if (!v) continue;
         v.setVariable('carshop:display', key); // tag so entering pops the buy card instead of driving
         if (CATALOG[key].visual) { try { v.setVariable('veh:visual', CATALOG[key].visual); } catch (e) {} } // show the preset look
+        v.displaySpot = { x: s.x, y: s.y, z: s.z, h: s.h }; // server-authoritative anchor (see keepDisplaysParked)
         displayVehicles.push(v);
         spot++; // this spot is now taken
     }
     console.log(`[carshop] ${displayVehicles.length} display cars spawned`);
 }
 spawnDisplays();
+
+// Keep showroom cars on their spot and pristine. Home is the fixed spawn spot. We compare HORIZONTAL
+// position only (X/Y) — a parked car never drifts in X/Y, but it does settle vertically onto the
+// ground, and checking Z was wrongly flagging idle cars as "moved" and respawning them every tick.
+// So: only a car actually shoved off its spot (X/Y) gets put back, and only a damaged one is repaired.
+const RESET_COUNTDOWN = 5; // seconds a moved showroom car shows a warning before it snaps back
+// Show a floating countdown above a shoved car, then put it back on its spot + repair.
+function scheduleDisplayReset(v) {
+    if (!v || v.resetting || !v.displaySpot) return;
+    v.resetting = true;
+    const sp = v.displaySpot;
+    const above = () => new mp.Vector3(v.position.x, v.position.y, v.position.z + 1.6);
+    let secs = RESET_COUNTDOWN, label = null;
+    try { label = mp.labels.new('Resetting in ' + secs + 's', above(), { los: false, font: 4, drawDistance: 60, color: [242, 193, 92, 255] }); } catch (e) {}
+    const tick = setInterval(() => {
+        if (!v || !mp.vehicles.exists(v)) { clearInterval(tick); if (label) { try { label.destroy(); } catch (e) {} } return; }
+        secs -= 1;
+        if (secs > 0) {
+            try { if (label) { label.text = 'Resetting in ' + secs + 's'; label.position = above(); } } catch (e) {}
+            return;
+        }
+        clearInterval(tick);
+        if (label) { try { label.destroy(); } catch (e) {} }
+        try { v.position = new mp.Vector3(sp.x, sp.y, v.position.z); } catch (e) {} // back to spot X/Y, keep grounded Z
+        try { v.rotation = new mp.Vector3(0, 0, sp.h); } catch (e) {}
+        try { v.repair(); } catch (e) {}
+        v.resetting = false;
+    }, 1000);
+}
+setInterval(() => {
+    for (const v of displayVehicles) {
+        if (!v || !mp.vehicles.exists(v) || !v.displaySpot) continue;
+        const sp = v.displaySpot, p = v.position;
+        const dx = p.x - sp.x, dy = p.y - sp.y;
+        const movedXY = (dx * dx + dy * dy) > 0.04; // shoved > ~0.2m horizontally (vertical settling ignored)
+        const bh = (typeof v.bodyHealth === 'number') ? v.bodyHealth : 1000;
+        const eh = (typeof v.engineHealth === 'number') ? v.engineHealth : 1000;
+        const damaged = bh < 950 || eh < 950;
+        if (movedXY) scheduleDisplayReset(v);      // countdown label, then snap back + repair
+        else if (damaged && !v.resetting) { try { v.repair(); } catch (e) {} } // quiet repair for dents in place
+    }
+}, 60 * 1000);
 
 // Dev aid: float each spot's key index above it so the SPOTS array can be tuned in-game.
 // Labels cover every spot (even empty ones), so you can see and reposition unused slots too.

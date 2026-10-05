@@ -1,177 +1,276 @@
 <!DOCTYPE html>
 <html lang="ka">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ავტოტუნინგი</title>
 <style>
-  :root { --bg:#14171c; --card:#1b1f26; --border:#ffffff1a; --gold:#f2c15c; --text:#e8eaed; --muted:#9aa4ad; --green:#4ade80; --red:#ff6b6b; }
-  * { box-sizing:border-box; margin:0; padding:0; font-family:'Segoe UI',system-ui,sans-serif; }
-  html,body { width:100%; height:100%; background:transparent; overflow:hidden; user-select:none; }
-  .wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
-  .panel { width:560px; max-width:94vw; max-height:88vh; background:var(--bg); border:1px solid var(--border); border-radius:16px; box-shadow:0 24px 70px #000b; overflow:hidden; display:flex; flex-direction:column; animation:rise .16s ease-out; }
-  @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
-  .head { display:flex; align-items:center; justify-content:space-between; padding:15px 20px; background:linear-gradient(180deg,#222838,#1b1f26); border-bottom:1px solid var(--border); }
-  .title { font-size:16px; font-weight:800; color:var(--text); }
-  .title small { display:block; font-size:11px; font-weight:600; color:var(--muted); margin-top:3px; }
-  .money { font-size:15px; font-weight:800; color:var(--gold); }
-  .tabs { display:flex; gap:4px; padding:10px 14px 0; background:var(--bg); }
-  .tab { flex:1; padding:9px 6px; font-size:12px; font-weight:700; color:var(--muted); background:transparent; border:none; border-bottom:2px solid transparent; cursor:pointer; }
-  .tab.on { color:var(--gold); border-bottom-color:var(--gold); }
-  .body { padding:14px 20px; overflow-y:auto; }
-  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid #ffffff0d; }
-  .row:last-child { border-bottom:none; }
-  .row-name { font-size:13.5px; font-weight:700; color:var(--text); }
-  .row-sub { font-size:11px; color:var(--muted); margin-top:2px; }
-  .sel { background:#00000040; border:1px solid #ffffff20; color:var(--text); border-radius:8px; padding:7px 9px; font-size:12.5px; min-width:150px; }
-  .price { font-size:11px; color:var(--gold); font-weight:700; white-space:nowrap; }
-  /* performance */
-  .pips { display:flex; gap:4px; margin:8px 0; }
-  .pip { flex:1; height:7px; border-radius:4px; background:#ffffff14; }
-  .pip.on { background:var(--gold); }
-  .btn { border:none; border-radius:8px; padding:8px 14px; font-size:12.5px; font-weight:800; cursor:pointer; color:#10131a; background:var(--gold); white-space:nowrap; }
-  .btn:hover:not(:disabled){ filter:brightness(1.08); } .btn:disabled{ opacity:.4; cursor:default; }
-  .btn.max{ background:#2a2f3a; color:var(--muted); }
-  /* colors */
-  .chan { display:flex; gap:6px; margin-bottom:12px; }
-  .chan button { flex:1; padding:8px 4px; font-size:11.5px; font-weight:700; border:1px solid var(--border); border-radius:8px; background:#00000030; color:var(--muted); cursor:pointer; }
-  .chan button.on { border-color:var(--gold); color:var(--gold); }
-  .chan button small { display:block; font-size:9.5px; color:var(--gold); margin-top:2px; }
-  .swatches { display:grid; grid-template-columns:repeat(10,1fr); gap:7px; }
-  .sw { aspect-ratio:1; border-radius:7px; border:2px solid #ffffff14; cursor:pointer; }
-  .sw.on { border-color:#fff; box-shadow:0 0 0 2px var(--gold); }
-  .foot { padding:12px 20px 16px; display:flex; justify-content:flex-end; border-top:1px solid var(--border); }
-  .close { background:#2a2f3a; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:9px 20px; font-weight:700; cursor:pointer; }
-  .toast { position:fixed; left:50%; bottom:34px; transform:translateX(-50%); padding:10px 18px; border-radius:10px; font-size:13px; font-weight:700; background:#1f2430; border:1px solid var(--border); opacity:0; transition:opacity .2s; pointer-events:none; }
-  .toast.show{ opacity:1; } .toast.ok{ color:var(--green); } .toast.err{ color:var(--red); }
+  :root {
+    color-scheme: dark;
+    --gold:#f2c15c; --gold-soft:rgba(242,193,92,.48); --accent:#5ac8fa; --green:#8ed17a;
+    --text:#f3f0e8; --muted:#aaa79e; --line:rgba(255,255,255,.12);
+    --panel:linear-gradient(180deg,#131518,#0e1012);
+    font-family:"Noto Sans Georgian","Segoe UI",sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html,body { width:100%; height:100%; margin:0; overflow:hidden; }
+  body { color:var(--text); background:transparent; user-select:none; }
+  button { color:inherit; font:inherit; cursor:pointer; }
+  .veil { position:absolute; inset:0; display:flex; justify-content:flex-end; animation:appear .18s ease-out; }
+  .shop { width:min(760px,46vw); height:100%; display:grid; grid-template-rows:62px minmax(0,1fr) auto; background:var(--panel); border-left:1px solid var(--gold-soft); box-shadow:-18px 0 40px rgba(0,0,0,.45); animation:slide .22s ease-out; }
+  .head { display:flex; align-items:center; gap:14px; padding:0 22px; border-bottom:1px solid var(--line); }
+  .title { display:flex; flex-direction:column; }
+  .title h1 { margin:0; font-size:16px; font-weight:700; }
+  .title span { color:var(--muted); font-size:11px; }
+  .spacer { flex:1; }
+  .money { color:var(--gold); font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .close { width:34px; height:34px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--muted); font-size:18px; border-radius:8px; }
+  .close:hover { color:var(--gold); border-color:var(--gold-soft); }
+  .body { min-height:0; display:grid; grid-template-columns:minmax(180px,.75fr) minmax(300px,1.25fr); }
+  .cats { overflow:auto; padding:14px; border-right:1px solid var(--line); display:flex; flex-direction:column; gap:6px; }
+  .cat { display:flex; align-items:center; gap:10px; padding:11px 13px; border:1px solid transparent; border-radius:10px; background:rgba(255,255,255,.03); color:var(--text); font-size:13px; font-weight:600; text-align:left; }
+  .cat:hover { background:rgba(255,255,255,.06); }
+  .cat.on { border-color:var(--gold-soft); background:rgba(242,193,92,.1); color:var(--gold); }
+  .detail { overflow:auto; padding:18px 20px; display:flex; flex-direction:column; gap:18px; }
+  .picker { display:grid; gap:9px; }
+  .picker-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; display:flex; justify-content:space-between; }
+  .picker-label b { color:var(--gold); font-weight:700; }
+  .styles { display:flex; flex-direction:column; gap:5px; }
+  .style { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid transparent; border-radius:8px; background:rgba(255,255,255,.03); font-size:13px; text-align:left; }
+  .style:hover { background:rgba(255,255,255,.06); }
+  .style.on { border-color:var(--gold-soft); background:rgba(242,193,92,.1); color:var(--gold); }
+  .style.cart { border-color:rgba(142,209,122,.5); background:rgba(142,209,122,.12); color:var(--green); }
+  .style .tag { margin-left:auto; font-size:11px; color:var(--muted); }
+  .style.on .tag { color:var(--gold); } .style.cart .tag { color:var(--green); }
+  .style.none { opacity:.4; cursor:default; }
+  .chanrow { display:flex; gap:6px; flex-wrap:wrap; }
+  .tagbtn { padding:8px 12px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.04); font-size:12px; }
+  .tagbtn:hover { border-color:var(--gold-soft); }
+  .tagbtn.on { border-color:var(--gold); background:rgba(242,193,92,.14); color:var(--gold); }
+  .tagbtn small { color:var(--gold); margin-left:5px; }
+  .swatches { display:flex; flex-wrap:wrap; gap:8px; }
+  .swatch { width:30px; height:30px; padding:0; border-radius:50%; border:2px solid rgba(255,255,255,.12); }
+  .swatch:hover { border-color:var(--gold-soft); }
+  .swatch.on { border-color:#fff; box-shadow:0 0 0 2px var(--gold-soft); }
+  .swatch.cart { border-color:var(--green); box-shadow:0 0 0 2px rgba(142,209,122,.5); }
+  /* engine cards (direct buy) */
+  .eng { display:flex; flex-direction:column; gap:7px; padding:13px 14px; border:1px solid var(--line); border-radius:11px; background:rgba(255,255,255,.03); }
+  .eng .nm { font-weight:700; font-size:14px; } .eng .sub { font-size:11px; color:var(--muted); }
+  .pips { display:flex; gap:4px; } .pip { flex:1; height:7px; border-radius:4px; background:rgba(255,255,255,.1); } .pip.on { background:var(--gold); }
+  .buy { margin-top:3px; padding:9px; border:0; border-radius:8px; font-weight:800; font-size:13px; color:#0b0f13; background:linear-gradient(180deg,var(--green),#6bb45a); }
+  .buy:hover { filter:brightness(1.05); } .buy:disabled { opacity:.45; cursor:default; background:linear-gradient(180deg,#5a6168,#474c52); color:#cfd3d8; }
+  /* cart footer */
+  .cart { border-top:1px solid var(--gold-soft); padding:14px 18px; display:flex; flex-direction:column; gap:10px; background:rgba(0,0,0,.25); }
+  .cart-head { font-size:12px; color:var(--muted); } .cart-head b { color:var(--accent); }
+  .cart-list { max-height:140px; overflow:auto; display:flex; flex-direction:column; gap:5px; }
+  .cart-empty { color:var(--muted); font-size:12px; padding:4px 0; }
+  .cart-item { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.03); font-size:12px; }
+  .cart-item .ci-price { margin-left:auto; color:var(--gold); font-variant-numeric:tabular-nums; }
+  .cart-item .ci-del { width:22px; height:22px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--muted); font-size:13px; line-height:1; }
+  .cart-item .ci-del:hover { border-color:#ff6978; color:#ff6978; }
+  .checkout { display:grid; grid-template-columns:1fr auto; align-items:center; gap:12px; }
+  .checkout .total { font-size:13px; color:var(--muted); } .checkout .total b { color:var(--gold); font-size:18px; font-variant-numeric:tabular-nums; }
+  .checkout button { padding:12px 22px; border:1px solid var(--gold); border-radius:10px; background:rgba(242,193,92,.16); color:var(--gold); font-weight:700; font-size:14px; }
+  .checkout button:hover { background:rgba(242,193,92,.28); } .checkout button:disabled { opacity:.4; cursor:not-allowed; }
+  .msg { font-size:12px; color:#ff6978; min-height:15px; } .msg.ok { color:var(--green); }
+  @keyframes appear { from { opacity:0; } to { opacity:1; } }
+  @keyframes slide { from { transform:translateX(24px); opacity:.4; } to { transform:none; opacity:1; } }
 </style>
 </head>
 <body>
-  <div class="wrap"><div class="panel">
-    <div class="head">
-      <div class="title">ავტოტუნინგი <small id="carName">—</small></div>
+<div class="veil">
+  <main class="shop">
+    <header class="head">
+      <div class="title"><h1>ავტოტუნინგი</h1><span id="carName">—</span></div>
+      <div class="spacer"></div>
       <div class="money" id="money">$0</div>
+      <button class="close" id="close" title="დახურვა (Esc)">×</button>
+    </header>
+    <div class="body">
+      <div class="cats" id="cats"></div>
+      <div class="detail" id="detail"></div>
     </div>
-    <div class="tabs" id="tabs"></div>
-    <div class="body" id="body"></div>
-    <div class="foot"><button class="close" id="close">დახურვა</button></div>
-  </div></div>
-  <div class="toast" id="toast"></div>
+    <div class="cart" id="cartFooter">
+      <div class="msg" id="msg"></div>
+      <div class="cart-head">კალათა · <b id="cartCount">0</b> ცვლილება</div>
+      <div class="cart-list" id="cartList"><div class="cart-empty">კალათა ცარიელია</div></div>
+      <div class="checkout">
+        <div class="total">სულ: <b id="cartTotal">$0</b></div>
+        <button id="checkout" disabled>გადახდა</button>
+      </div>
+    </div>
+  </main>
+</div>
 <script>
   const RAGE = typeof mp !== 'undefined' && typeof mp.trigger === 'function';
-  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function money(n){ return '$' + Number(n||0).toLocaleString('en-US'); }
-  function buyPerf(k){ if (RAGE) mp.trigger('cartuning:buy', k); }
-  function buyVisual(cat, val){ if (RAGE) mp.trigger('cartuning:buyVisual', cat, val); }
+  const trigger = (n, ...a) => { if (RAGE) mp.trigger(n, ...a); };
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  // A spread of GTA paint indices (hex is just the swatch — the index is what the game applies).
+  const CATS = [['engine', 'შესაძლებლობები'], ['colors', 'ფერი'], ['wheels', 'დისკები'], ['body', 'კუზაო'], ['extras', 'დამატებითი']];
+  const WHEEL_TYPES = ['Sport', 'Muscle', 'Lowrider', 'SUV', 'Offroad', 'Tuner', 'Bike', 'High End', "Benny's", "Benny's Bespoke", 'Open Wheel', 'Street', 'Track'];
+  const TINTS = ['არა', 'შავი', 'მუქი', 'ღია', 'ქარხნული', 'მწვანე', 'ლიმუზინი'];
+  const BODY = [['0', 'სპოილერი'], ['1', 'წინა ბამპერი'], ['2', 'უკანა ბამპერი'], ['3', 'გვერდითი ზღუდარი']];
+  const EXTRAS = [['4', 'გამონაბოლქვი'], ['7', 'კაპოტი'], ['10', 'სახურავი']];
+  const CAT_LABEL = {
+    primary: 'ძირითადი ფერი', secondary: 'მეორადი ფერი', pearl: 'პერლამუტრი', wheel: 'დისკების ფერი',
+    windowTint: 'ტონირება', wheelType: 'დისკის ტიპი',
+    'mod:0': 'სპოილერი', 'mod:1': 'წინა ბამპერი', 'mod:2': 'უკანა ბამპერი', 'mod:3': 'გვერდითი ზღუდარი',
+    'mod:4': 'გამონაბოლქვი', 'mod:7': 'კაპოტი', 'mod:10': 'სახურავი', 'mod:23': 'დისკის დიზაინი'
+  };
   const PALETTE = [
-    [0,'#0f1115'],[1,'#1e2024'],[2,'#272a2e'],[3,'#33373c'],[4,'#5b5f66'],[5,'#9a9ea3'],[6,'#73777b'],[8,'#b9b9b9'],[9,'#51565a'],[111,'#ffffff'],
-    [27,'#f26f1f'],[11,'#c00e1a'],[12,'#d71e20'],[14,'#a0282c'],[17,'#7e1a1f'],[22,'#db1b2a'],[88,'#f6d84a'],[89,'#fbe70f'],[99,'#d9a40e'],[90,'#b89b5e'],
-    [49,'#13263a'],[64,'#304b73'],[70,'#0a86c9'],[73,'#6ea6d8'],[83,'#8fb6d4'],[68,'#2a5d8c'],[146,'#3b1a63'],[145,'#6b1f7d'],[135,'#c42e6f'],[137,'#f3a9c8'],
-    [53,'#13402f'],[55,'#1a6b3d'],[51,'#2d4a30'],[151,'#436b36'],[92,'#355f2c'],[38,'#5e3f27'],[96,'#4a4636'],[134,'#cabfa8'],[157,'#b0a99a'],[158,'#1f1f22']
+    [0,'#0f1115'],[1,'#1e2024'],[2,'#272a2e'],[3,'#33373c'],[4,'#5b5f66'],[5,'#9a9ea3'],[6,'#73777b'],[8,'#b9b9b9'],[9,'#51565a'],[111,'#ffffff'],[157,'#b0a99a'],[158,'#1f1f22'],
+    [27,'#f26f1f'],[11,'#c00e1a'],[12,'#d71e20'],[14,'#a0282c'],[17,'#7e1a1f'],[22,'#db1b2a'],[88,'#f6d84a'],[89,'#fbe70f'],[99,'#d9a40e'],[90,'#b89b5e'],[38,'#5e3f27'],[96,'#4a4636'],
+    [49,'#13263a'],[64,'#304b73'],[70,'#0a86c9'],[73,'#6ea6d8'],[83,'#8fb6d4'],[68,'#2a5d8c'],[146,'#3b1a63'],[145,'#6b1f7d'],[135,'#c42e6f'],[137,'#f3a9c8'],[134,'#cabfa8'],[128,'#653f23'],
+    [53,'#13402f'],[55,'#1a6b3d'],[51,'#2d4a30'],[151,'#436b36'],[92,'#355f2c']
   ];
 
-  let state = { parts:[], money:0, car:'', visual:{}, visualPrices:{}, options:{ mods:{}, wheelTypes:13, windowTints:7 } };
-  let tab = 'perf';
-  let colorChannel = 'primary';
+  let state = { parts: [], money: 0, car: '', visual: { colors: {}, mods: {} }, visualPrices: {}, options: { mods: {}, wheelTypes: 13, windowTints: 7 } };
+  let cat = 'engine', colorChannel = 'primary';
+  let cart = {}; // staged visual changes: category -> value
 
-  const TABS = [ ['perf','ძრავა'], ['colors','ფერი'], ['wheels','დისკები'], ['body','კუზოვი'], ['extras','დამატებითი'] ];
-  const WHEEL_TYPES = ['Sport','Muscle','Lowrider','SUV','Offroad','Tuner','Bike','High End','Benny\'s','Benny\'s Bespoke','Open Wheel','Street','Track'];
-  const TINTS = ['არა','შავი','მუქი','ღია','ქარხნული','მწვანე','ლიმუზინი'];
-  const BODY = [ ['0','სპოილერი'], ['1','წინა ბამპერი'], ['2','უკანა ბამპერი'], ['3','ქვედა ზღუდარები'] ];
-  const EXTRAS = [ ['4','გამონაბოლქვი'], ['7','კაპოტი'], ['10','სახურავი'] ];
-
-  window.setTuning = data => {
-    try { state = Object.assign(state, (typeof data==='string') ? JSON.parse(data) : data); } catch(e){ return; }
+  window.setTuning = (data) => {
+    try { const d = (typeof data === 'string') ? JSON.parse(data) : data; state = Object.assign(state, d); } catch (e) { return; }
     state.visual = state.visual || {}; state.visual.colors = state.visual.colors || {}; state.visual.mods = state.visual.mods || {};
-    state.options = state.options || { mods:{}, wheelTypes:13, windowTints:7 };
-    document.getElementById('carName').textContent = state.car || '';
-    document.getElementById('money').textContent = money(state.money);
-    renderTabs(); render();
+    state.options = state.options || { mods: {}, wheelTypes: 13, windowTints: 7 };
+    $('carName').textContent = state.car || '';
+    $('money').textContent = fmt(state.money);
+    renderCats(); renderDetail(); renderCart();
+  };
+  window.tuningResult = (res) => {
+    let r; try { r = (typeof res === 'string') ? JSON.parse(res) : res; } catch (e) { return; }
+    const m = $('msg'); m.textContent = r.msg || ''; m.className = 'msg' + (r.ok ? ' ok' : '');
+    if (r.checkout && r.ok) { cart = {}; renderDetail(); renderCart(); }
   };
 
-  function renderTabs(){
-    document.getElementById('tabs').innerHTML = TABS.map(t =>
-      '<button class="tab'+(tab===t[0]?' on':'')+'" data-tab="'+t[0]+'">'+esc(t[1])+'</button>').join('');
+  const price = (c) => state.visualPrices[c] || 0;
+  const modCur = (type) => (state.visual.mods[type] != null) ? state.visual.mods[type] : -1;
+  function savedVal(c) {
+    if (c.indexOf('mod:') === 0) return modCur(c.slice(4));
+    if (c === 'windowTint') return (state.visual.windowTint != null ? state.visual.windowTint : 0);
+    if (c === 'wheelType') return (state.visual.wheelType != null ? state.visual.wheelType : -1);
+    return state.visual.colors[c];
   }
-  document.getElementById('tabs').addEventListener('click', e => {
-    const b = e.target.closest('[data-tab]'); if(!b) return;
-    tab = b.getAttribute('data-tab'); renderTabs(); render();
-  });
+  const effVal = (c) => (c in cart) ? cart[c] : savedVal(c);
 
-  function price(cat){ return state.visualPrices[cat] || 0; }
+  function previewConfig() {
+    const v = JSON.parse(JSON.stringify(state.visual || {}));
+    v.colors = v.colors || {}; v.mods = v.mods || {};
+    for (const c in cart) {
+      const val = cart[c];
+      if (c === 'primary' || c === 'secondary' || c === 'pearl' || c === 'wheel') v.colors[c] = val;
+      else if (c === 'windowTint') v.windowTint = val;
+      else if (c === 'wheelType') v.wheelType = val;
+      else if (c.indexOf('mod:') === 0) v.mods[c.slice(4)] = val;
+    }
+    if (v.colors.primary != null && v.colors.secondary == null) v.colors.secondary = v.colors.primary;
+    if (v.colors.secondary != null && v.colors.primary == null) v.colors.primary = v.colors.secondary;
+    return v;
+  }
+  function stage(c, val) {
+    if (val === savedVal(c)) delete cart[c]; else cart[c] = val;
+    trigger('cartuning:preview', JSON.stringify(previewConfig()));
+    renderDetail(); renderCart();
+  }
 
-  // Build a <select> row for a mod category (Stock + N options).
-  function modRow(type, label){
+  function renderCats() {
+    $('cats').innerHTML = CATS.map(c => '<button class="cat' + (cat === c[0] ? ' on' : '') + '" data-tab="' + c[0] + '">' + esc(c[1]) + '</button>').join('');
+    $('cartFooter').style.display = (cat === 'engine') ? 'none' : '';
+  }
+
+  // one selectable option row
+  function row(label, c, val) {
+    const staged = (c in cart) && cart[c] === val;
+    const on = !staged && effVal(c) === val;
+    const tag = staged ? 'კალათაში' : (on ? 'არჩეული' : fmt(price(c)));
+    return '<button class="style' + (staged ? ' cart' : (on ? ' on' : '')) + '" data-cat="' + c + '" data-val="' + val + '"><span>' + esc(label) + '</span><span class="tag">' + tag + '</span></button>';
+  }
+  function modPicker(type, label) {
     const count = (state.options.mods && state.options.mods[type]) || 0;
-    const cur = (state.visual.mods[type] != null) ? state.visual.mods[type] : -1;
-    let opts = '<option value="-1"'+(cur===-1?' selected':'')+'>სტოკი</option>';
-    for (let i=0;i<count;i++) opts += '<option value="'+i+'"'+(cur===i?' selected':'')+'>ვარიანტი '+(i+1)+'</option>';
-    const disabled = count===0 ? ' disabled' : '';
-    return '<div class="row"><div><div class="row-name">'+esc(label)+'</div><div class="row-sub">'+count+' ვარიანტი</div></div>'+
-      '<div style="display:flex;align-items:center;gap:10px"><span class="price">'+money(price('mod:'+type))+'</span>'+
-      '<select class="sel" data-cat="mod:'+type+'"'+disabled+'>'+opts+'</select></div></div>';
+    let rows = row('სტოკი', 'mod:' + type, -1);
+    for (let i = 0; i < count; i++) rows += row('ვარიანტი ' + (i + 1), 'mod:' + type, i);
+    if (count === 0) rows += '<div class="style none"><span>სხვა ვარიანტი არ არის</span></div>';
+    return '<div class="picker"><div class="picker-label"><span>' + esc(label) + '</span><b>' + fmt(price('mod:' + type)) + ' / ცვლილება</b></div><div class="styles">' + rows + '</div></div>';
   }
-  function selectRow(cat, label, names, cur){
-    let opts = '';
-    for (let i=0;i<names.length;i++) opts += '<option value="'+i+'"'+(cur===i?' selected':'')+'>'+esc(names[i])+'</option>';
-    return '<div class="row"><div><div class="row-name">'+esc(label)+'</div></div>'+
-      '<div style="display:flex;align-items:center;gap:10px"><span class="price">'+money(price(cat))+'</span>'+
-      '<select class="sel" data-cat="'+cat+'">'+opts+'</select></div></div>';
+  function listPicker(c, label, names) {
+    let rows = '';
+    for (let i = 0; i < names.length; i++) rows += row(names[i], c, i);
+    return '<div class="picker"><div class="picker-label"><span>' + esc(label) + '</span><b>' + fmt(price(c)) + ' / ცვლილება</b></div><div class="styles">' + rows + '</div></div>';
   }
 
-  function render(){
-    const host = document.getElementById('body');
-    if (tab === 'perf'){
-      host.innerHTML = (state.parts||[]).map(p => {
-        const pips = Array.from({length:p.max},(_,i)=>'<span class="pip'+(i<p.level?' on':'')+'"></span>').join('');
-        const btn = p.atMax ? '<button class="btn max" disabled>მაქსიმუმი</button>'
-          : '<button class="btn" data-perf="'+esc(p.key)+'"'+(p.canAfford?'':' disabled')+'>'+money(p.nextPrice)+'</button>';
-        return '<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;align-items:center">'+
-          '<div><div class="row-name">'+esc(p.label)+'</div><div class="row-sub">'+esc(p.effect)+' · დონე '+p.level+'/'+p.max+'</div></div>'+btn+'</div>'+
-          '<div class="pips">'+pips+'</div></div>';
+  function renderDetail() {
+    const host = $('detail');
+    if (cat === 'engine') {
+      host.innerHTML = (state.parts || []).map(p => {
+        const pips = Array.from({ length: p.max }, (_, i) => '<span class="pip' + (i < p.level ? ' on' : '') + '"></span>').join('');
+        const btn = p.atMax ? '<button class="buy" disabled>მაქსიმუმი</button>'
+          : '<button class="buy" data-perf="' + esc(p.key) + '"' + (p.canAfford ? '' : ' disabled') + '>' + fmt(p.nextPrice) + '</button>';
+        return '<div class="eng"><div class="nm">' + esc(p.label) + '</div><div class="sub">' + esc(p.effect) + ' · დონე ' + p.level + '/' + p.max + '</div><div class="pips">' + pips + '</div>' + btn + '</div>';
       }).join('');
-    } else if (tab === 'colors'){
-      const ch = [['primary','ძირითადი'],['secondary','მეორადი'],['pearl','პერლამუტრი'],['wheel','დისკების ფერი']];
-      const cur = state.visual.colors[colorChannel];
+    } else if (cat === 'colors') {
+      const chans = [['primary', 'ძირითადი'], ['secondary', 'მეორადი'], ['pearl', 'პერლამუტრი'], ['wheel', 'დისკები']];
+      const cur = effVal(colorChannel);
       host.innerHTML =
-        '<div class="chan">'+ch.map(c=>'<button data-chan="'+c[0]+'" class="'+(colorChannel===c[0]?'on':'')+'">'+esc(c[1])+'<small>'+money(price(c[0]))+'</small></button>').join('')+'</div>'+
-        '<div class="swatches">'+PALETTE.map(p=>'<div class="sw'+(cur===p[0]?' on':'')+'" style="background:'+p[1]+'" data-color="'+p[0]+'" title="#'+p[0]+'"></div>').join('')+'</div>'+
-        '<div class="row-sub" style="margin-top:12px">აირჩიე არხი, შემდეგ ფერი — თითო ცვლილება ფასიანია.</div>';
-    } else if (tab === 'wheels'){
-      host.innerHTML =
-        selectRow('wheelType','დისკის ტიპი', WHEEL_TYPES, (state.visual.wheelType!=null?state.visual.wheelType:-99)) +
-        modRow('23','დისკის დიზაინი') +
-        '<div class="row-sub" style="margin-top:12px">დისკების ფერი — „ფერი“ ტაბში.</div>';
-    } else if (tab === 'body'){
-      host.innerHTML = BODY.map(b=>modRow(b[0], b[1])).join('');
-    } else if (tab === 'extras'){
-      host.innerHTML = EXTRAS.map(b=>modRow(b[0], b[1])).join('') +
-        selectRow('windowTint','მინების ტონირება', TINTS, (state.visual.windowTint!=null?state.visual.windowTint:0));
+        '<div class="picker"><div class="picker-label"><span>არხი</span><b>' + fmt(price(colorChannel)) + ' / ცვლილება</b></div>' +
+        '<div class="chanrow">' + chans.map(c => '<button class="tagbtn' + (colorChannel === c[0] ? ' on' : '') + '" data-chan="' + c[0] + '">' + esc(c[1]) + '<small>' + fmt(price(c[0])) + '</small></button>').join('') + '</div></div>' +
+        '<div class="picker"><div class="picker-label"><span>ფერი</span></div><div class="swatches">' +
+        PALETTE.map(p => {
+          const staged = (colorChannel in cart) && cart[colorChannel] === p[0];
+          const on = !staged && cur === p[0];
+          return '<button class="swatch' + (staged ? ' cart' : (on ? ' on' : '')) + '" style="background:' + p[1] + '" data-color="' + p[0] + '" title="#' + p[0] + '"></button>';
+        }).join('') + '</div></div>';
+    } else if (cat === 'wheels') {
+      host.innerHTML = listPicker('wheelType', 'დისკის ტიპი', WHEEL_TYPES) + modPicker('23', 'დისკის დიზაინი');
+    } else if (cat === 'body') {
+      host.innerHTML = BODY.map(b => modPicker(b[0], b[1])).join('');
+    } else if (cat === 'extras') {
+      host.innerHTML = EXTRAS.map(b => modPicker(b[0], b[1])).join('') + listPicker('windowTint', 'მინების ტონირება', TINTS);
     }
   }
 
-  document.getElementById('body').addEventListener('click', e => {
-    const perf = e.target.closest('[data-perf]'); if (perf){ buyPerf(perf.getAttribute('data-perf')); return; }
-    const sw = e.target.closest('[data-color]'); if (sw){ buyVisual(colorChannel, parseInt(sw.getAttribute('data-color'),10)); return; }
-    const chan = e.target.closest('[data-chan]'); if (chan){ colorChannel = chan.getAttribute('data-chan'); render(); return; }
+  function valLabel(c, val) {
+    if (c.indexOf('mod:') === 0) return val === -1 ? 'სტოკი' : 'ვარ. ' + (val + 1);
+    if (c === 'wheelType') return WHEEL_TYPES[val] || ('#' + val);
+    if (c === 'windowTint') return TINTS[val] || ('#' + val);
+    return '#' + val;
+  }
+  function renderCart() {
+    const keys = Object.keys(cart);
+    let total = 0;
+    $('cartList').innerHTML = keys.length ? keys.map(c => {
+      total += price(c);
+      return '<div class="cart-item"><span>' + esc((CAT_LABEL[c] || c) + ' → ' + valLabel(c, cart[c])) + '</span><span class="ci-price">' + fmt(price(c)) + '</span><button class="ci-del" data-del="' + c + '">×</button></div>';
+    }).join('') : '<div class="cart-empty">კალათა ცარიელია</div>';
+    $('cartCount').textContent = keys.length;
+    $('cartTotal').textContent = fmt(total);
+    $('checkout').disabled = !keys.length || total > state.money;
+  }
+
+  $('cats').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) { cat = b.getAttribute('data-tab'); renderCats(); renderDetail(); } });
+  $('detail').addEventListener('click', (e) => {
+    const perf = e.target.closest('[data-perf]'); if (perf) { trigger('cartuning:buy', perf.getAttribute('data-perf')); return; }
+    const sw = e.target.closest('[data-color]'); if (sw) { stage(colorChannel, parseInt(sw.getAttribute('data-color'), 10)); return; }
+    const chan = e.target.closest('[data-chan]'); if (chan) { colorChannel = chan.getAttribute('data-chan'); renderDetail(); return; }
+    const c = e.target.closest('[data-cat]'); if (c && !c.classList.contains('none')) { stage(c.getAttribute('data-cat'), parseInt(c.getAttribute('data-val'), 10)); return; }
   });
-  document.getElementById('body').addEventListener('change', e => {
-    const sel = e.target.closest('[data-cat]'); if (!sel) return;
-    buyVisual(sel.getAttribute('data-cat'), parseInt(sel.value,10));
+  $('cartList').addEventListener('click', (e) => {
+    const del = e.target.closest('[data-del]'); if (!del) return;
+    delete cart[del.getAttribute('data-del')];
+    trigger('cartuning:preview', JSON.stringify(previewConfig()));
+    renderDetail(); renderCart();
   });
+  $('checkout').onclick = () => { if (Object.keys(cart).length) trigger('cartuning:checkout', JSON.stringify(cart)); };
+  $('close').addEventListener('click', () => trigger('cartuning:close'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') trigger('cartuning:close'); });
 
-  document.getElementById('close').onclick = () => { if (RAGE) mp.trigger('cartuning:close'); };
-  document.addEventListener('keydown', e => { if (e.key==='Escape' && RAGE) mp.trigger('cartuning:close'); });
+  // Drag anywhere on the world (outside the panel) to orbit the camera around the car.
+  let dragging = false, lastX = 0;
+  document.addEventListener('mousedown', (e) => { if (e.target.closest('.shop')) return; dragging = true; lastX = e.clientX; document.body.style.cursor = 'ew-resize'; });
+  document.addEventListener('mousemove', (e) => { if (!dragging) return; const dx = e.clientX - lastX; lastX = e.clientX; if (dx) trigger('cartuning:rotate', dx); });
+  document.addEventListener('mouseup', () => { dragging = false; document.body.style.cursor = ''; });
 
-  let toastTimer;
-  window.tuningResult = data => {
-    let r; try { r = (typeof data==='string')?JSON.parse(data):data; } catch(e){ return; }
-    const t = document.getElementById('toast');
-    t.textContent = r.msg || ''; t.className = 'toast show ' + (r.ok?'ok':'err');
-    clearTimeout(toastTimer); toastTimer = setTimeout(()=>{ t.className='toast'; }, 2200);
-  };
-
-  window.onload = () => { if (RAGE) mp.trigger('cartuning:uiReady'); };
+  window.onload = () => { trigger('cartuning:uiReady'); };
 </script>
 </body>
 </html>
