@@ -6,8 +6,11 @@ const CAR_NAMES = {
     'audirs7abt':   '23rs7abt',  // Audi RS7 ABT
     'audirs7sport': 'rmodrs7',   // Audi RS7 Sportback
     'f44':          'M235iXD',   // BMW M235i Gran Coupe (F44)
+    'gclass':       'XG632019',  // Mercedes-Benz G-Class 2019
     'demon':        'dcd',       // Dodge Challenger SRT Demon (folder: demon)
     'm8':           'mansm8c',   // BMW M8 Competition (Mansory)
+    'm8duck':       'mansm8c',   // BMW M8 Competition (Ducktail spoiler)
+    'm8nospoiler':  'mansm8c',   // BMW M8 Competition (no spoiler)
     'm5e39':        'bmwm5e39',  // BMW M5 E39
     'cls':          'cls2015',   // Mercedes-Benz CLS 6.3 AMG 2015
     'r8':           'r820',      // Audi R8 2020 (RsMods)
@@ -23,8 +26,31 @@ const CAR_NAMES = {
     'm4f82':        'm4f82',     // BMW M4 F82 (HAMMER)
     'fenomeno':     'fenomeno',  // Lamborghini Fenomeno 2026 (DAVKU)
     'yumi':         'yumi',      // yumi
-    'colorado':     'ccadd'      // Chevy Colorado ZR2 ADD (HAMMER)
+    'colorado':     'ccadd',     // Chevy Colorado ZR2 ADD (HAMMER)
+    'reventon':     'polrevent', // Lamborghini Reventon SCPD (police)
+    'amggtr':       'polamggtr'  // Mercedes-AMG GT R Police (SCRAT)
 };
+const CAR_VISUALS = {
+    m8: { mods: { '0': 0 } },
+    m8duck: { mods: { '0': 1 } },
+    m8nospoiler: { mods: { '0': -1 } }
+};
+
+// Friendly labels for add-on cars that aren't in the buyable carshop catalog (police / service),
+// so they read nicely in the admin Cars tab. Anything without an entry falls back to its /car alias.
+const ADDON_LABELS = {
+    XG632019: 'Mercedes-Benz G-Class 2019',
+    polrevent:  'Reventon SCPD (Police)',
+    polamggtr:  'AMG GT R (Police)',
+    swatvanr2:  'SWAT Van'
+};
+
+// The full add-on roster (every /car alias → model). The admin Cars tab merges this with the buyable
+// catalog so non-buyable cars (police, SWAT) are still tunable. { model, label }.
+global.addonVehicles = () => Object.entries(CAR_NAMES).map(([alias, model]) => ({
+    model,
+    label: ADDON_LABELS[model] || alias
+}));
 
 const VEHICLE_MENU_RANGE = 5;
 const VEHICLE_MENU_ACTION_COOLDOWN_MS = 250;
@@ -41,6 +67,9 @@ function ownedVehicleForMenu(player, requestedId) {
     if (!vehicle || !mp.vehicles.exists(vehicle) ||
         Number(vehicle.id) !== vehicleId || player.vehicle ||
         Number(player.dimension) !== Number(vehicle.dimension)) return null;
+
+    // Car interaction is owner-only (passengers/others can't lock, pop the hood, etc.).
+    if (global.vehIsOwner && !global.vehIsOwner(player, vehicle)) return null;
 
     const dx = player.position.x - vehicle.position.x;
     const dy = player.position.y - vehicle.position.y;
@@ -89,6 +118,14 @@ mp.events.add('playerDeath', (player) => {
     if (global.chatLocalAction) global.chatLocalAction(player, 'ეცემა უგონოდ მიწაზე');
 });
 
+// /vehmods - dump the current vehicle's mod variations + extras (diagnostic, read-only). Use it to
+// tell apart two "versions" of the same add-on model (e.g. M8 spoiler vs ducktail): run it on each
+// spawn and compare which mod index or extra differs.
+mp.events.addCommand('vehmods', (player) => {
+    if (!player.vehicle) return player.outputChatBox('!{#ffb42e}ჩაჯექი მანქანაში და სცადე თავიდან.');
+    player.call('vehmods:dump');
+});
+
 // /pos - show the current world position and heading
 mp.events.addCommand('pos', (player) => {
     const position = player.position;
@@ -125,6 +162,7 @@ mp.events.addCommand('car', (player, _, name) => {
 
     const key = name.toLowerCase();
     const model = CAR_NAMES[key] || key;
+    const visual = CAR_VISUALS[key] || null;
 
     // remove this player's previous car so the map doesn't fill up
     if (player.myCar && mp.vehicles.exists(player.myCar)) player.myCar.destroy();
@@ -134,7 +172,14 @@ mp.events.addCommand('car', (player, _, name) => {
         dimension: player.dimension
     });
     player.myCar = car;
-    if (typeof global.vehOnSpawn === 'function') global.vehOnSpawn(player, car, name); // persist this car
+    if (typeof global.vehOnSpawn === 'function') global.vehOnSpawn(player, car, key, visual); // persist this car and its preset
+    if (visual && typeof global.vehApplyVisual === 'function') {
+        const applyVisual = () => {
+            if (mp.vehicles.exists(car)) global.vehApplyVisual(car, null, visual);
+        };
+        setTimeout(applyVisual, 500);
+        setTimeout(applyVisual, 1500);
+    }
     player.putIntoVehicle(car, 0);
     // Add-on models may not be streamed to the client on the very first spawn, so the instant
     // seat can miss — retry once the vehicle has had a moment to stream in.
@@ -154,7 +199,7 @@ mp.events.addCommand('drift', (player) => {
 mp.events.addCommand('cars', (player) => {
     global.chatSend(player, {
         ch: 'system',
-        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, demon, m8, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
+        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, gclass, demon, m8/m8duck/m8nospoiler, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado, reventon, amggtr (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
         ts: Date.now()
     });
     global.chatSend(player, {

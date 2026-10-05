@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const carHandling = require('./carhandling'); // add-on car handling editor (Cars tab)
+const carSpeed = require('./carspeed');       // live per-car speed multiplier (Cars tab)
 
 // Hardcoded "owner" admins — can't be removed, and only they can grant/revoke admin in the panel.
 const FLY_ADMINS = new Set(['sephigr', 'torika2']);
@@ -622,6 +623,61 @@ mp.events.add('admin:panel:carSave', (player, pack, handlingName, valuesJson) =>
     const result = carHandling.save(String(pack), String(handlingName), edits);
     player.call('admin:panel:carResult', [result.message]);
     if (result.ok) console.log(`[admin] ${player.name} edited handling ${pack}/${handlingName}: ${JSON.stringify(edits)}`);
+});
+
+// ---- Cars tab: live tuning stages (applies instantly to every client, no restart) ----
+// Push the resolved per-car tuning (power/topMult/kick) to all online players so they re-apply it live.
+function broadcastSpeedMods() {
+    const json = JSON.stringify(carSpeed.resolved());
+    mp.players.forEach(p => { try { p.call('speed:mods', [json]); } catch (e) {} });
+}
+global.carSpeedBroadcast = broadcastSpeedMods;
+
+mp.events.add('admin:panel:speed', player => {
+    if (!requireAdmin(player)) return;
+    const tuned = carSpeed.all();
+    const catalog = (typeof global.carCatalog === 'function') ? global.carCatalog() : [];
+    const addon = (typeof global.addonVehicles === 'function') ? global.addonVehicles() : [];
+    // Each row carries its current stage ('' = Stock) and custom speed multiplier (1 = stock).
+    const rowFor = (model, label) => {
+        const t = carSpeed.get(model);
+        return { model, label, stage: t.stage, speed: t.speed };
+    };
+    // Buyable catalog first (best labels), then non-buyable add-ons (police/SWAT), then any tuned
+    // model not covered by either — deduped by model so a car appears once with its nicest label.
+    const cars = [];
+    const seen = new Set();
+    const pushRow = (model, label) => {
+        const key = String(model).toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        cars.push(rowFor(model, label));
+    };
+    catalog.forEach(car => pushRow(car.model, car.label));
+    addon.forEach(car => pushRow(car.model, car.label));
+    Object.keys(tuned).forEach(model => pushRow(model, model));
+    player.call('admin:panel:speed', [JSON.stringify({
+        cars, stages: carSpeed.stageNames(),
+        speedMin: carSpeed.SPEED_MIN, speedMax: carSpeed.SPEED_MAX, speedDefault: carSpeed.SPEED_DEFAULT
+    })]);
+});
+
+mp.events.add('admin:panel:speedSave', (player, model, stage, speed) => {
+    if (!requireAdmin(player)) return; // live tuning is reversible (pick Stock) — admin rights are enough
+    const result = carSpeed.set(String(model), stage, speed);
+    player.call('admin:panel:speedResult', [result.message]);
+    if (result.ok) {
+        broadcastSpeedMods();
+        console.log(`[admin] ${player.name} tuned ${model}: ${result.stage || 'stock'} · speed ×${result.speed}`);
+    }
+});
+
+// Push the current map to each player once they're in-game.
+mp.events.add('playerReady', player => {
+    setTimeout(() => {
+        if (!mp.players.exists(player)) return;
+        try { player.call('speed:mods', [JSON.stringify(carSpeed.resolved())]); } catch (e) {}
+    }, 3000);
 });
 
 mp.events.add('admin:panel:run', (player, rawText) => {

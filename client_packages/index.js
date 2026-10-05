@@ -15,6 +15,9 @@ const _realKeyBind = mp.keys.bind.bind(mp.keys);
 function bindKey(key, keyUp, handler) {
     return _realKeyBind(key, keyUp, function (...args) {
         if (uiLocked) return;
+        // While the phone is out, only the Down arrow (0x28, close phone) may fire — every other
+        // in-game hotkey (chat/T, engine, menus…) is suppressed so nothing acts behind the phone UI.
+        if (phoneOut && key !== 0x28) return;
         return handler(...args);
     });
 }
@@ -85,7 +88,7 @@ const GAS_STATIONS = [
 ];
 GAS_STATIONS.forEach(p => {
     mp.blips.new(361, new mp.Vector3(p[0], p[1], p[2]),
-        { name: 'საწვავის სადგური', scale: 0.7, color: 46, shortRange: true });
+        { name: worldText('საწვავის სადგური'), scale: 0.7, color: 46, shortRange: true });
     // amber ground ring so it's obvious where to stop
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.8,
         { color: [255, 180, 46, 150], visible: true });
@@ -101,7 +104,7 @@ const AMMU_SHOPS = [
 ];
 AMMU_SHOPS.forEach(p => {
     mp.blips.new(110, new mp.Vector3(p[0], p[1], p[2]),
-        { name: 'იარაღის მაღაზია', scale: 0.8, color: 1, shortRange: true });
+        { name: worldText('იარაღის მაღაზია'), scale: 0.8, color: 1, shortRange: true });
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
         { color: [230, 120, 60, 140], visible: true });
 });
@@ -117,7 +120,7 @@ const MARKET_STORES = [
 ];
 MARKET_STORES.forEach(p => {
     mp.blips.new(52, new mp.Vector3(p[0], p[1], p[2]),
-        { name: '24/7 მაღაზია', scale: 0.7, color: 2, shortRange: true });
+        { name: worldText('24/7 მაღაზია'), scale: 0.7, color: 2, shortRange: true });
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
         { color: [90, 200, 130, 140], visible: true });
 });
@@ -132,7 +135,7 @@ const CLOTH_STORES = [
 ];
 CLOTH_STORES.forEach(p => {
     mp.blips.new(73, new mp.Vector3(p[0], p[1], p[2]),
-        { name: 'ტანსაცმლის მაღაზია', scale: 0.8, color: 47, shortRange: true });
+        { name: worldText('ტანსაცმლის მაღაზია'), scale: 0.8, color: 47, shortRange: true });
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
         { color: [180, 120, 210, 140], visible: true });
 });
@@ -146,7 +149,7 @@ const BARBER_SHOPS = [
 ];
 BARBER_SHOPS.forEach(p => {
     mp.blips.new(71, new mp.Vector3(p[0], p[1], p[2]),
-        { name: 'სალონი (ვარცხნილობა)', scale: 0.8, color: 4, shortRange: true });
+        { name: worldText('სალონი (ვარცხნილობა)'), scale: 0.8, color: 4, shortRange: true });
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
         { color: [120, 200, 210, 140], visible: true });
 });
@@ -160,7 +163,7 @@ const TATTOO_SHOPS = [
 let tattooBrowser = null;
 TATTOO_SHOPS.forEach(p => {
     mp.blips.new(75, new mp.Vector3(p[0], p[1], p[2]),
-        { name: 'ტატუს სალონი', scale: 0.8, color: 1, shortRange: true });
+        { name: worldText('ტატუს სალონი'), scale: 0.8, color: 1, shortRange: true });
     mp.markers.new(27, new mp.Vector3(p[0], p[1], p[2] - 0.95), 1.6,
         { color: [210, 110, 100, 140], visible: true });
 });
@@ -179,7 +182,7 @@ const ATM_LOCATIONS = [
 ];
 ATM_LOCATIONS.forEach(p => {
     mp.blips.new(277, new mp.Vector3(p[0], p[1], p[2]),
-        { name: 'ბანკომატი (ATM)', scale: 0.6, color: 2, shortRange: true });
+        { name: worldText('ბანკომატი (ATM)'), scale: 0.6, color: 2, shortRange: true });
 });
 
 // ---------- Parking spots: car-sized footprint + E-to-open UI + admin editor ----------
@@ -299,6 +302,7 @@ mp.events.add('parking:ui:renew', (days) => { if (currentParkSpotId) mp.events.c
 mp.events.add('parking:ui:park', () => { if (currentParkSpotId) mp.events.callRemote('parking:park', currentParkSpotId); });
 mp.events.add('parking:ui:unpark', (index) => { if (currentParkSpotId) mp.events.callRemote('parking:unpark', currentParkSpotId, Number(index)); });
 mp.events.add('parking:ui:summon', () => { if (currentParkSpotId) mp.events.callRemote('parking:summon', currentParkSpotId); });
+mp.events.add('parking:ui:summonOwned', (vehicleId) => { if (currentParkSpotId) mp.events.callRemote('parking:summonOwned', currentParkSpotId, String(vehicleId)); });
 mp.events.add('parking:ui:impound', () => { if (currentParkSpotId) mp.events.callRemote('parking:impound', currentParkSpotId); });
 mp.events.add('parking:ui:delete', () => { if (currentParkSpotId) { mp.events.callRemote('parking:removeSpot', currentParkSpotId); closeParkingUI(); } });
 mp.events.add('parking:ui:close', () => closeParkingUI());
@@ -386,8 +390,19 @@ function isNearPosition(position, target, range) {
 const hudBrowser = mp.browsers.new('package://ui/hud/index.html');
 let hudAccum = 0;
 
-// ---------- Radio off + apply octane power on enter ----------
+// ---------- Radio fully off + apply octane power on enter ----------
+// Radio is disabled server-wide: the player's radio wheel/control and the phone radio are turned off
+// so it can never start, and any vehicle's station is forced to OFF.
+function disableRadioGlobally() {
+    try { mp.game.invoke('0x19F21E63AE6EAE4E', false); } catch (e) {} // SET_USER_RADIO_CONTROL_ENABLED(false) — no radio wheel
+    try { mp.game.invoke('0x1098355A16064BB3', false); } catch (e) {} // SET_MOBILE_RADIO_ENABLED_DURING_GAMEPLAY(false)
+    try { mp.game.invoke('0xF7F26C6E9CC9EBB8', false); } catch (e) {}  // SET_FRONTEND_RADIO_ACTIVE(false)
+    try { mp.game.audio.setRadioToStationName('OFF'); } catch (e) {}
+}
+disableRadioGlobally();
+
 function killRadio(vehicle) {
+    disableRadioGlobally();
     if (!vehicle || !mp.vehicles.exists(vehicle)) return;
     try {
         mp.game.audio.setVehicleRadioEnabled(vehicle.handle, false);
@@ -398,6 +413,7 @@ let radioKillTimer = null;
 mp.events.add('playerEnterVehicle', (vehicle) => {
     if (!vehicle) return;
     applyOctanePower(vehicle);
+    launchKickUntil = 0; launchArmed = true; // fresh launch kick available in the new car
     // GTA keeps re-enabling the radio for ~1–2s after entry — hammer it OFF for ~3s so it never plays.
     if (radioKillTimer) clearInterval(radioKillTimer);
     let ticks = 0;
@@ -408,23 +424,72 @@ mp.events.add('playerEnterVehicle', (vehicle) => {
     }, 250);
 });
 
-// Blended octane profile currently in the tank (power/eff/rating).
+// Blended octane profile currently in the tank (power/eff/rating). Seeds once from the server's synced
+// var veh:octane (a persisted owned car restores the grade it was last filled with) before falling back
+// to the default. Only seeds when never set locally, so an in-session drain (null) isn't overwritten.
 function octaneProfile(veh) {
+    if (octaneByVeh[veh.remoteId] === undefined) {
+        let synced;
+        try { synced = veh.getVariable('veh:octane'); } catch (e) {}
+        if (synced && typeof synced === 'object') octaneByVeh[veh.remoteId] = synced;
+    }
     return octaneByVeh[veh.remoteId] || DEFAULT_OCTANE;
 }
-// Higher octane in the tank = more engine power / top speed.
+
+// Per-model live tuning stage, pushed by the server (admin Cars tab), resolved to effect values.
+// Keyed by model hash; the admin assigns a stage to plain model names (e.g. "23rs7abt"), hashed here.
+//   power   — engine-power multiplier (acceleration) · topMult — top-speed multiplier (× stock top,
+//   0 = untuned) · kick — launch burst off the line (1 = none).
+const NO_TUNE = { power: 1, topMult: 0, kick: 1 };
+let speedTuneByHash = {};
+function modelTune(veh) {
+    // Per-vehicle garage tuning (synced var veh:tune, set server-side by packages/cartuning) wins over
+    // the admin per-model tuning — so one owner's upgraded car is fast without touching other same-model cars.
+    try {
+        const own = veh.getVariable('veh:tune');
+        if (own && typeof own === 'object') {
+            return { power: Number(own.power) || 1, topMult: Number(own.topMult) || 0, kick: Number(own.kick) || 1 };
+        }
+    } catch (e) {}
+    return speedTuneByHash[(veh.model >>> 0)] || NO_TUNE;
+}
+mp.events.add('speed:mods', (json) => {
+    const next = {};
+    try {
+        const map = JSON.parse(json) || {};
+        for (const name in map) {
+            const value = map[name] || {};
+            next[mp.game.joaat(name) >>> 0] = {
+                power: Number(value.power) || 1,
+                topMult: Number(value.topMult) || 0,
+                kick: Number(value.kick) || 1
+            };
+        }
+    } catch (e) {}
+    speedTuneByHash = next;
+    // Re-apply to the car we're currently sitting in so edits take effect without re-entering.
+    const veh = mp.players.local.vehicle;
+    if (veh && mp.vehicles.exists(veh)) applyOctanePower(veh);
+});
+
+// Higher octane in the tank = more engine power / top speed. If the car has a max-speed cap, the
+// game's speed limiter is set to the cap (a pure ceiling — the car drives normally and just can't
+// exceed it); the render loop clamps any overshoot as a backstop.
 function applyOctanePower(veh) {
     if (!veh) return;
     const profile = octaneProfile(veh);
-    veh.setEnginePowerMultiplier(profile.power);
+    const tune = modelTune(veh);
+    veh.setEnginePowerMultiplier(profile.power * (tune.power || 1));
 
     let baseMaxSpeed = baseMaxSpeedByVeh[veh.remoteId];
     if (baseMaxSpeed === undefined) {
         baseMaxSpeed = mp.game.vehicle.getEstimatedMaxSpeed(veh.handle);
         if (baseMaxSpeed > 0) baseMaxSpeedByVeh[veh.remoteId] = baseMaxSpeed;
     }
-    if (baseMaxSpeed > 0)
-        mp.game.vehicle.setMaxSpeed(veh.handle, baseMaxSpeed * profile.speedRate);
+    if (baseMaxSpeed > 0) {
+        const limiter = tune.topMult > 0 ? baseMaxSpeed * tune.topMult : baseMaxSpeed * profile.speedRate;
+        mp.game.vehicle.setMaxSpeed(veh.handle, limiter);
+    }
 }
 
 // ---------- State ----------
@@ -508,6 +573,17 @@ const LC_BOOST = 1.7;        // engine power multiplier during launch
 const LC_BOOST_MS = 3000;    // how long the boost lasts
 const LC_ARM_MS = 500;       // hold throttle+brake this long to arm
 let lcArmStart = 0, lcArmed = false, lcBoostUntil = 0, lcBoosting = false;
+
+// ---- Auto launch kick (for cars tuned in the Cars tab) ----
+// A short automatic burst of extra engine power when pulling away from a stop — a peppy launch off
+// the line, then normal driving. The boost multiplier is per-car (tune.kick); re-arms once moving.
+const LAUNCH_KICK_MS = 1000;     // how long the kick lasts
+let launchKickUntil = 0, launchArmed = true;
+// Peak acceleration (m/s²) of the tuned-speed model at a standstill, per unit of the car's power
+// multiplier (tune.power). The pull tapers to zero at the tuned top speed, so a stronger car both
+// launches harder AND reaches a higher top — felt across the whole range, like a real car.
+// e.g. a Stage 3 + ×2.5 car (power ≈ 4.0) peaks around 3.2 × 4.0 ≈ 13 m/s² (~1.3 g) off the line.
+const ACCEL_PEAK = 3.2;
 function launchControl(veh, speed, now) {
     let driver = true;
     try { driver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
@@ -855,6 +931,177 @@ mp.events.add('render', () => {
     if (!carshopBrowser && !cardetailBrowser) return;
     mp.gui.cursor.show(true, true);
     mp.game.controls.disableAllControlActions(0);
+});
+
+// ---------- Car tuning garage (per-car upgrades) ----------
+// Server opens it with 'cartuning:open' (after /tune in your owned car at the garage). The CEF pulls
+// its data on load and relays buys; the server charges money, saves levels on the car's DB row, and
+// pushes the new effect via the synced var veh:tune (applied live below).
+let cartuningBrowser = null;
+mp.events.add('cartuning:open', () => {
+    if (cartuningBrowser || chatting) return;
+    cartuningBrowser = mp.browsers.new('package://ui/cartuning/index.html');
+    mp.gui.cursor.show(true, true);
+});
+function closeCartuning() {
+    if (!cartuningBrowser) return;
+    cartuningBrowser.destroy(); cartuningBrowser = null;
+    mp.gui.cursor.show(false, false);
+}
+mp.events.add('cartuning:data', (json) => {
+    if (!cartuningBrowser) return;
+    let data; try { data = JSON.parse(json); } catch (e) { return; }
+    // Enrich with the option counts available for THIS car (only the client can enumerate mods).
+    data.options = enumerateVehicleOptions(mp.players.local.vehicle);
+    cartuningBrowser.execute(`window.setTuning(${JSON.stringify(data)})`);
+});
+mp.events.add('cartuning:result', (json) => {
+    if (cartuningBrowser) cartuningBrowser.execute(`window.tuningResult(${json})`);
+    // Re-apply power/top-speed live so the just-bought upgrade takes effect without re-entering the car.
+    try {
+        const r = JSON.parse(json);
+        if (r && r.applied) { const veh = mp.players.local.vehicle; if (veh && mp.vehicles.exists(veh)) applyOctanePower(veh); }
+    } catch (e) {}
+});
+mp.events.add('cartuning:denied', () => { closeCartuning(); notify('ტუნინგი ხელმისაწვდომია მხოლოდ შენს მანქანაში, ავტოსახელოსნოში.'); });
+mp.events.add('cartuning:uiReady', () => mp.events.callRemote('cartuning:request')); // CEF -> server
+mp.events.add('cartuning:buy', (partKey) => mp.events.callRemote('cartuning:buy', String(partKey))); // CEF -> server
+mp.events.add('cartuning:buyVisual', (category, value) => mp.events.callRemote('cartuning:buyVisual', String(category), Number(value))); // CEF -> server
+mp.events.add('cartuning:close', closeCartuning); // CEF
+mp.events.add('render', () => {
+    if (!cartuningBrowser) return;
+    mp.gui.cursor.show(true, true);
+    mp.game.controls.disableAllControlActions(0);
+});
+
+// "Press E to tune" prompt. The server sends the garage spots on join; while the driver of their own
+// car sits on one, show the prompt (the E keybind opens it — wired into the shared E handler below).
+let cartuningZones = [];
+mp.events.add('cartuning:zones', (json) => { try { cartuningZones = JSON.parse(json) || []; } catch (e) { cartuningZones = []; } });
+// Fetch the garage coords, retrying until they arrive (playerReady can fire before the server package
+// is ready to answer, and a mid-session reconnect may miss the first request).
+function requestTuningZones(attempt) {
+    if (cartuningZones.length || attempt > 12) return;
+    try { mp.events.callRemote('cartuning:zonesRequest'); } catch (e) {}
+    setTimeout(() => requestTuningZones(attempt + 1), 3000);
+}
+mp.events.add('playerReady', () => requestTuningZones(0));
+setTimeout(() => requestTuningZones(0), 2000);
+function atTuningGarage() {
+    const veh = mp.players.local.vehicle;
+    if (!veh || !cartuningZones.length) return false;
+    const p = veh.position;
+    for (const g of cartuningZones) {
+        const dx = p.x - g.x, dy = p.y - g.y, dz = p.z - g.z;
+        if (dx * dx + dy * dy + dz * dz <= 49) return true; // ~7m (server is 6; a touch wider so the prompt shows just before)
+    }
+    return false;
+}
+// Prompt for any DRIVER parked at a garage — the server does the authoritative ownership / DB-car
+// check when E is pressed (and replies with a clear message if it's not their own car).
+function canTuneHere() {
+    const veh = mp.players.local.vehicle;
+    if (!veh || !atTuningGarage()) return false;
+    let driver = true;
+    try { driver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
+    return driver;
+}
+mp.events.add('render', () => {
+    if (cartuningBrowser || chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || fuelUIOpen) return;
+    if (!canTuneHere()) return;
+    mp.game.graphics.drawText('Press E to tune', [0.5, 0.86], {
+        font: 4, color: [255, 255, 255, 220], outline: true, centre: true, scale: [0.45, 0.45]
+    });
+});
+
+// /vehmods diagnostic: dump mod variations (type: current/count) + extras of the car you're in, so we
+// can identify which mod index / extra controls a model's "two versions" (e.g. M8 spoiler vs ducktail).
+const VEH_MOD_NAMES = { 0: 'Spoiler', 1: 'FrontBumper', 2: 'RearBumper', 3: 'Skirts', 4: 'Exhaust', 5: 'Chassis', 6: 'Grille', 7: 'Hood', 8: 'FenderL', 9: 'FenderR', 10: 'Roof', 23: 'Wheels', 24: 'RearWheels' };
+mp.events.add('vehmods:dump', () => {
+    const v = mp.players.local.vehicle;
+    if (!v) { notify('ჩაჯექი მანქანაში.'); return; }
+    const h = v.handle;
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    notify('--- ' + '/vehmods' + ' (type: current / count) ---');
+    for (let t = 0; t <= 49; t++) {
+        let count = 0;
+        try { count = mp.game.vehicle.getNumVehicleMods(h, t); } catch (e) {}
+        if (count > 0) {
+            let cur = -1;
+            try { cur = mp.game.vehicle.getVehicleMod(h, t); } catch (e) {}
+            notify((VEH_MOD_NAMES[t] || ('mod' + t)) + ':  ' + cur + ' / ' + count);
+        }
+    }
+    const extras = [];
+    for (let e = 0; e <= 20; e++) {
+        try { if (mp.game.vehicle.doesExtraExist(h, e)) extras.push(e + '=' + (mp.game.vehicle.isVehicleExtraTurnedOn(h, e) ? 'ON' : 'off')); } catch (err) {}
+    }
+    notify('extras:  ' + (extras.join(', ') || 'none'));
+});
+
+// ===================== Vehicle visual customization (LS Customs) =====================
+// Applies a stored veh:visual config (colors / wheels / body mods) to a vehicle via natives, for ALL
+// players, so a customized car looks the same to everyone. Driven by the synced var (stream-in) and a
+// server broadcast (live change). The garage UI reads option counts via enumerateVehicleOptions().
+const VISUAL_MOD_TYPES = [0, 1, 2, 3, 4, 7, 10, 23]; // spoiler, bumpers, skirts, exhaust, hood, roof, wheels
+function applyVehicleVisual(veh, cfg) {
+    if (!veh || !mp.vehicles.exists(veh) || !cfg || typeof cfg !== 'object') return;
+    const h = veh.handle;
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    const c = cfg.colors || {};
+    if (typeof c.primary === 'number' && typeof c.secondary === 'number') {
+        try { mp.game.vehicle.setVehicleColours(h, c.primary, c.secondary); } catch (e) {}
+    }
+    if (typeof c.pearl === 'number' || typeof c.wheel === 'number') {
+        try { mp.game.vehicle.setVehicleExtraColours(h, c.pearl || 0, c.wheel || 0); } catch (e) {}
+    }
+    if (typeof cfg.windowTint === 'number') try { mp.game.vehicle.setVehicleWindowTint(h, cfg.windowTint); } catch (e) {}
+    if (typeof cfg.wheelType === 'number') try { mp.game.vehicle.setVehicleWheelType(h, cfg.wheelType); } catch (e) {}
+    if (cfg.mods && typeof cfg.mods === 'object') {
+        for (const type in cfg.mods) {
+            const idx = Number(cfg.mods[type]);
+            try { mp.game.vehicle.setVehicleMod(h, parseInt(type, 10), idx, false); } catch (e) {}
+        }
+    }
+    // Toggleable body parts (some add-ons use an "extra" for a ducktail/wing instead of a mod).
+    // SET_VEHICLE_EXTRA(veh, id, toggle): toggle=false turns the extra ON, true turns it OFF.
+    if (cfg.extras && typeof cfg.extras === 'object') {
+        for (const id in cfg.extras) {
+            try { mp.game.vehicle.setVehicleExtra(h, parseInt(id, 10), cfg.extras[id] ? false : true); } catch (e) {}
+        }
+    }
+}
+// How many options each mod type offers for this specific car (indices 0..count-1, plus -1 = stock).
+function enumerateVehicleOptions(veh) {
+    const opts = { mods: {}, wheelTypes: 13, windowTints: 7 };
+    if (!veh || !mp.vehicles.exists(veh)) return opts;
+    const h = veh.handle;
+    try { mp.game.vehicle.setVehicleModKit(h, 0); } catch (e) {}
+    VISUAL_MOD_TYPES.forEach((t) => {
+        let count = 0;
+        try { count = mp.game.vehicle.getNumVehicleMods(h, t); } catch (e) {}
+        opts.mods[t] = count;
+    });
+    return opts;
+}
+// Apply a car's saved look when it streams in (covers other players' cars + late joiners).
+mp.events.add('entityStreamIn', (entity) => {
+    if (!entity || entity.type !== 'vehicle') return;
+    const applySyncedVisual = () => {
+        if (!mp.vehicles.exists(entity)) return;
+        let cfg; try { cfg = entity.getVariable('veh:visual'); } catch (e) {}
+        if (cfg) applyVehicleVisual(entity, cfg);
+    };
+    applySyncedVisual();
+    setTimeout(applySyncedVisual, 500);
+    setTimeout(applySyncedVisual, 1500);
+});
+// Live change broadcast from the server (e.g. just bought at the garage) — re-apply for everyone nearby.
+mp.events.add('vehicle:visualApply', (vehId, json) => {
+    const veh = mp.vehicles.atRemoteId(Number(vehId));
+    if (!veh || !mp.vehicles.exists(veh)) return;
+    let cfg; try { cfg = JSON.parse(json); } catch (e) { return; }
+    applyVehicleVisual(veh, cfg);
 });
 
 // ---------- CEF clothing store (Binco / Ponsonbys) ----------
@@ -1648,7 +1895,7 @@ function buildCityhall() {
     const pts = cityhallPoints;
     if (!pts) return;
     const at = (pt, dz) => new mp.Vector3(pt.x, pt.y, pt.z + (dz || 0));
-    cityhallBlip = mp.blips.new(419, at(pts.entrance), { name: 'მერია (City Hall)', scale: 0.9, color: 3, shortRange: false });
+    cityhallBlip = mp.blips.new(419, at(pts.entrance), { name: worldText('მერია (City Hall)'), scale: 0.9, color: 3, shortRange: false });
     cityhallMarkers.push(mp.markers.new(1, at(pts.entrance, -1.0), 1.4, { color: [75, 156, 224, 110], visible: true }));
     cityhallMarkers.push(mp.markers.new(27, at(pts.duty, -0.95), 1.2, { color: [75, 156, 224, 150], visible: true }));
     // Counter NPCs: frozen, invincible, ignore everything. Client-side, so every player spawns their own.
@@ -1783,7 +2030,7 @@ function buildHouses() {
     });
     Object.values(buildings).forEach(b => {
         housesBlips.push(mp.blips.new(475, at(b.door), {
-            name: b.mine ? 'ჩემი ბინა — ' + b.name : b.name + (b.free ? ' — იყიდება ' + b.free + ' ბინა' : ' — ყველა ბინა გაყიდულია'),
+            name: worldText(b.mine ? 'ჩემი ბინა — ' + b.name : b.name + (b.free ? ' — იყიდება ' + b.free + ' ბინა' : ' — ყველა ბინა გაყიდულია')),
             scale: b.mine ? 0.9 : 0.75, color: b.mine ? 3 : (b.free ? 2 : 4), shortRange: !b.mine && !(housesHighlight && b.free)
         }));
         housesMarkers.push(mp.markers.new(27, at(b.door, -0.95), 1.2, { color: b.mine ? [90, 169, 255, 140] : [111, 207, 151, 140], visible: true }));
@@ -1793,14 +2040,14 @@ function buildHouses() {
             // Units share the entrance (handled above); only their own chest/garage markers below.
         } else if (house.forSale) {
             housesBlips.push(mp.blips.new(40, at(house.door), {
-                name: 'იყიდება: ' + house.name + ' ($' + house.price + ')',
+                name: worldText('იყიდება: ' + house.name + ' ($' + house.price + ')'),
                 scale: housesHighlight ? 0.9 : 0.7, color: 2, shortRange: !housesHighlight
             }));
         } else if (house.mine) {
-            housesBlips.push(mp.blips.new(40, at(house.door), { name: 'ჩემი სახლი', scale: 0.9, color: 3, shortRange: false }));
+            housesBlips.push(mp.blips.new(40, at(house.door), { name: worldText('ჩემი სახლი'), scale: 0.9, color: 3, shortRange: false }));
         } else {
             // Sold to someone else: still on the map, small and grey.
-            housesBlips.push(mp.blips.new(40, at(house.door), { name: 'გაყიდულია: ' + house.name, scale: 0.55, color: 40, shortRange: true }));
+            housesBlips.push(mp.blips.new(40, at(house.door), { name: worldText('გაყიდულია: ' + house.name), scale: 0.55, color: 40, shortRange: true }));
         }
         if (!house.building && (house.forSale || house.mine)) {
             housesMarkers.push(mp.markers.new(27, at(house.door, -0.95), 1.0, { color: house.mine ? [90, 169, 255, 140] : [111, 207, 151, 140], visible: true }));
@@ -2306,7 +2553,7 @@ function setPhone(out) {
     }
 }
 function anyModalOpen() {
-    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || carshopBrowser || cardetailBrowser || parkEditing);
+    return Boolean(chatting || adminBrowser || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || fuelUIOpen || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser || parkEditing);
 }
 bindKey(0x26, true, () => { if (!anyModalOpen() && !parkEditing) setPhone(true); });  // Up arrow — open phone
 bindKey(0x28, true, () => { if (!chatting && !parkEditing) setPhone(false); });        // Down arrow — close phone
@@ -2433,8 +2680,20 @@ function sendVehicleMenuState() {
         fuel: fuelLiters,
         maxFuel: maxFuelLiters,
         health: healthPct,
-        passengers: getVehiclePassengers(vehicle)
+        passengers: getVehiclePassengers(vehicle),
+        owned: localOwnsVehicle(vehicle)
     })})`);
+}
+
+// Does the local player own this car? Mirrors server keyOf(): prefers Social Club, then name.
+// The in-world ownership tag veh:ownerSc is set server-side by packages/vehicles.
+function localOwnsVehicle(vehicle) {
+    try {
+        const owner = vehicle.getVariable('veh:ownerSc');
+        if (!owner) return false;
+        const local = String(mp.players.local.socialClub || mp.players.local.name || '');
+        return owner === local;
+    } catch (e) { return false; }
 }
 
 function vehicleMenuTargetInRange(vehicle, range = 5) {
@@ -2566,6 +2825,21 @@ mp.events.add('vehicle:menu:inventory', () => {
     closeVehicleMenu();
     openInventoryUI();
 });
+
+// ---- Drive-key management (owner grants/revokes keys from the car menu) ----
+mp.events.add('vehicle:menu:keys:request', () => {
+    if (vehicleMenuBrowser) mp.events.callRemote('carkeys:request');
+});
+mp.events.add('vehicle:menu:keys:grant', (targetId) => {
+    if (vehicleMenuBrowser) mp.events.callRemote('carkeys:grant', Number(targetId));
+});
+mp.events.add('vehicle:menu:keys:revoke', (granteeKey) => {
+    if (vehicleMenuBrowser) mp.events.callRemote('carkeys:revoke', String(granteeKey));
+});
+// Server -> UI: the owner's current key holders + nearby grantable players.
+mp.events.add('carkeys:data', (json) => {
+    if (vehicleMenuBrowser) vehicleMenuBrowser.execute(`window.setKeysData(${json})`);
+});
 mp.events.add('vehicle:menu:open', vehicleId => {
     const vehicle = pendingVehicleMenuVehicle;
     pendingVehicleMenuVehicle = null;
@@ -2638,6 +2912,11 @@ mp.events.add('fuel:confirm', (octaneIndex, liters, cost) => {
 
         addFuel(veh, liters / CFG.tankLiters * CFG.fuelMax);
         applyOctanePower(veh); // blended grade takes effect immediately
+        // Persist the new level + grade right away so a quick reconnect doesn't lose the fill (the
+        // periodic report only fires every 10s while driving — easy to miss after filling up).
+        lastFuelReport = 0; // bypass the throttle for this immediate report
+        try { mp.events.callRemote('vehicle:fuelReport', Math.round(getFuel(veh))); } catch (e) {}
+        try { mp.events.callRemote('vehicle:octaneReport', JSON.stringify(octaneByVeh[veh.remoteId] || null)); } catch (e) {}
     }
     if (fuelUIOpen && fuelBrowser) {
         sendFuelData();
@@ -2730,6 +3009,7 @@ bindKey(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped ite
     if (demorganDigNear()) { if (demorganDigCooldown(mp.players.local.getVariable('demorgan:dig')) <= 0) mp.events.callRemote('demorgan:dig:start'); return; }
     const house = nearestHouseAction(mp.players.local);
     if (house) { mp.events.callRemote(house.event, house.id); return; }
+    if (canTuneHere()) { mp.events.callRemote('cartuning:tryOpen'); return; } // E opens the tuning panel at a garage
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
     const drop = findNearDrop();
     if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }
@@ -2950,7 +3230,7 @@ mp.events.add('chat:hasTeam', (value) => {
 });
 
 function openChat() {
-    if (chatting || adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || cityhallBrowser || housesBrowser) return;
+    if (anyModalOpen()) return; // don't open chat while the phone or any menu is up
     if (Number(mp.players.local.getHealth()) <= 0) return; // downed: can't write
     chatting = true;
     mp.gui.cursor.show(true, true);
@@ -3112,7 +3392,7 @@ mp.events.add('render', () => {
     }
     // Only real CEF panels count as modal. (Including cursor.visible here caused a
     // self-reinforcing loop that stuck the cursor and killed the native chat.)
-    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser || carshopBrowser || cardetailBrowser);
+    const modalOpen = Boolean(adminBrowser || fuelUIOpen || inventoryBrowser || vehicleMenuBrowser || shopBrowser || clothingBrowser || barberBrowser || tattooBrowser || cityhallBrowser || housesBrowser || directorBrowser || bankBrowser || phoneBrowser || parkingBrowser || carshopBrowser || cardetailBrowser || cartuningBrowser);
     if (modalOpen) {
         // block game input + show cursor so the panel has focus (also blocks the pause menu)
         mp.game.controls.disableAllControlActions(0);
@@ -3168,6 +3448,67 @@ mp.events.add('render', () => {
         };
     } else {
         const speed = speedOf(veh);
+
+        // --- Live Cars-tab tuning: launch kick + hard max-speed ceiling ---
+        // A tuned car gets (a) a short burst of extra acceleration when pulling away from a stop (a peppy
+        // launch, then normal driving) and/or (b) a hard top-speed ceiling. The cap is a pure ceiling: the
+        // car accelerates normally and horizontal velocity is only clamped if it ever exceeds the cap (e.g.
+        // downhill). Vertical velocity is left alone. Stock (untuned) cars are untouched.
+        const tune = modelTune(veh);
+        if (tune.topMult > 0 || tune.kick > 1) {
+            let isDriver = true;
+            try { isDriver = veh.getPedInSeat(-1) === mp.players.local.handle; } catch (e) {}
+            if (isDriver) {
+                // (a) launch kick — fire a brief power burst when flooring it away from a near-stop.
+                if (tune.kick > 1) {
+                    if (speed > 8) launchArmed = true; // moving well (~29 km/h) → re-arm for the next launch
+                    if (launchArmed && !lcBoosting && speed < 3 && now >= launchKickUntil &&
+                        mp.game.controls.isControlPressed(0, 71)) {
+                        launchKickUntil = now + LAUNCH_KICK_MS;
+                        launchArmed = false;
+                    }
+                    if (launchKickUntil) {
+                        if (now < launchKickUntil) {
+                            try { veh.setEnginePowerMultiplier(octaneProfile(veh).power * tune.power * tune.kick); } catch (e) {}
+                        } else { launchKickUntil = 0; applyOctanePower(veh); } // burst over → restore stage power
+                    }
+                }
+                // (b) Realistic acceleration toward the tuned top speed (stock × topMult). We model the
+                // car's longitudinal pull like tractive force minus aero drag: STRONG low down, tapering
+                // to zero at the top — accel = peak · (1 − (v/vmax)²). This makes the car's extra
+                // capability felt across the WHOLE range (every gear), not just near the top. Applied
+                // only while the throttle is held, and we only ever speed the car UP toward the model —
+                // braking, coasting, steering and collisions stay native. The only reduction is the hard
+                // ceiling clamp at vmax (e.g. overshoot downhill).
+                if (tune.topMult > 0) {
+                    let base = baseMaxSpeedByVeh[veh.remoteId];
+                    if (base === undefined) {
+                        base = mp.game.vehicle.getEstimatedMaxSpeed(veh.handle);
+                        if (base > 0) baseMaxSpeedByVeh[veh.remoteId] = base;
+                    }
+                    const capMs = base * tune.topMult;                    // tuned top speed (m/s)
+                    const velocity = veh.getVelocity();
+                    const horizontal = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+                    if (horizontal > 0.01) {
+                        let desired = horizontal;
+                        if (horizontal > capMs) {
+                            desired = capMs;                              // hard ceiling: never exceed
+                        } else if (mp.game.controls.isControlPressed(0, 71)) { // flooring it
+                            const frac = horizontal / capMs;             // 0 at rest → 1 at top speed
+                            const accel = ACCEL_PEAK * tune.power * (1 - frac * frac); // real-car taper
+                            desired = Math.min(capMs, horizontal + accel * dt);
+                        }
+                        if (desired !== horizontal) {
+                            const scale = desired / horizontal;
+                            const vx = velocity.x * scale, vy = velocity.y * scale;
+                            try { mp.game.entity.setEntityVelocity(veh.handle, vx, vy, velocity.z); }
+                            catch (e) { try { mp.game.invoke('0x1C99BB7B6E96D16F', veh.handle, vx, vy, velocity.z); } catch (e2) {} } // SET_ENTITY_VELOCITY
+                        }
+                    }
+                }
+            }
+        }
+
         const rpm = (typeof veh.rpm === 'number') ? Math.max(0, veh.rpm) : 0;
         const gear = (typeof veh.gear === 'number') ? veh.gear : 0;
         let engineOn = veh.getIsEngineRunning() === true;
@@ -3458,6 +3799,7 @@ mp.events.add('entityStreamIn', (entity) => { if (entity.type === 'player') buil
 mp.events.add('entityStreamOut', (entity) => { if (entity.type === 'player') clearBackWeapons(entity); });
 mp.events.add('playerQuit', (player) => clearBackWeapons(player));
 mp.events.add('playerSpawn', () => setTimeout(() => buildBackWeapons(mp.players.local), 1500)); // respawn resets attachments
+mp.events.add('playerSpawn', disableRadioGlobally); // respawn can reset radio control — keep it off
 
 // Ctrl held/released while the inventory is open -> tell the UI (Ctrl+drag = split / drop some).
 bindKey(0x11, true, () => { if (inventoryBrowser) inventoryBrowser.execute('window.setCtrl && window.setCtrl(true)'); });
@@ -3555,6 +3897,19 @@ mp.events.add('admin:panel:carSave', (pack, handlingName, valuesJson) => {
 });
 mp.events.add('admin:panel:carResult', msg => {
     if (adminBrowser) adminBrowser.execute('window.setCarResult(' + JSON.stringify(String(msg)) + ')');
+});
+// Cars tab: live speed multiplier — request the car list, save a multiplier, show the result.
+mp.events.add('admin:panel:speedRequest', () => {
+    if (adminBrowser) mp.events.callRemote('admin:panel:speed');
+});
+mp.events.add('admin:panel:speed', json => {
+    if (adminBrowser) adminBrowser.execute('window.setSpeedCars(' + JSON.stringify(String(json)) + ')');
+});
+mp.events.add('admin:panel:speedSave', (model, stage, speed) => {
+    if (adminBrowser) mp.events.callRemote('admin:panel:speedSave', String(model), String(stage), Number(speed));
+});
+mp.events.add('admin:panel:speedResult', msg => {
+    if (adminBrowser) adminBrowser.execute('window.setSpeedResult(' + JSON.stringify(String(msg)) + ')');
 });
 
 // ===================== Death / timeout screen =====================
@@ -3691,7 +4046,7 @@ mp.events.add('auth:enter', () => {
 });
 
 // Relay CEF form submits to the server.
-mp.events.add('auth:submitLogin', (password) => mp.events.callRemote('auth:submitLogin', String(password)));
+mp.events.add('auth:submitLogin', (email, password) => mp.events.callRemote('auth:submitLogin', String(email), String(password)));
 mp.events.add('auth:submitRegister', (payloadJson) => mp.events.callRemote('auth:submitRegister', String(payloadJson)));
 
 // Keep cursor up / controls locked while the auth gate is open.

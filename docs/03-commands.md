@@ -1,9 +1,10 @@
 # Commands & Keybinds
 
-> **Localization:** all player-facing text (fuel UI, HUD, chat messages, command replies) is in **Georgian**.
+> **Localization:** player-facing text (fuel UI, HUD, chat messages, command replies) is in **Georgian** where supported.
 > CEF UIs and RAGE:MP chat render Unicode fine. GTA's **native `drawText` does NOT support Georgian glyphs**,
 > so any on-screen prompt must go through CEF (the "press E to refuel" prompt lives in the HUD browser for this
-> reason). The map **blip name** uses the game font, which may not render Georgian — verify in-game.
+> reason). GTA map blip names also use a game font without Georgian glyphs; Georgian blip labels are transliterated
+> to Latin before they are created.
 
 ## Server-side chat commands
 
@@ -12,7 +13,7 @@ Core freeroam commands are defined in `packages/freeroam/index.js`; police comma
 | Command | Effect |
 |---------|--------|
 | `/pos` | Show your current X/Y/Z coordinates and heading |
-| `/car <name>` | Spawn a car and get in (destroys your previous car first). Clear names: `bmwm4`, `audirs7`, `audirs7abt`, `audirs7sport`; or any GTA model (`/car adder`) |
+| `/car <name>` | **Admin.** Spawn a car and get in (destroys your previous car first). Names include `bmwm4`, `audirs7`, and M8 variants `m8` (big spoiler), `m8duck` (ducktail), `m8nospoiler`; or any GTA model (`/car adder`) |
 | `/cars` | List the clear add-on car names |
 | `/fix` | Repair the car you're in |
 | `/dv` | Delete your car |
@@ -23,7 +24,7 @@ Core freeroam commands are defined in `packages/freeroam/index.js`; police comma
 | `/house <action>` | **Admin.** Manage houses for sale: `add <price> <interior\|walkin> [name]`, `interiors`, `itp`, … See [Houses](#houses-packageshouses-client_packagesuihouses) |
 | `/armsfit <n> [texture]` | **Admin.** Save arms `n` for the top you're wearing (per male/female model, applies to everyone). `/armsfit reset` removes the override |
 
-Example: `/car bmwm4`, `/car audirs7`, `/car audirs7sport`, `/car adder`.
+Example: `/car bmwm4`, `/car audirs7`, `/car audirs7sport`, `/car m8`, `/car m8duck`, `/car m8nospoiler`, `/car adder`.
 
 ### Adding a new command (pattern)
 
@@ -49,7 +50,7 @@ All native/client behaviour lives here. Tunable constants are in the `CFG` objec
 | `J` | Seatbelt on/off (ped flag 32) |
 | `L` | Close all vehicle doors |
 | `H` | Vehicle lights on/off |
-| `E` | Refuel at a pump; on foot, open the shop / clothing store / barber shop / ATM you're standing at |
+| `E` | Refuel at a pump; on foot, open the shop / clothing store / barber shop / ATM / parking spot you're standing at |
 | `G` | Open the vehicle controls menu inside a car, or while aiming at your nearby spawned car |
 | `I` | Open or close the Georgian inventory panel |
 | `T` | Open chat. While typing, movement/keybinds are frozen |
@@ -63,6 +64,11 @@ The vehicle controls menu also closes with **Escape** or its close button. It
 exposes the existing engine, light, seatbelt, and door-close controls. On foot,
 it only opens for your own empty spawned car within five metres; seatbelt is
 available only while seated.
+
+At a parking spot, the UI lists vehicles owned by the current character in the
+database. Choose an available car to spawn it at that spot for **$100**. The
+server verifies ownership; cars already parked or impounded cannot be summoned
+again, and you must park your current car before retrieving another one.
 
 > Keybinds and movement are disabled while the chat input is open, so typing letters no longer
 > triggers actions or walking. Handled by a `chatting` flag + `disableAllControlActions` in the render loop.

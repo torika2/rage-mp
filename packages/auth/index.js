@@ -29,6 +29,28 @@ function setAuthed(player, user) {
     player.authed = true;
 }
 
+// A real authenticated user must come back from the API as an object carrying an id. Guards against a
+// 2xx with an empty/garbage body ever being treated as a successful login/registration.
+function isValidUser(user) {
+    return !!(user && typeof user === 'object' && (user.id !== undefined && user.id !== null));
+}
+
+// Finalize auth only after the API confirmed a valid user: load the character, then onboard/spawn. If
+// loading fails we roll the player back to unauthenticated so a half-authed state can never slip in.
+async function completeAuth(player, user) {
+    setAuthed(player, user);
+    try {
+        if (typeof global.runCharacterLoad === 'function') await global.runCharacterLoad(player);
+        proceed(player);
+    } catch (loadError) {
+        player.authed = false;
+        player.account = null;
+        player.character = null;
+        console.log(`[auth] character load failed for ${scNameOf(player)}: ${(loadError && loadError.message) || loadError}`);
+        player.call('auth:error', ['მონაცემების ჩატვირთვა ვერ მოხერხდა. სცადეთ ხელახლა.']);
+    }
+}
+
 // Onboarding gate, run after auth. Order: character creator (gender is chosen inside it) -> spawn.
 //   no appearance -> launch the character creator (which also sets gender).
 //   has appearance -> spawn into the world.
@@ -158,8 +180,17 @@ mp.events.add('playerReady', async (player) => {
         // Known account -> ask for the password (show the stored email as a hint).
         player.call('auth:show', ['login', JSON.stringify({ socialClub, email: user.email })]);
     } catch (e) {
-        // 404 (or API down) -> treat as unregistered; show the register form with SC prefilled.
-        player.call('auth:show', ['register', JSON.stringify({ socialClub })]);
+        if (e && e.status === 404) {
+            // genuinely unregistered -> show the register form with SC prefilled.
+            player.call('auth:show', ['register', JSON.stringify({ socialClub })]);
+        } else {
+            // API unreachable / 5xx — do NOT present registration (it would fail against a dead backend
+            // and must never let someone in without a real API success). Keep them on the login gate
+            // with a clear connection error; they stay frozen until the API answers for real.
+            player.call('auth:show', ['login', JSON.stringify({ socialClub, email: '' })]);
+            player.call('auth:error', ['სერვერთან კავშირი ვერ დამყარდა. სცადეთ ხელახლა მოგვიანებით.']);
+            console.log(`[auth] account lookup failed for ${socialClub}: ${(e && (e.serverMessage || e.message)) || e}`);
+        }
     }
 });
 
@@ -183,33 +214,54 @@ mp.events.add('auth:submitRegister', async (player, payloadJson) => {
 
     try {
         const user = await global.api.register(payload);
-        setAuthed(player, user);
-        if (typeof global.runCharacterLoad === 'function') await global.runCharacterLoad(player);
-        proceed(player);
+        if (!isValidUser(user)) { player.call('auth:error', ['რეგისტრაცია ვერ შესრულდა. სცადეთ ხელახლა.']); return; }
+        await completeAuth(player, user);
     } catch (e) {
         player.call('auth:error', [apiErrorMessage(e)]);
     }
 });
 
 // --- login submission ---
-mp.events.add('auth:submitLogin', async (player, password) => {
+// Email + password login (the client sends both). The account is matched by email, so a player can
+// sign into any account regardless of which Social Club they are currently connected from.
+mp.events.add('auth:submitLogin', async (player, email, password) => {
     if (player.authed) return;
     try {
-        const user = await global.api.loginBySocialClub(scNameOf(player), String(password || ''));
-        setAuthed(player, user);
-        if (typeof global.runCharacterLoad === 'function') await global.runCharacterLoad(player);
-        proceed(player);
+        const user = await global.api.login(String(email || '').trim(), String(password || ''));
+        if (!isValidUser(user)) { player.call('auth:error', ['ავტორიზაცია ვერ შესრულდა.']); return; }
+        await completeAuth(player, user);
     } catch (e) {
-        player.call('auth:error', ['არასწორი პაროლი.']);
+        player.call('auth:error', [loginErrorMessage(e)]);
     }
 });
 
-// Turn an API error into a short Georgian message for the client.
+// Wrong credentials (401/400) get a plain message; anything else (API down, 5xx) is surfaced as a
+// connection failure so a backend outage is never mistaken for a bad password — and never lets anyone in.
+function loginErrorMessage(error) {
+    const status = error && error.status;
+    if (status === 401 || status === 400) return 'არასწორი ემაილი ან პაროლი.';
+    const reason = (error && error.serverMessage) || (status ? `HTTP ${status}` : 'სერვერთან კავშირი ვერ დამყარდა');
+    return `ავტორიზაცია ვერ შესრულდა: ${reason}`;
+}
+
+// Turn an API error into a short Georgian message for the client. On a 409 conflict we map the
+// API's specific message so the player learns exactly which detail is already taken.
 function apiErrorMessage(error) {
+    const status = error && error.status;
+    const serverMessage = String(error && error.serverMessage || '');
     const text = String(error && error.message || '');
-    if (text.includes('409')) return 'ეს მონაცემები უკვე რეგისტრირებულია.';
-    if (text.includes('400')) return 'შეავსეთ ველები სწორად (ემაილი, პაროლი 8+, პირადობა 11 ციფრი, ტელ. +995).';
-    return 'რეგისტრაცია ვერ შესრულდა. სცადეთ თავიდან.';
+    if (status === 409 || text.includes('409')) {
+        if (serverMessage.includes('Email')) return 'ეს ემაილი უკვე რეგისტრირებულია.';
+        if (serverMessage.includes('Resident')) return 'ეს პირადი ნომერი უკვე რეგისტრირებულია.';
+        if (serverMessage.includes('Social Club')) return 'ამ Social Club-ზე ანგარიში უკვე რეგისტრირებულია.';
+        if (serverMessage.includes('Phone')) return 'ეს ტელეფონის ნომერი უკვე რეგისტრირებულია.';
+        return 'მომხმარებელი ამ მონაცემებით უკვე რეგისტრირებულია.';
+    }
+    if (status === 400 || text.includes('400')) return 'შეავსეთ ველები სწორად (ემაილი, პაროლი 8+, პირადობა 11 ციფრი, ტელ. +995).';
+    // Unexpected failure (API down, misconfig, 401/500, ...). Surface the real reason so it isn't
+    // masked by a bland message — otherwise the player (and we) can't tell what actually broke.
+    const reason = serverMessage || (status ? `HTTP ${status}` : 'კავშირი ვერ დამყარდა');
+    return `რეგისტრაცია ვერ შესრულდა: ${reason}`;
 }
 
 // Second line of defence: block chat commands until authenticated (client freeze is the first).

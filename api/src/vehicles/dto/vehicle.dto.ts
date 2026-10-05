@@ -1,4 +1,4 @@
-import { IsInt, IsNumber, IsOptional, IsString, Length, Min } from 'class-validator';
+import { IsInt, IsNumber, IsObject, IsOptional, IsString, Length, Min } from 'class-validator';
 
 export class CreateVehicleDto {
   @IsInt()
@@ -18,6 +18,10 @@ export class CreateVehicleDto {
 
   @IsOptional() @IsNumber() @Min(0) fuel?: number;
   @IsOptional() @IsNumber() @Min(0) km?: number;
+
+  @IsOptional() @IsObject() tuning?: Record<string, number> | null;
+  @IsOptional() @IsObject() octane?: Record<string, number> | null;
+  @IsOptional() @IsObject() visual?: Record<string, unknown> | null;
 }
 
 /** Every field optional — the game server patches whatever changed. */
@@ -33,4 +37,8 @@ export class UpdateVehicleDto {
 
   @IsOptional() @IsNumber() @Min(0) fuel?: number;
   @IsOptional() @IsNumber() @Min(0) km?: number;
+
+  @IsOptional() @IsObject() tuning?: Record<string, number> | null;
+  @IsOptional() @IsObject() octane?: Record<string, number> | null;
+  @IsOptional() @IsObject() visual?: Record<string, unknown> | null;
 }

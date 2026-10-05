@@ -6,6 +6,18 @@
 
 global.commandRegistry = global.commandRegistry || {};
 
+const GEO_LATIN = {
+    'ა': 'a', 'ბ': 'b', 'გ': 'g', 'დ': 'd', 'ე': 'e', 'ვ': 'v', 'ზ': 'z', 'თ': 't', 'ი': 'i', 'კ': 'k',
+    'ლ': 'l', 'მ': 'm', 'ნ': 'n', 'ო': 'o', 'პ': 'p', 'ჟ': 'zh', 'რ': 'r', 'ს': 's', 'ტ': 't', 'უ': 'u',
+    'ფ': 'p', 'ქ': 'k', 'ღ': 'gh', 'ყ': 'q', 'შ': 'sh', 'ჩ': 'ch', 'ც': 'ts', 'ძ': 'dz', 'წ': 'ts', 'ჭ': 'ch',
+    'ხ': 'kh', 'ჯ': 'j', 'ჰ': 'h'
+};
+global.worldText = function (text) {
+    return String(text == null ? '' : text)
+        .replace(/[\u10D0-\u10FF]/g, ch => GEO_LATIN[ch] || '')
+        .replace(/[—…]/g, ch => (ch === '—' ? '-' : '...'));
+};
+
 const _addCommand = mp.events.addCommand.bind(mp.events);
 mp.events.addCommand = function (name, handler) {
     if (name && typeof name === 'object') {
@@ -91,7 +103,18 @@ function apiRequest(method, path, body) {
                 if (status >= 200 && status < 300) {
                     resolve(data ? JSON.parse(data) : null);
                 } else {
-                    reject(new Error(`API ${method} ${path} -> ${status}`));
+                    // Surface the API's own message (e.g. "Email already registered") so callers
+                    // can turn it into a specific, user-facing error instead of a bare status code.
+                    let serverMessage = '';
+                    try {
+                        const parsed = data ? JSON.parse(data) : null;
+                        serverMessage = parsed && parsed.message ? parsed.message : '';
+                        if (Array.isArray(serverMessage)) serverMessage = serverMessage.join(', ');
+                    } catch (e) { /* non-JSON error body */ }
+                    const error = new Error(`API ${method} ${path} -> ${status}`);
+                    error.status = status;
+                    error.serverMessage = String(serverMessage || '');
+                    reject(error);
                 }
             });
         });
@@ -142,6 +165,18 @@ global.api = {
     createVehicle: (id, data) => apiRequest('POST', `/characters/${id}/vehicles`, data),
     updateVehicle: (vehicleId, data) => apiRequest('PUT', `/vehicles/${vehicleId}`, data),
     deleteVehicle: (vehicleId) => apiRequest('DELETE', `/vehicles/${vehicleId}`),
+
+    // --- car drive keys (owner lets another player drive their car; keyed by Social Club) ---
+    loadCarKeys: () => apiRequest('GET', '/car-keys'),
+    grantCarKey: (ownerSocialClub, granteeSocialClub, granteeName) =>
+        apiRequest('POST', '/car-keys', { ownerSocialClub, granteeSocialClub, granteeName }),
+    revokeCarKey: (ownerSocialClub, granteeSocialClub) =>
+        apiRequest('POST', '/car-keys/revoke', { ownerSocialClub, granteeSocialClub }),
+
+    // --- car tuning (admin live per-car stage/speed; keyed by spawn model name) ---
+    loadCarTuning: () => apiRequest('GET', '/car-tuning'),
+    saveCarTuning: (model, data) => apiRequest('PUT', `/car-tuning/${encodeURIComponent(model)}`, data),
+    clearCarTuning: (model) => apiRequest('DELETE', `/car-tuning/${encodeURIComponent(model)}`),
 
     // --- houses ---
     loadHouses: () => apiRequest('GET', '/houses'),

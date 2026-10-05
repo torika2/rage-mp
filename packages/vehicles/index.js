@@ -17,6 +17,12 @@ function save() {
     try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
 }
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
+// Tag a vehicle with its owner (Social Club key) so only the owner — or a driver they gave a key to —
+// can drive it or use its interaction menu. Enforced by the playerEnterVehicle guard + vehCanDrive below.
+function setOwner(vehicle, player) {
+    try { vehicle.setVariable('veh:ownerSc', keyOf(player)); } catch (e) {}
+}
+global.vehSetOwner = setOwner;
 // Mirror a record's odometer (km) onto the car's synced variable so the owner's HUD can show it.
 function setKmVar(vehicle, record) {
     try { vehicle.setVariable('veh:km', Math.round(Number(record && record.km) || 0)); } catch (e) {}
@@ -27,11 +33,13 @@ function headingOf(vehicle) {
 }
 
 // Called by /car when a new car is spawned: start (or replace) this player's saved record.
-global.vehOnSpawn = function (player, vehicle, modelName) {
+global.vehOnSpawn = function (player, vehicle, modelName, visual) {
     if (!vehicle || !mp.vehicles.exists(vehicle)) return;
     store[keyOf(player)] = {
         model: vehicle.model,
         modelName: modelName || null,
+        visual: visual || null,
+        dbId: null,
         x: vehicle.position.x, y: vehicle.position.y, z: vehicle.position.z,
         heading: headingOf(vehicle),
         dim: Number(vehicle.dimension) || 0,
@@ -40,7 +48,10 @@ global.vehOnSpawn = function (player, vehicle, modelName) {
         km: 0
     };
     try { vehicle.setVariable('veh:fuel', FUEL_MAX); } catch (e) {}
+    try { vehicle.setVariable('veh:visual', visual || null); } catch (e) {}
     setKmVar(vehicle, store[keyOf(player)]);
+    setOwner(vehicle, player);
+    player.activeVehId = null;
     save();
 };
 
@@ -63,12 +74,13 @@ global.vehForget = function (player) { const k = keyOf(player); if (store[k]) { 
 
 // Adopt an existing world vehicle as this player's persistent car, preserving its fuel.
 // Used by the parking package when a stored car is retrieved (unpark / impound).
-global.vehAdopt = function (player, vehicle, modelName, fuel) {
+global.vehAdopt = function (player, vehicle, modelName, fuel, dbId) {
     if (!vehicle || !mp.vehicles.exists(vehicle)) return;
     const keptFuel = (typeof fuel === 'number' && Number.isFinite(fuel)) ? Math.max(0, Math.min(FUEL_MAX, fuel)) : FUEL_MAX;
     store[keyOf(player)] = {
         model: vehicle.model,
         modelName: modelName || null,
+        dbId: dbId || null,
         x: vehicle.position.x, y: vehicle.position.y, z: vehicle.position.z,
         heading: headingOf(vehicle),
         dim: Number(vehicle.dimension) || 0,
@@ -79,6 +91,8 @@ global.vehAdopt = function (player, vehicle, modelName, fuel) {
     try { vehicle.setVariable('veh:fuel', keptFuel); } catch (e) {}
     setKmVar(vehicle, store[keyOf(player)]);
     player.myCar = vehicle;
+    player.activeVehId = dbId || null;
+    setOwner(vehicle, player);
     save();
 };
 
@@ -93,6 +107,7 @@ global.vehGarageStore = function (player, garageId) {
     save();
     try { vehicle.destroy(); } catch (e) {}
     player.myCar = null;
+    player.activeVehId = null;
     return true;
 };
 // Brings the garaged car out at a position (the house's garage spot).
@@ -111,8 +126,11 @@ global.vehGarageTake = function (player, position, heading) {
     record.x = position.x; record.y = position.y; record.z = position.z; record.heading = heading || 0; record.dim = 0;
     const fuel = (typeof record.fuel === 'number') ? record.fuel : FUEL_MAX;
     try { vehicle.setVariable('veh:fuel', fuel); } catch (e) {}
+    try { vehicle.setVariable('veh:visual', record.visual || null); } catch (e) {}
     setKmVar(vehicle, record);
     player.myCar = vehicle;
+    player.activeVehId = record.dbId || null;
+    setOwner(vehicle, player);
     save();
     return vehicle;
 };
@@ -120,6 +138,12 @@ global.vehGarageTake = function (player, position, heading) {
 global.vehGaragedAt = function (player) {
     const record = store[keyOf(player)];
     return record && record.garage !== undefined && record.garage !== null ? record.garage : null;
+};
+global.vehGarageCar = function (player) {
+    const record = store[keyOf(player)];
+    return record && record.garage !== undefined && record.garage !== null
+        ? { dbId: record.dbId || null, model: record.model }
+        : null;
 };
 // A garage was taken away (house sold/evicted): put the car back into the world at `position`.
 global.vehGarageRelease = function (key, position, heading) {
@@ -152,11 +176,43 @@ function restore(player) {
     if (!vehicle) return;
     const fuel = (typeof record.fuel === 'number') ? record.fuel : FUEL_MAX;
     try { vehicle.setVariable('veh:fuel', fuel); } catch (e) {}
+    try { vehicle.setVariable('veh:visual', record.visual || null); } catch (e) {}
     setKmVar(vehicle, record);
     player.myCar = vehicle;
+    player.activeVehId = record.dbId || null;
+    setOwner(vehicle, player);
     player.outputChatBox('!{#8ed17a}[მანქანა] !{#ffffff}აღდგა თქვენი ბოლო მანქანა (საწვავი: ' + Math.round(fuel) + '%).');
 }
 mp.events.add('playerReady', (player) => setTimeout(() => restore(player), 2500));
+
+// ---- Ownership access control ----
+// Only the owner — or a driver they've given a key to — may DRIVE an owned car (seat 0). Passengers
+// ride free, and unowned world cars (admin spawns, traffic) are unrestricted. The car interaction
+// menu is owner-only (gated in packages/freeroam via global.vehIsOwner). The drive-key permission
+// system plugs in by overriding global.vehDrivePermitted(ownerKey, player) -> bool.
+// Guarded with `||` so load order doesn't matter: packages/carkeys loads first (alphabetically)
+// and sets the real implementation; this default must not clobber it.
+global.vehDrivePermitted = global.vehDrivePermitted || function () { return false; };
+global.vehCanDrive = function (player, vehicle) {
+    const owner = vehicle && vehicle.getVariable && vehicle.getVariable('veh:ownerSc');
+    if (!owner) return true;                                // not an owned car → anyone can drive
+    if (owner === keyOf(player)) return true;               // the owner
+    return global.vehDrivePermitted(owner, player) === true; // someone was given a key
+};
+global.vehIsOwner = function (player, vehicle) {
+    const owner = vehicle && vehicle.getVariable && vehicle.getVariable('veh:ownerSc');
+    return !!owner && owner === keyOf(player);
+};
+global.vehOwnerKey = function (vehicle) {
+    return (vehicle && vehicle.getVariable && vehicle.getVariable('veh:ownerSc')) || null;
+};
+mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
+    if (seat !== 0) return;                                 // seat 0 = driver (RAGE:MP); passengers ride free
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return;
+    if (global.vehCanDrive(player, vehicle)) return;
+    try { player.removeFromVehicle(); } catch (e) {}
+    player.outputChatBox('!{#ff6b6b}[მანქანა] ეს არ არის შენი მანქანა — ტარება მხოლოდ მფლობელს ან გასაღების მფლობელს შეუძლია.');
+});
 
 // Autosave everyone's live car state.
 setInterval(() => {
@@ -175,6 +231,18 @@ mp.events.add('vehicle:fuelReport', (player, fuel) => {
         const record = store[keyOf(player)];
         if (record) record.fuel = fuel;
     }
+});
+
+// The driver reports the fuel GRADE (octane) blended in the tank; mirror it onto the synced var so the
+// client can restore it on reconnect and the owned-car saver (carshop) can persist it with the row.
+mp.events.add('vehicle:octaneReport', (player, octaneJson) => {
+    const vehicle = player.vehicle;
+    if (!vehicle || !mp.vehicles.exists(vehicle)) return;
+    let octane = null;
+    try { octane = JSON.parse(octaneJson); } catch (e) { return; }
+    // Accept a plain {power,eff,speedRate,rating} object, or null (tank drained → back to default).
+    if (octane !== null && (typeof octane !== 'object' || typeof octane.power !== 'number')) return;
+    try { vehicle.setVariable('veh:octane', octane); } catch (e) {}
 });
 
 // The driver of their own car reports metres driven since the last report; we add it to the odometer.

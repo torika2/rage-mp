@@ -67,6 +67,10 @@
   .msg { min-height: 16px; margin: 2px 0 10px; font-size: 12px; color: var(--red); }
   .msg.ok { color: var(--green); }
   .hint { color: var(--muted); font-size: 10px; margin-top: 4px; }
+  .errbox { display: none; margin-top: 12px; padding: 10px 12px; font-size: 12px; line-height: 1.4;
+    color: var(--red); background: rgba(255, 107, 107, .1); border: 1px solid rgba(255, 107, 107, .55);
+    border-radius: 9px; }
+  .errbox.show { display: block; }
   .warn-note { margin-top: 7px; padding: 8px 10px; font-size: 11px; line-height: 1.4; color: #f2c15c;
     background: rgba(242, 193, 92, .08); border: 1px solid rgba(242, 193, 92, .35); border-radius: 8px; }
 </style>
@@ -78,13 +82,11 @@
       <p id="subtitle">Social Club: <span class="sc" id="scName">—</span></p>
     </div>
     <div class="body">
-      <div class="msg" id="msg"></div>
-
       <!-- LOGIN -->
       <form id="loginForm" style="display:none">
         <div class="field">
           <label>ანგარიში (ემაილი)</label>
-          <input id="loginEmail" type="text" readonly>
+          <input id="loginEmail" type="email" autocomplete="off" placeholder="you@example.ge">
         </div>
         <div class="field">
           <label>პაროლი</label>
@@ -92,6 +94,9 @@
         </div>
         <button class="submit" type="submit">შესვლა</button>
         <div class="switch">არ გაქვთ ანგარიში? <a id="toRegister">რეგისტრაცია</a></div>
+        <div class="switch"><a id="forgotPassword">დაგავიწყდა პაროლი?</a></div>
+        <div class="errbox" id="loginErr"></div>
+        <div class="warn-note" id="loginNote" style="display:none"></div>
       </form>
 
       <!-- REGISTER -->
@@ -119,6 +124,7 @@
         </div>
         <button class="submit" type="submit">რეგისტრაცია</button>
         <div class="switch">უკვე გაქვთ ანგარიში? <a id="toLogin">შესვლა</a></div>
+        <div class="errbox" id="regErr"></div>
       </form>
     </div>
   </div>
@@ -129,15 +135,27 @@
   const $ = (id) => document.getElementById(id);
 
   let state = { socialClub: '', email: '' };
+  let currentMode = 'login';
+
+  function clearErrors() {
+    ['loginErr', 'regErr'].forEach((id) => { const box = $(id); box.textContent = ''; box.classList.remove('show'); });
+    const note = $('loginNote'); if (note) note.style.display = 'none';
+  }
+  // Show an error in the currently visible form's bottom red box.
+  function showError(text) {
+    const box = $(currentMode === 'login' ? 'loginErr' : 'regErr');
+    box.textContent = text || '';
+    box.classList.toggle('show', !!text);
+  }
 
   function show(mode) {
-    $('msg').textContent = '';
-    $('msg').className = 'msg';
+    currentMode = mode;
+    clearErrors();
     const login = mode === 'login';
     $('loginForm').style.display = login ? '' : 'none';
     $('registerForm').style.display = login ? 'none' : '';
     $('title').textContent = login ? 'შესვლა' : 'რეგისტრაცია';
-    if (login) { $('loginEmail').value = state.email || ''; $('loginPassword').focus(); }
+    if (login) { $('loginEmail').value = state.email || ''; (state.email ? $('loginPassword') : $('loginEmail')).focus(); }
     else { $('firstName').focus(); }
   }
 
@@ -148,7 +166,7 @@
     show(mode);
   };
   window.authError = function (text) {
-    const m = $('msg'); m.textContent = text || ''; m.className = 'msg';
+    showError(text);
     enable(true);
   };
 
@@ -158,6 +176,11 @@
 
   $('toRegister').addEventListener('click', () => show('register'));
   $('toLogin').addEventListener('click', () => show('login'));
+  $('forgotPassword').addEventListener('click', () => {
+    const note = $('loginNote');
+    note.textContent = 'პაროლის აღსადგენად მიმართეთ ადმინისტრაციას — ვერიფიკაციისთვის საჭიროა პირადობის დამადასტურებელი საბუთი.';
+    note.style.display = 'block';
+  });
 
   // პირადი ნომერი: digits only, max 11.
   $('residentNumber').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11); });
@@ -176,14 +199,18 @@
 
   $('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
+    clearErrors();
+    const email = $('loginEmail').value.trim();
     const pw = $('loginPassword').value;
-    if (!pw) return;
+    if (!EMAIL_RE.test(email)) return fail('შეიყვანეთ სწორი ემაილი.');
+    if (!pw) return fail('შეიყვანეთ პაროლი.');
     enable(false);
-    trigger('auth:submitLogin', pw);
+    trigger('auth:submitLogin', email, pw);
   });
 
   $('registerForm').addEventListener('submit', (e) => {
     e.preventDefault();
+    clearErrors();
     const residentNumber = onlyDigits($('residentNumber').value);
     const phoneDigits = onlyDigits($('phoneLocal').value); // 9 local digits, no +995
     const email = $('regEmail').value.trim();
@@ -204,7 +231,7 @@
     trigger('auth:submitRegister', JSON.stringify(form));
   });
 
-  function fail(text) { const m = $('msg'); m.textContent = text; m.className = 'msg'; return false; }
+  function fail(text) { showError(text); return false; }
 
   // browser preview fallback
   if (!RAGE) window.authShow('register', JSON.stringify({ socialClub: 'PreviewUser' }));

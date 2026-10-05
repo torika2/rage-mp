@@ -94,6 +94,19 @@
   .car-field label { font-size:12px; color:var(--muted); }
   .car-field input { width:96px; background:#00000040; border:1px solid #ffffff20; color:var(--text); border-radius:6px; padding:5px 7px; font-size:12px; text-align:right; }
   .car-field .range { font-size:10px; color:#7a7f87; }
+  .speed-table { width:100%; border-collapse:collapse; font-size:13px; display:block; max-height:52vh; overflow:auto; }
+  .speed-table thead th { position:sticky; top:0; background:#1a1d22; color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; text-align:left; padding:8px 10px; border-bottom:1px solid #ffffff18; }
+  .speed-table td { padding:7px 10px; border-bottom:1px solid #ffffff0d; }
+  .speed-table .num { width:42px; color:var(--muted); text-align:right; }
+  .speed-table .nm { font-weight:650; }
+  .speed-table .mult { width:120px; }
+  .speed-table .mult .mv { color:var(--accent); font-weight:700; }
+  .speed-table .mult .mi { width:84px; background:#00000040; border:1px solid #ffffff20; color:var(--text); border-radius:6px; padding:4px 6px; font-size:12px; text-align:right; }
+  .speed-table .stage { width:150px; }
+  .speed-table .stage-sel { width:100%; background:#00000040; border:1px solid #ffffff20; color:var(--text); border-radius:6px; padding:5px 7px; font-size:12px; }
+  .speed-table .spd { width:92px; }
+  .speed-table .speed-in { width:72px; background:#00000040; border:1px solid #ffffff20; color:var(--text); border-radius:6px; padding:5px 7px; font-size:12px; text-align:right; }
+  .speed-table .speed-in.on { border-color:var(--accent); color:var(--accent); font-weight:700; }
   .view { flex:1; min-height:0; display:flex; flex-direction:column; }
   .view[hidden] { display:none; }
   .cmd-list { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; border:1px solid var(--line); border-radius:12px; padding:6px 12px 12px; }
@@ -164,17 +177,19 @@
         <div class="raw"><input id="rawCmd" placeholder="/any command with arguments…" autocomplete="off"><button id="rawRun">Run</button></div>
       </div>
       <div class="view" id="carsView" hidden>
-        <div class="car-note">⚠ Handling is baked into each car's file. Saving writes to it, but changes only apply after a <b>server restart + client relaunch</b> (RAGE:MP can't hot-reload handling).</div>
-        <div class="toolbar"><select id="carSelect" class="search"><option value="">Loading cars…</option></select></div>
-        <div class="car-list" id="carForm"><div class="muted">Pick a car to edit its handling.</div></div>
-        <div class="raw"><button id="carSave" class="send">Save handling</button><span id="carMsg" class="hint"></span></div>
+        <div class="car-note">⚡ <b>Tuning</b> — applies <b>instantly</b> (no restart). <b>Stage</b> raises acceleration, top speed and launch relative to stock. <b>Speed×</b> is a top-speed multiplier you type in: <b>1.00 = stock</b>, below slows the car, above makes it faster (it multiplies on top of the stage).</div>
+        <table class="speed-table">
+          <thead><tr><th class="num">#</th><th>Car</th><th class="stage">Stage</th><th class="spd">Speed×</th></tr></thead>
+          <tbody id="speedRows"><tr><td colspan="4" class="muted">Loading cars…</td></tr></tbody>
+        </table>
+        <span id="speedMsg" class="hint"></span>
       </div>
     </section>
     <aside class="side">
-      <h2 class="section-title">Admin mode</h2>
+      <h2 class="section-title">Human RP</h2>
       <div class="card">
-        <button id="adminMode" class="send" aria-pressed="false">Enable Admin Mode</button>
-        <div id="adminModeStatus" class="hint" role="status">Admin actions are off.</div>
+        <button id="adminMode" class="send" aria-pressed="true">Turn off Human RP</button>
+        <div id="adminModeStatus" class="hint" role="status">Human RP — playing as a citizen.</div>
       </div>
       <h2 class="section-title">Player actions</h2>
       <div class="card">
@@ -292,9 +307,11 @@
     const self = players.find(player => player.isSelf);
     const adminMode = Boolean(self && self.adminMode);
     const flying = Boolean(self && self.adminFly);
-    adminModeButton.textContent = adminMode ? 'Disable Admin Mode' : 'Enable Admin Mode';
-    adminModeButton.setAttribute('aria-pressed', String(adminMode));
-    adminModeStatus.textContent = adminMode ? 'Admin actions are enabled.' : 'Admin actions are off.';
+    // Admin status is inherent; this toggle is "Human RP" — when ON you play as a normal citizen
+    // (admin powers off). adminMode === true means powers are active (i.e. NOT in Human RP).
+    adminModeButton.textContent = adminMode ? 'Turn on Human RP' : 'Turn off Human RP';
+    adminModeButton.setAttribute('aria-pressed', String(!adminMode));
+    adminModeStatus.textContent = adminMode ? 'Admin powers active.' : 'Human RP — playing as a citizen.';
     flyButton.textContent = flying ? 'Disable fly mode' : 'Enable fly mode';
     flyButton.disabled = !adminMode || Boolean(self && self.inVehicle && !flying);
     document.querySelectorAll('[data-id-action]').forEach(button => { button.disabled = !adminMode; });
@@ -439,53 +456,78 @@
     renderCommands();
   };
 
-  // ---- Cars tab (add-on handling editor) ----
-  let cars = [];
-  let carFields = [];
-  const carSelect = document.getElementById('carSelect');
-  const carForm = document.getElementById('carForm');
-  const carMsg = document.getElementById('carMsg');
-  function renderCarForm() {
-    const car = cars[Number(carSelect.value)];
-    if (!car) { carForm.innerHTML = '<div class="muted">Pick a car to edit its handling.</div>'; return; }
-    carForm.innerHTML = carFields.map(([name, min, max, isInt]) => {
-      const val = car.values[name];
-      if (val === undefined) return '';
-      return '<div class="car-field"><div><label>' + esc(name) + '</label>' +
-        '<div class="range">' + min + ' – ' + max + '</div></div>' +
-        '<input data-field="' + esc(name) + '" type="number" step="' + (isInt ? '1' : '0.01') + '" value="' + esc(val) + '"></div>';
-    }).join('') || '<div class="muted">No editable fields.</div>';
+  // ---- Cars tab: live tuning (one row per car: # · name · stage dropdown · custom speed× input) ----
+  let speedCars = [];
+  let stageNames = [];
+  let speedMin = 0.3, speedMax = 3.0, speedDefault = 1;
+  const speedRows = document.getElementById('speedRows');
+  const speedMsg = document.getElementById('speedMsg');
+  function renderSpeedRows() {
+    if (!speedCars.length) { speedRows.innerHTML = '<tr><td colspan="4" class="muted">No cars found.</td></tr>'; return; }
+    speedRows.innerHTML = speedCars.map((car, index) => {
+      const options = ['<option value="">Stock</option>'].concat(
+        stageNames.map(name => '<option value="' + esc(name) + '"' + (car.stage === name ? ' selected' : '') + '>' + esc(name) + '</option>')
+      ).join('');
+      const speed = Number(car.speed) || speedDefault;
+      const tuned = speed !== speedDefault ? ' on' : '';
+      return '<tr data-i="' + index + '">' +
+        '<td class="num">' + (index + 1) + '</td>' +
+        '<td class="nm">' + esc(car.label) + '</td>' +
+        '<td class="stage"><select class="stage-sel">' + options + '</select></td>' +
+        '<td class="spd"><input class="speed-in' + tuned + '" type="number" step="0.05" min="' + speedMin + '" max="' + speedMax + '" value="' + speed.toFixed(2) + '"></td>' +
+      '</tr>';
+    }).join('');
   }
-  carSelect.addEventListener('change', () => { carMsg.textContent = ''; renderCarForm(); });
-  document.getElementById('carSave').onclick = () => {
-    const car = cars[Number(carSelect.value)];
-    if (!car) { window.showNotice('Pick a car first.'); return; }
-    const edits = {};
-    carForm.querySelectorAll('input[data-field]').forEach(inp => {
-      if (inp.value !== '') edits[inp.dataset.field] = inp.value;
-    });
-    carMsg.textContent = 'Saving…';
-    if (RAGE) mp.trigger('admin:panel:carSave', car.pack, car.handlingName, JSON.stringify(edits));
-    else { carMsg.textContent = 'Would save ' + Object.keys(edits).length + ' field(s).'; }
-  };
-  window.setCars = json => {
+  function saveCar(car) {
+    speedMsg.textContent = 'Saving…';
+    if (RAGE) mp.trigger('admin:panel:speedSave', car.model, car.stage || '', car.speed);
+    else speedMsg.textContent = 'Would set ' + car.model + ' to ' + (car.stage || 'Stock') + ' · speed ×' + car.speed + '.';
+  }
+  // Stage dropdown changed — keep the current speed×.
+  speedRows.addEventListener('change', event => {
+    const select = event.target.closest('.stage-sel');
+    if (!select) return;
+    const car = speedCars[Number(select.closest('tr').dataset.i)];
+    car.stage = select.value;
+    saveCar(car);
+  });
+  // Speed× input committed (Enter or blur) — clamp, round to 2dp, and persist if it changed.
+  function commitSpeed(input) {
+    const row = input.closest('tr'); if (!row) return;
+    const car = speedCars[Number(row.dataset.i)];
+    let value = parseFloat(input.value);
+    if (!isFinite(value)) value = speedDefault;
+    value = Math.max(speedMin, Math.min(speedMax, Math.round(value * 100) / 100));
+    input.value = value.toFixed(2);
+    input.classList.toggle('on', value !== speedDefault);
+    if (value === car.speed) return;           // unchanged → don't spam saves
+    car.speed = value;
+    saveCar(car);
+  }
+  speedRows.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && event.target.classList.contains('speed-in')) { event.preventDefault(); event.target.blur(); }
+  });
+  speedRows.addEventListener('blur', event => {
+    if (event.target.classList && event.target.classList.contains('speed-in')) commitSpeed(event.target);
+  }, true);
+  window.setSpeedCars = json => {
     let data = {};
     try { data = JSON.parse(json) || {}; } catch (e) { data = {}; }
-    cars = Array.isArray(data.cars) ? data.cars : [];
-    carFields = Array.isArray(data.fields) ? data.fields : [];
-    carSelect.innerHTML = cars.length
-      ? cars.map((c, i) => '<option value="' + i + '">' + esc(c.handlingName) + '  ·  ' + esc(c.pack) + '</option>').join('')
-      : '<option value="">No add-on cars found.</option>';
-    renderCarForm();
+    speedCars = Array.isArray(data.cars) ? data.cars : [];
+    stageNames = Array.isArray(data.stages) ? data.stages : [];
+    if (typeof data.speedMin === 'number') speedMin = data.speedMin;
+    if (typeof data.speedMax === 'number') speedMax = data.speedMax;
+    if (typeof data.speedDefault === 'number') speedDefault = data.speedDefault;
+    renderSpeedRows();
   };
-  window.setCarResult = msg => { carMsg.textContent = String(msg || ''); window.showNotice(msg); };
+  window.setSpeedResult = msg => { speedMsg.textContent = String(msg || ''); window.showNotice(msg); if (RAGE) mp.trigger('admin:panel:speedRequest'); };
 
   document.querySelectorAll('.tab').forEach(tab => {
     tab.onclick = () => {
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === tab));
       document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== tab.dataset.tab; });
       if (tab.dataset.tab === 'commandsView' && !commands.length && RAGE) mp.trigger('admin:panel:commandsRequest');
-      if (tab.dataset.tab === 'carsView' && !cars.length && RAGE) mp.trigger('admin:panel:carsRequest');
+      if (tab.dataset.tab === 'carsView' && !speedCars.length && RAGE) mp.trigger('admin:panel:speedRequest');
     };
   });
   window.showNotice = message => {

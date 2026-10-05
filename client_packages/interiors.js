@@ -52,7 +52,7 @@ const REMOVE_IPLS = [
 // --- Map blips at interior entrances: { name, sprite, x, y, z } ---
 const INTERIOR_BLIPS = [
     { name: 'Hospital', sprite: 61, x: 305.0, y: -583.0, z: 43.0 }, // Central LS Medical Center (v_hospital) — same Pillbox site as the custom Pill Box Hospital
-    { name: 'Simeon\'s Showroom', sprite: 369, x: -47.162, y: -1115.333, z: 26.5 },
+    { name: 'Mankanebis Maghazia', sprite: 225, color: 3, x: -47.162, y: -1115.333, z: 26.5 },
     { name: 'Trevor\'s Trailer', sprite: 40, x: 1985.481, y: 3828.768, z: 32.5 },
     { name: 'Jewel Store', sprite: 439, x: -637.202, y: -239.162, z: 38.1 },
     { name: 'Rooftop Construction', sprite: 402, x: -585.825, y: -282.72, z: 35.455 },
@@ -91,7 +91,7 @@ function showBlips() {
             const blip = mp.blips.new(b.sprite, new mp.Vector3(b.x, b.y, b.z), {
                 name: b.name,
                 scale: 0.85,
-                color: 0,          // sprite's native colour
+                color: b.color === undefined ? 0 : b.color,
                 shortRange: true,  // only draw when the player is nearby (less map clutter)
                 dimension: 0
             });

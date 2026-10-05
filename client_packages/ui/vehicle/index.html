@@ -147,6 +147,11 @@
     bottom: 60px;
     left: 70px;
   }
+  /* Bottom Right: 🔑 გასაღებები */
+  .pos-keys {
+    bottom: 60px;
+    right: 70px;
+  }
 
   /* Submenus / Flyouts */
   .popover-menu {
@@ -173,6 +178,56 @@
     top: -95px;
     right: 50px;
   }
+  .keys-popover {
+    bottom: -40px;
+    right: 50px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .keys-subtitle {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: .4px;
+    margin: 8px 2px 4px;
+  }
+  .key-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 12.5px;
+    color: #e5e7eb;
+    border-radius: 6px;
+  }
+  .key-row:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .key-btn {
+    pointer-events: auto;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: background .12s ease, border-color .12s ease;
+    white-space: nowrap;
+  }
+  .key-btn.grant {
+    background: rgba(22, 163, 74, 0.2);
+    color: #4ade80;
+    border-color: rgba(22, 163, 74, 0.4);
+  }
+  .key-btn.grant:hover { background: rgba(22, 163, 74, 0.35); }
+  .key-btn.revoke {
+    background: rgba(220, 38, 38, 0.18);
+    color: #f87171;
+    border-color: rgba(220, 38, 38, 0.4);
+  }
+  .key-btn.revoke:hover { background: rgba(220, 38, 38, 0.32); }
 
   .popover-title {
     font-size: 11px;
@@ -353,6 +408,7 @@
     .pos-inventory { top: 120px; left: 10px; }
     .pos-doors { top: 120px; right: 10px; }
     .pos-trunk { bottom: 30px; left: 20px; }
+    .pos-keys { bottom: 30px; right: 20px; }
     .hud-badge { right: 16px; bottom: 16px; left: auto; padding: 10px 14px; }
   }
 </style>
@@ -418,6 +474,19 @@
       <span id="trunkLabel">საბარგულის გახსნა</span>
     </button>
 
+    <!-- Bottom-Right: გასაღებები (Keys) -->
+    <button id="btnKeys" class="pill-btn pos-keys" type="button" style="display:none;">
+      <svg viewBox="0 0 24 24"><path d="M12.65 10A5.99 5.99 0 0 0 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 0 0 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+      <span>გასაღებები</span>
+    </button>
+    <div id="keysPopover" class="popover-menu keys-popover">
+      <div class="popover-title">მანქანის გასაღებები</div>
+      <div class="keys-subtitle">ახლომყოფები</div>
+      <div id="keysNearby"><div class="empty-note">ახლომახლო არავინ</div></div>
+      <div class="keys-subtitle">გასაღების მფლობელები</div>
+      <div id="keysHolders"><div class="empty-note">არავის აქვს</div></div>
+    </div>
+
     <!-- Center Close Button -->
     <button id="btnClose" class="center-btn" type="button" aria-label="დახურვა" title="დახურვა">✕</button>
 
@@ -470,7 +539,8 @@
     fuel: 113,
     maxFuel: 130,
     health: 100,
-    passengers: []
+    passengers: [],
+    owned: false
   };
 
   const doorsLabel = document.getElementById('doorsLabel');
@@ -482,6 +552,10 @@
   const actionsPopover = document.getElementById('actionsPopover');
   const passengersPopover = document.getElementById('passengersPopover');
   const passengerList = document.getElementById('passengerList');
+  const keysPopover = document.getElementById('keysPopover');
+  const btnKeys = document.getElementById('btnKeys');
+  const keysNearby = document.getElementById('keysNearby');
+  const keysHolders = document.getElementById('keysHolders');
 
   const subEngineStatus = document.getElementById('subEngineStatus');
   const subLightsStatus = document.getElementById('subLightsStatus');
@@ -537,6 +611,13 @@
     doorsLabel.textContent = currentState.doorsOpen ? 'კარების დაკეტვა' : 'კარების გახსნა';
     trunkLabel.textContent = currentState.trunkOpen ? 'საბარგულის დაკეტვა' : 'საბარგულის გახსნა';
 
+    // Keys button only for the car's owner; hide (and close popover) otherwise.
+    btnKeys.style.display = currentState.owned ? '' : 'none';
+    if (!currentState.owned) {
+      keysPopover.classList.remove('open');
+      btnKeys.classList.remove('active');
+    }
+
     // Passengers list render
     renderPassengers(currentState.passengers);
   };
@@ -558,9 +639,69 @@
   function closeAllPopovers() {
     actionsPopover.classList.remove('open');
     passengersPopover.classList.remove('open');
+    keysPopover.classList.remove('open');
     document.getElementById('btnActions').classList.remove('active');
     document.getElementById('btnPassengers').classList.remove('active');
+    btnKeys.classList.remove('active');
   }
+
+  function anyPopoverOpen() {
+    return actionsPopover.classList.contains('open') ||
+      passengersPopover.classList.contains('open') ||
+      keysPopover.classList.contains('open');
+  }
+
+  // ---- Keys popover (grant/revoke drive keys) ----
+  btnKeys.onclick = (e) => {
+    e.stopPropagation();
+    const willOpen = !keysPopover.classList.contains('open');
+    closeAllPopovers();
+    if (willOpen) {
+      keysPopover.classList.add('open');
+      btnKeys.classList.add('active');
+      if (RAGE) mp.trigger('vehicle:menu:keys:request');
+    }
+  };
+
+  // Server pushes the owner's key data: nearby grantable players + current holders.
+  window.setKeysData = data => {
+    const nearby = (data && data.nearby) || [];
+    const holders = (data && data.holders) || [];
+    keysNearby.innerHTML = nearby.length
+      ? nearby.map(p => `
+          <div class="key-row">
+            <span>👤 ${escapeHtml(p.name || 'მოთამაშე')}</span>
+            <span class="key-btn grant" data-grant="${p.id}">გასაღები</span>
+          </div>`).join('')
+      : '<div class="empty-note">ახლომახლო არავინ</div>';
+    keysHolders.innerHTML = holders.length
+      ? holders.map(h => `
+          <div class="key-row">
+            <span>🔑 ${escapeHtml(h.name || h.sc || 'მოთამაშე')}</span>
+            <span class="key-btn revoke" data-revoke="${escapeHtml(h.sc)}">გაუქმება</span>
+          </div>`).join('')
+      : '<div class="empty-note">არავის აქვს</div>';
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // Delegated grant/revoke clicks inside the keys popover.
+  keysPopover.addEventListener('click', (e) => {
+    const grant = e.target.closest('[data-grant]');
+    if (grant) {
+      e.stopPropagation();
+      if (RAGE) mp.trigger('vehicle:menu:keys:grant', grant.getAttribute('data-grant'));
+      return;
+    }
+    const revoke = e.target.closest('[data-revoke]');
+    if (revoke) {
+      e.stopPropagation();
+      if (RAGE) mp.trigger('vehicle:menu:keys:revoke', revoke.getAttribute('data-revoke'));
+    }
+  });
 
   document.getElementById('btnActions').onclick = (e) => {
     e.stopPropagation();
@@ -618,7 +759,7 @@
 
   document.getElementById('overlay').onclick = (e) => {
     if (e.target.id === 'overlay') {
-      if (actionsPopover.classList.contains('open') || passengersPopover.classList.contains('open')) {
+      if (anyPopoverOpen()) {
         closeAllPopovers();
       } else {
         requestClose();

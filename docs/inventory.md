@@ -11,6 +11,7 @@ Folder = `client_packages/game_resources/dlcpacks/<folder>/dlc.rpf`.
 | Audi RS7 ABT (2023) | `23rs7abt` | `abtrsr_rs7c8` (same pack) | none | ✅ installed |
 | Audi RS7 Sportback (RmodCustoms) | `rmodrs7` | `rmodrs7` | ✅ yes | ✅ installed |
 | BMW M235i Gran Coupe (F44) | `M235iXD` (alias `f44`) | `M235iXD` | none | ✅ installed |
+| Mercedes-Benz G-Class 2019 | `XG632019` (alias `gclass`) | `gclass` (internal DLC: `XG632019`) | none | ✅ installed; client cache size matched, in-game spawn not yet verified |
 | Dodge Challenger SRT Demon | `dcd` (alias `demon`) | `demon` | none | ✅ installed (folder≠name) |
 | BMW M8 Competition (Mansory) | `mansm8c` (alias `m8`) | `mansm8c` | ✅ 7 | ✅ installed |
 | BMW M5 E39 | `bmwm5e39` (alias `m5e39`) | `bmwm5e39` | none | ✅ installed |
@@ -31,8 +32,10 @@ Folder = `client_packages/game_resources/dlcpacks/<folder>/dlc.rpf`.
 | Toyota Land Cruiser 300 VX.R (HAMMER, Legacy) | `300vxr` (alias `lc300`) | `300vxr` | — | ✅ installed |
 | Audi RS6 Avant (HAMMER) | `avant` (alias `rs6`) | `avant` | — | ✅ installed |
 | Chevy Colorado ZR2 ADD (HAMMER) | `ccadd` (alias `colorado`) | `ccadd` | — | ✅ installed |
+| Lamborghini Reventon SCPD (Game68240) | `polrevent` (alias `reventon`) | `polrevent` | — | ✅ installed (police) |
+| Mercedes-AMG GT R Police (SCRAT) | `polamggtr` (alias `amggtr`) | `polamggtr` | — | ✅ installed (police) |
 
-**Custom engine-sound DLCs** (installed as their own packs, pointed to via `audioNameHash`; all experimental — RAGE:MP may not load custom audio): `s63b44` (BMW S63 V8 → M8, F90, M4 F82; M4 was `turismor`), `mbnzc63eng` (Merc C63 → CLS, S-Class), `npolchar` (Dodge Charger V8 → Demon). CLS was `SCHAFTER5`, S-Class `ZENTORNO`, Demon `btype2` before. If custom audio doesn't load, revert each car's `audioNameHash` to those stock names.
+**Custom engine-sound DLCs** (installed as their own packs, pointed to via `audioNameHash`; all experimental — RAGE:MP may not load custom audio): `s63b44` (BMW S63 V8 → M8, F90, M4 F82; M4 was `turismor`), `mbnzc63eng` (Merc C63 → CLS, S-Class), `npolchar` (Dodge Charger V8 → Demon), `ars7` (Audi RS7 2021 sound → `23rs7` / `23rs7abt`, pack `abtrsr_rs7c8`), `ars6c8avant` (Audi RS6 C8 Avant sound → `avant`/`rs6`, pack `avant`). CLS was `SCHAFTER5`, S-Class `ZENTORNO`, Demon `btype2` before. If custom audio doesn't load, revert each car's `audioNameHash` to its stock name (for `ars7`/`ars6c8avant`, note the original hash in CodeWalker before changing it). The `ars7`/`ars6c8avant` pack still needs the car's `vehicles.meta` `<audioNameHash>` set in CodeWalker — the pack install only ships the audio.
 
 ### Editing car handling (admin panel → Cars tab)
 

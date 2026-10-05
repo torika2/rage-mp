@@ -97,7 +97,14 @@ mp.events.addCommand('hnear', (player, _, radiusArg) => {
     }
 });
 
-if (placements.length) spawnHospital();
+// NOTE: Pillbox Hill Medical Center now uses the native GTA interior (v_hospital /
+// RC12B_HospitalInterior), which the client already streams in via client_packages/interiors.js
+// ("Open All Interiors"). The native interior sits on the same Pillbox site, so the custom
+// Menyoo object map is no longer spawned — it would overlap/fight the native interior.
+// The data (pillbox_nr.js, model_names.js) and the /hnear + global.clearHospital helpers are
+// kept for reference; set USE_CUSTOM_MAP = true to bring the imported map back.
+const USE_CUSTOM_MAP = false;
+if (USE_CUSTOM_MAP && placements.length) spawnHospital();
 
 // Death / timeout screen / revive system (separate file; see death.js).
 require('./death');
