@@ -100,31 +100,37 @@ const RECIPES = {
 // is offered to both genders for now; split into { m:{...}, f:{...} } here if a piece differs by gender.
 const DUTY_WARDROBE = {
     greens: { // staticKey 'greens' = the Ballas gang (purple/pink)
+        // Curated Ballas tops (raw GTA drawable/texture indices). These are RESERVED: the clothing store
+        // auto-hides every one of them from players (via global.gangWardrobeHas), so they're uniform-only.
         top: [
-            { d: 31,  t: 0, label: 'ჰუდი' },
-            { d: 15,  t: 2, label: 'მაისური' },
-            { d: 7,   t: 3, label: 'ქურთუკი' },
-            { d: 4,   t: 5, label: 'პიჯაკი' },
-            { d: 11,  t: 1, label: 'სვიტრი' },
-            { d: 42,  t: 2, label: 'ჟილეტი' },
-        ],
+            [129, 3], [144, 3], [151, 6], [154, 25], [179, 5], [201, 22], [204, 22], [207, 23], [208, 23],
+            [209, 23], [210, 23], [211, 23], [212, 23], [224, 15], [225, 15], [230, 11], [240, 23], [256, 19],
+            [257, 1], [263, 12], [264, 12], [266, 1], [274, 14], [283, 13], [297, 18], [297, 14], [298, 14],
+            [298, 18], [299, 11], [301, 8], [302, 8], [303, 8], [306, 17], [307, 17], [308, 13], [314, 16],
+            [324, 5], [326, 23], [333, 4], [335, 1], [335, 2], [335, 3], [335, 4], [335, 5], [336, 5],
+            [348, 17], [351, 1], [351, 5], [385, 25], [386, 25], [414, 25], [432, 25], [291, 25], [508, 10],
+            [572, 10], [537, 10], [615, 5],
+        ].map(([d, t], i) => ({ d, t, label: 'ტოპი ' + (i + 1) })),
         undershirt: [
             { d: 0, t: 0, label: 'მაისური' },
             { d: 2, t: 1, label: 'მაისური 2' },
         ],
         pants: [
-            { d: 24, t: 0, label: 'შარვალი' },
-            { d: 10, t: 3, label: 'შარვალი 2' },
-            { d: 4,  t: 2, label: 'ჯინსი' },
-        ],
+            [16, 9], [17, 6], [23, 3], [24, 3], [27, 2], [28, 12], [29, 10], [57, 5], [65, 8], [70, 7],
+            [87, 23], [89, 23], [101, 8], [103, 17], [104, 17], [119, 9], [125, 9], [126, 9], [129, 4],
+            [129, 24], [139, 18], [140, 21], [144, 7], [156, 9], [171, 25], [209, 12], [209, 2], [231, 8],
+            [4, 10], [6, 10],
+        ].map(([d, t], i) => ({ d, t, label: 'შარვალი ' + (i + 1) })),
         shoes: [
-            { d: 10, t: 0, label: 'სნიკერსი' },
-            { d: 1,  t: 0, label: 'ფეხსაცმელი' },
-            { d: 17, t: 4, label: 'ბოტასი' },
-        ],
+            [4, 11], [8, 15], [9, 13], [10, 6], [17, 3], [23, 5], [27, 9], [33, 10], [41, 4], [45, 8],
+            [46, 8], [47, 9], [56, 5], [58, 2], [77, 10], [78, 11], [78, 15], [88, 14], [89, 12], [94, 4],
+            [100, 12], [102, 8], [109, 2], [113, 26], [113, 25], [115, 25], [115, 26], [116, 9], [117, 2],
+            [120, 11], [127, 25], [127, 26], [160, 6], [140, 25], [139, 25], [138, 25],
+        ].map(([d, t], i) => ({ d, t, label: 'ფეხსაცმელი ' + (i + 1) })),
         mask: [
-            { d: 0,  t: 0, label: 'ნიღაბი' },
-        ],
+            [58, 22], [59, 4], [102, 3], [107, 23], [108, 23], [112, 3], [114, 16], [116, 25], [117, 25],
+            [119, 3], [120, 10], [170, 24], [175, 15], [186, 25], [188, 22], [212, 14], [212, 13],
+        ].map(([d, t], i) => ({ d, t, label: 'ნიღაბი ' + (i + 1) })),
         hat: [
             { d: 2,  t: 2, label: 'ქუდი' },
             { d: 6,  t: 3, label: 'კეპი' },
@@ -142,6 +148,21 @@ function dutyPiece(gang, cat, index) {
     const list = catalog && catalog[cat];
     return (list && list[index]) || null;
 }
+
+// ---- Wardrobe pieces as a flat reserved list, shared with packages/clothing so the public clothing
+// store auto-hides every uniform piece (reserved = uniform-only, not buyable). Gender-agnostic for now
+// (the same catalog is offered to both genders). Built once — DUTY_WARDROBE is static config.
+const WARDROBE_PIECES = (() => {
+    const out = [];
+    Object.keys(DUTY_WARDROBE).forEach(staticKey => {
+        const catalog = DUTY_WARDROBE[staticKey];
+        Object.keys(catalog).forEach(cat => (catalog[cat] || []).forEach(p => out.push({ cat, d: p.d, t: p.t })));
+    });
+    return out;
+})();
+const WARDROBE_SET = new Set(WARDROBE_PIECES.map(p => `${p.cat}|${p.d}|${p.t}`));
+global.gangWardrobePieces = () => WARDROBE_PIECES;                                   // [{cat,d,t}] across all gangs
+global.gangWardrobeHas = (cat, d, t) => WARDROBE_SET.has(`${cat}|${d}|${t}`);        // is this colour a uniform piece?
 
 // ---- State ----
 const gangs = new Map();          // gangId -> gang object (authoritative)
@@ -633,13 +654,28 @@ function sendWardrobe(player, gang) {
     };
     player.call('gangs:wardrobe:open', [JSON.stringify(payload)]);
 }
+// Private per-player dimension while using the wardrobe, so the ped-preview spot is clean and members
+// don't stack on it (mirrors the clothing shop's private instance).
+const WARDROBE_DIM_BASE = 2100000;
 mp.events.add('gangs:wardrobe', (player) => {
     const gang = contextGang(player);
     if (!gang) return tell(player, 'შენ არ ხარ ბანდაში.');
     if (!gang.wardrobe || !nearWardrobe(player, gang)) return tell(player, 'მიდი ბანდის გარდერობთან.');
     if (!dutyHasWardrobe(gang)) return tell(player, 'ამ ბანდას არ აქვს სამორიგეო გარდერობი.');
+    if (player.wardrobeReturnDim === undefined) player.wardrobeReturnDim = Number(player.dimension) || 0;
+    try { player.dimension = WARDROBE_DIM_BASE + player.id; } catch (e) {}
+    player.inWardrobe = gang.id; // in-session flag: they get teleported to a private spot, so proximity no longer applies
     sendWardrobe(player, gang);
 });
+// Leave the private instance -> restore the player's original dimension.
+mp.events.add('gangs:wardrobe:leave', (player) => {
+    try { player.dimension = Number(player.wardrobeReturnDim) || 0; } catch (e) {}
+    player.wardrobeReturnDim = undefined;
+    player.inWardrobe = null;
+});
+// Is the player in an open wardrobe session for this gang? (Used instead of proximity, since the client
+// teleports them to a private dressing spot/dimension while the wardrobe is open.)
+function inWardrobeSession(player, gang) { return !!gang && player.inWardrobe === gang.id; }
 // Apply the whole stored duty look (bare body + each equipped piece).
 function applyDutyLook(player, look) {
     if (typeof global.invApplyClothingLook === 'function') global.invApplyClothingLook(player, look || {});
@@ -647,7 +683,7 @@ function applyDutyLook(player, look) {
 // Equip (or re-equip) one catalog piece into the member's duty look; applies live and marks them on duty.
 mp.events.add('gangs:duty:pick', (player, cat, indexRaw) => {
     const gang = contextGang(player);
-    if (!gang || !gang.wardrobe || !nearWardrobe(player, gang)) return;
+    if (!gang || !gang.wardrobe || !inWardrobeSession(player, gang)) return;
     const piece = dutyPiece(gang, String(cat), Math.floor(Number(indexRaw)));
     if (!piece) return;
     const cid = charId(player);
@@ -660,7 +696,7 @@ mp.events.add('gangs:duty:pick', (player, cat, indexRaw) => {
 // Remove one slot from the duty look (keeps the rest of the uniform on).
 mp.events.add('gangs:duty:clear', (player, cat) => {
     const gang = contextGang(player);
-    if (!gang || !nearWardrobe(player, gang)) return;
+    if (!gang || !inWardrobeSession(player, gang)) return;
     const cid = charId(player);
     const duty = onDuty.get(cid);
     if (!duty || duty.gangId !== gang.id || !duty.look[String(cat)]) return;
@@ -671,7 +707,7 @@ mp.events.add('gangs:duty:clear', (player, cat) => {
 });
 mp.events.add('gangs:duty:off', (player) => {
     const gang = contextGang(player);
-    if (!gang || !nearWardrobe(player, gang)) return;
+    if (!gang || !inWardrobeSession(player, gang)) return;
     if (!onDuty.has(charId(player))) return;
     onDuty.delete(charId(player));
     if (typeof global.invRestoreLook === 'function') global.invRestoreLook(player);

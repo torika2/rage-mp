@@ -206,6 +206,13 @@ global.api = {
     loadParking: () => apiRequest('GET', '/parking'),
     saveParkingSpot: (spotId, data) => apiRequest('PUT', `/parking/${encodeURIComponent(spotId)}`, data),
     clearParkingSpot: (spotId) => apiRequest('DELETE', `/parking/${encodeURIComponent(spotId)}`),
+
+    // --- clothing: admin-disabled shop colours (gender+cat+drawable+texture) ---
+    loadDisabledClothing: () => apiRequest('GET', '/clothing/disabled'),
+    disableClothing: (gender, cat, drawable, texture) =>
+        apiRequest('POST', '/clothing/disabled', { gender, cat, drawable, texture }),
+    enableClothing: (gender, cat, drawable, texture) =>
+        apiRequest('POST', '/clothing/disabled/enable', { gender, cat, drawable, texture }),
 };
 
 // ===================== Character persistence (DB is the source of truth) =====================

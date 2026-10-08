@@ -15,9 +15,14 @@ Operational docs for this RAGE:MP (GTA V multiplayer) server.
 | [06-testing.md](06-testing.md) | Test plan for the money/fuel/engine flow |
 | [07-police-system.md](07-police-system.md) | Police ranks, commands, jail, and configuration |
 | [13-gangs.md](13-gangs.md) | **Gangs: leader/ranks/permissions, base, treasury, stash, crafting** |
+| [14-parking.md](14-parking.md) | **Parking: rentable spots, spawn/recall cars, admin editor, finder** |
+| [15-teleports.md](15-teleports.md) | **Teleports: named destinations (`/cityhall`, `/hospital`, `/settp`)** |
 | [09-admin-panel.md](09-admin-panel.md) | Admin panel access, actions, security checks, and usage |
 | [11-tattoo-salons.md](11-tattoo-salons.md) | Tattoo salons: locations, data, pricing, saving |
 | [12-salons.md](12-salons.md) | Barber/clothing/tattoo: private instances, barber buy flow, hair-colour gotcha |
+| [16-dlcpack-folder-naming.md](16-dlcpack-folder-naming.md) | **dlcpack folder naming: prefix rename broke all mods; keep folder = internal `nameHash`** |
+| [17-pillbox-hospital-interior.md](17-pillbox-hospital-interior.md) | **Pillbox custom interior: what we tried (MLO can't be spawned server-side; DLC needs a CodeWalker `_manifest.ymf`)** |
+| [18-stfiacre-hospital.md](18-stfiacre-hospital.md) | **St. Fiacre Hospital Interior: props-only map DLC (no manifest), built on Linux, + `/hospital` teleport** |
 | [inventory.md](inventory.md) | What mods are installed and their spawn names |
 
 ## Golden rules (read these first)

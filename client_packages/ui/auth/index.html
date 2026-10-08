@@ -91,6 +91,8 @@
         <div class="field">
           <label>პაროლი</label>
           <input id="loginPassword" type="password" autocomplete="off" placeholder="••••••••">
+          <div class="warn-note" id="loginCaps" style="display:none">⚠ CapsLock ჩართულია — შეამოწმეთ პაროლი.</div>
+          <div class="warn-note" id="loginNoneng" style="display:none">⚠ გამოიყენეთ მხოლოდ ლათინური ასოები (a–z).</div>
         </div>
         <button class="submit" type="submit">შესვლა</button>
         <div class="switch">არ გაქვთ ანგარიში? <a id="toRegister">რეგისტრაცია</a></div>
@@ -121,6 +123,8 @@
         <div class="field">
           <label>პაროლი</label>
           <input id="regPassword" type="password" autocomplete="off" placeholder="მინ. 8 სიმბოლო">
+          <div class="warn-note" id="regCaps" style="display:none">⚠ CapsLock ჩართულია — შეამოწმეთ პაროლი.</div>
+          <div class="warn-note" id="regNoneng" style="display:none">⚠ გამოიყენეთ მხოლოდ ლათინური ასოები (a–z).</div>
         </div>
         <button class="submit" type="submit">რეგისტრაცია</button>
         <div class="switch">უკვე გაქვთ ანგარიში? <a id="toLogin">შესვლა</a></div>
@@ -196,6 +200,38 @@
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const onlyDigits = (s) => String(s).replace(/\D/g, '');
+
+  // --- CapsLock warning: persistent note while CapsLock is on (toggles both forms;
+  //     only the visible one is seen). getModifierState works on any key event. ---
+  function updateCaps(e) {
+    const on = e.getModifierState && e.getModifierState('CapsLock');
+    ['loginCaps', 'regCaps'].forEach((id) => { const el = $(id); if (el) el.style.display = on ? 'block' : 'none'; });
+  }
+  document.addEventListener('keydown', updateCaps);
+  document.addEventListener('keyup', updateCaps);
+
+  // --- Non-English input: strip anything outside printable ASCII (a-z, digits, symbols)
+  //     so non-Latin letters (Georgian, Cyrillic, …) never reach the server. Flashes a note. ---
+  const nonengTimers = {};
+  function flashNoneng(warnId) {
+    const el = $(warnId); if (!el) return;
+    el.style.display = 'block';
+    clearTimeout(nonengTimers[warnId]);
+    nonengTimers[warnId] = setTimeout(() => { el.style.display = 'none'; }, 2500);
+  }
+  function enforceLatin(inputId, warnId) {
+    const input = $(inputId); if (!input) return;
+    input.addEventListener('input', (e) => {
+      const cleaned = e.target.value.replace(/[^\x20-\x7E]/g, '');
+      if (cleaned !== e.target.value) { e.target.value = cleaned; flashNoneng(warnId); }
+    });
+  }
+  enforceLatin('loginEmail', 'loginNoneng');
+  enforceLatin('loginPassword', 'loginNoneng');
+  enforceLatin('firstName', 'regNoneng');
+  enforceLatin('lastName', 'regNoneng');
+  enforceLatin('regEmail', 'regNoneng');
+  enforceLatin('regPassword', 'regNoneng');
 
   $('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();

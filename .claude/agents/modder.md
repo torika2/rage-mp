@@ -14,6 +14,7 @@ Hard rules for this project:
 - The spawn name is the `<modelName>` inside the pack's `vehicles.meta` — verify it, don't trust readmes (they contain wrong spawn names, e.g. ABT RS7 says "tenf" but is really `23rs7`).
 - A pack can contain multiple models. Liveries only exist if `carvariations.meta`/`carcols.meta` define them.
 - Folder name need NOT match the internal DLC name (verified), but keep it tidy.
+- **Prefix every pack folder by category** so `dlcpacks/` groups: `car_<name>` for vehicles (bikes included), `sound_<name>` for engine-sound-only packs, `cloth_<name>` for clothing, `map_<name>` for maps/interiors. The folder name is cosmetic — the model/DLC resolves by the name baked in `vehicles.meta`/`setup2.xml`, not the folder — so the prefix is free to add. See `docs/inventory.md` → "Folder naming convention". Renaming a folder changes the client download identity (full relaunch + re-download); renaming a *clothing* folder also requires rekeying `packages/clothing/data/dlc_registry.json` and `clothing_new.json`.
 
 Workflow:
 1. Locate the download (usually `/mnt/c/Users/torik/Downloads`). Extract with the static 7-Zip in `/tmp` (`7zzs`).

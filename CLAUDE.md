@@ -40,6 +40,19 @@ Invocable Claude Code subagents live in [`.claude/agents/`](.claude/agents) and 
 | `qa-tester` | Test plans, edge cases, in-game verification steps |
 | `security-anticheat` | Server authority, input validation, exploit prevention |
 | `performance-optimizer` | Render loop, streaming, server tick performance |
+| `documenter` | Writing `docs/` for a system at the end of a task — one system per file, asks first |
 
 > Conventions for working in this repo (deploy method, Legacy-only, no-sudo file edits) are in
 > `docs/`. Agents should read the relevant docs before acting.
+
+## Always offer to document at the end of a task
+
+When a task finishes — a feature built, a system changed, or a question answered that the docs couldn't
+— **ask the user whether they want it documented** before moving on. Keep it to one short line, e.g.:
+
+> Task done. Want me to document the **<system>** in `docs/`? (y / skip)
+
+If the user says yes, launch the `documenter` agent (Agent tool, `subagent_type: documenter`) to write
+it. The documenter writes one focused doc per system and will confirm the filename/scope itself. Skip
+the question only for trivial tasks (typo fixes, one-liners, pure investigation with nothing new to
+record).

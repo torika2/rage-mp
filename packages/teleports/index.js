@@ -35,6 +35,7 @@ function teleport(player, name) {
 // Open teleport commands.
 mp.events.addCommand('cityhall', (player) => teleport(player, 'cityhall'));
 mp.events.addCommand('hospital', (player) => teleport(player, 'hospital'));
+mp.events.addCommand('hospitalin', (player) => teleport(player, 'hospitalin')); // inside the hospital interior — admin pins it with /settp hospitalin
 
 // Admin: pin a named point to your current position (so you can aim a teleport at a mod's real interior).
 mp.events.addCommand('settp', (player, _, name) => {

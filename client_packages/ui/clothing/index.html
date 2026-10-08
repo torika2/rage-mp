@@ -47,6 +47,12 @@
   .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
   .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; background: rgba(255, 255, 255, .08); font-size: 10px; display: grid; place-items: center; color: var(--muted); }
   .swatch.on { border-color: var(--gold); color: var(--text); }
+  .swatch.off { border-color: #ff6978; color: #ff6978; opacity: .7; position: relative; }
+  .swatch.off::after { content: '⊘'; position: absolute; font-size: 13px; }
+  .add:disabled { opacity: .4; cursor: not-allowed; border-color: var(--line); background: rgba(255,255,255,.04); color: var(--muted); }
+  .disbtn { flex: 0 0 auto; padding: 13px 16px; border: 1px solid #ff6978; border-radius: 10px; background: rgba(255,105,120,.12); color: #ff6978; font-weight: 700; font-size: 13px; }
+  .disbtn:hover { background: rgba(255,105,120,.22); }
+  .disbtn.is-off { border-color: #8ed17a; background: rgba(142,209,122,.12); color: #8ed17a; }
   .price-row { display: flex; align-items: baseline; gap: 10px; }
   .price-row .p { color: var(--gold); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .price-row .tax { color: var(--muted); font-size: 11px; }
@@ -163,15 +169,26 @@
     const detail = el('detail');
     const category = state.categories[state.selected];
     if (!category) { detail.innerHTML = '<div class="empty">აირჩიეთ კატეგორია</div>'; return; }
+    const none = category.drawable < 0;
+    const k = category.key + '|' + category.drawable + '|';
+    // Hidden from this client (navigation/swatch filter + buy block): players get disabled+reserved, admins reserved.
+    const hItem = !none && state.hset.has(k + '-1');
+    const hOf = (t) => hItem || state.hset.has(k + t);
+    // DB admin-disabled (red marker + toggle button labels; only admins ever see these, since players hide them).
+    const dbItem = !none && state.dset.has(k + '-1');
+    const dbColour = (t) => dbItem || state.dset.has(k + t);
     let swatches = '';
-    const textures = category.textures || [0];
-    if (textures.length > 1) {
+    const allTex = category.textures || [0];
+    const textures = allTex.filter(t => !hOf(t)); // never list hidden colours (players or admins)
+    if (textures.length > 1 || (state.isAdmin && textures.some(dbColour))) {
       textures.forEach((texture, index) => {
-        const title = itemName(category.key, category.drawable, texture) || ('#' + (texture + 1));
-        swatches += '<button class="swatch' + (texture === category.texture ? ' on' : '') + '" data-tex="' + texture + '" title="' + esc(title) + '">' + (index + 1) + '</button>';
+        const off = dbColour(texture);
+        const title = (itemName(category.key, category.drawable, texture) || ('#' + (texture + 1))) + (off ? ' — გათიშულია' : '');
+        swatches += '<button class="swatch' + (texture === category.texture ? ' on' : '') + (off ? ' off' : '') + '" data-tex="' + texture + '" title="' + esc(title) + '">' + (index + 1) + '</button>';
       });
     }
-    const none = category.drawable < 0;
+    const curDbColour = !none && state.dset.has(k + category.texture); // exact DB colour entry (admin toggle label)
+    const blockBuy = !none && hOf(category.texture);        // hidden colours aren't buyable (server also blocks)
     const name = none ? null : itemName(category.key, category.drawable, category.texture);
     const position = category.position >= 0 ? (category.position + 1) : '—';
     detail.innerHTML =
@@ -186,11 +203,14 @@
       '<div class="price-row"><span class="p">' + fmt(category.price) + '</span>' +
         (category.tax ? '<span class="tax">მ.შ. ' + fmt(category.tax) + ' გადასახადი</span>' : '') + '</div>' +
       '<div class="actions">' +
-        '<button class="add" id="add">＋ კალათაში დამატება</button>' +
+        '<button class="add" id="add"' + (blockBuy ? ' disabled' : '') + '>' + (blockBuy ? 'მიუწვდომელია' : '＋ კალათაში დამატება') + '</button>' +
+        (state.isAdmin && !none ? '<button class="disbtn' + (dbItem ? ' is-off' : '') + '" id="disableItem" title="ადმინი: მთელი ნივთის (ყველა ფერის) გათიშვა/ჩართვა">' + (dbItem ? '✓ ნივთი' : '⊘ ნივთი') + '</button>' : '') +
+        (state.isAdmin && !none && !dbItem ? '<button class="disbtn' + (curDbColour ? ' is-off' : '') + '" id="disable" title="ადმინი: მხოლოდ ამ ფერის გათიშვა/ჩართვა">' + (curDbColour ? '✓ ფერი' : '⊘ ფერი') + '</button>' : '') +
         '<button class="remove" id="none">' + (category.worn ? 'მოხსნა' : 'არცერთი') + '</button>' +
       '</div>' +
       '<div class="hint">‹ › / ისრები — მოდელის შეცვლა · ფერის ღილაკები — ტექსტურა · ხასიათს ათრევ ბრუნავს პერსონაჟი. ყიდვის შემდეგ ნივთი ჩნდება ინვენტარში (I). ' +
-        (category.worn ? '„მოხსნა“ — ნივთი ინვენტარში დაბრუნდება.' : '„არცერთი“ — ამ ნაწილს არაფერს აცმევს.') + '</div>';
+        (category.worn ? '„მოხსნა“ — ნივთი ინვენტარში დაბრუნდება.' : '„არცერთი“ — ამ ნაწილს არაფერს აცმევს.') +
+        (state.isAdmin ? ' <b>ადმინი:</b> „ნივთი“ მალავს მთელ მოდელს, „ფერი“ — მხოლოდ ამ ტექსტურას. ორივე აცლის ყველას.' : (blockBuy ? ' ეს ფერი მიუწვდომელია.' : '')) + '</div>';
 
     detail.querySelectorAll('[data-nav]').forEach(b => {
       b.onclick = () => trigger('clothing:ui:nav', state.selected, parseInt(b.getAttribute('data-nav'), 10), 0);
@@ -198,13 +218,19 @@
     detail.querySelectorAll('[data-tex]').forEach(b => {
       b.onclick = () => trigger('clothing:ui:tex', state.selected, parseInt(b.getAttribute('data-tex'), 10));
     });
-    el('add').onclick = () => trigger('clothing:ui:add', state.selected);
+    el('add').onclick = () => { if (!blockBuy) trigger('clothing:ui:add', state.selected); };
     el('none').onclick = () => trigger('clothing:ui:none', state.selected);
+    if (el('disable')) el('disable').onclick = () => trigger('clothing:ui:toggleDisabled', state.selected);
+    if (el('disableItem')) el('disableItem').onclick = () => trigger('clothing:ui:toggleItem', state.selected);
   }
 
   // ---- Called by the client ----
   window.setClothingData = function (data) {
-    state = { money: data.money, taxRate: data.taxRate, selected: data.selected, order: data.order, categories: {}, gender: data.gender || 'm' };
+    state = { money: data.money, taxRate: data.taxRate, selected: data.selected, order: data.order, categories: {}, gender: data.gender || 'm',
+      isAdmin: !!data.isAdmin,
+      dset: new Set((data.disabled || []).map(x => x.cat + '|' + x.d + '|' + x.t)),  // DB-disabled (admin toggles)
+      hset: new Set((data.hidden || []).map(x => x.cat + '|' + x.d + '|' + x.t)) };  // hide from this client
+
     (data.categories || []).forEach(c => { state.categories[c.key] = c; });
     el('money').textContent = fmt(state.money);
     renderCats();

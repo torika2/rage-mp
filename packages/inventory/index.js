@@ -783,6 +783,36 @@ global.invList = (player) => {
 };
 global.invItemExists = (id) => !!(ITEM_DEFS[id] || ensureClothDef(id));
 global.invRemoveItem = (player, id, qty) => { removeCount(player, id, Math.max(0, Math.floor(Number(qty) || 0))); pushData(player); };
+// Force-remove disabled clothing from a player: strip any worn piece the predicate rejects (reset to
+// bare, NOT returned to the grid since it's banned) and delete every matching grid stack.
+// reject(cat, drawable, texture) -> true = disabled. Returns how many pieces/stacks were removed.
+// Used by packages/clothing when an admin disables a colour, and on each player's login.
+global.invScrubCloth = (player, reject) => {
+    if (typeof reject !== 'function' || !mp.players.exists(player)) return 0;
+    let removed = 0;
+    const eq = getEquip(player);
+    if (eq.clothing) {
+        Object.keys(eq.clothing).forEach(cat => {
+            const parsed = parseCloth(eq.clothing[cat] && eq.clothing[cat].id);
+            if (parsed && reject(parsed.cat, parsed.d, parsed.t)) {
+                defaultCloth(player, cat);          // reset the ped component/prop to bare
+                delete eq.clothing[cat];
+                removed++;
+            }
+        });
+    }
+    const inv = getInv(player);
+    const toRemove = {};
+    for (let i = 0; i < MAX_SLOTS; i++) {
+        const stack = inv[i];
+        if (!stack) continue;
+        const parsed = parseCloth(stack.id);
+        if (parsed && reject(parsed.cat, parsed.d, parsed.t)) toRemove[stack.id] = countItem(inv, stack.id);
+    }
+    Object.keys(toRemove).forEach(id => { removeCount(player, id, toRemove[id]); removed += toRemove[id]; });
+    if (removed) { saveEquip(); pushData(player); }
+    return removed;
+};
 // Clothing worn/unequip API used by the clothing store so it can take pieces off into the inventory.
 global.invUnequipCloth = (player, cat) => unequipCloth(player, String(cat), -1);
 global.invWornClothing = (player) => {

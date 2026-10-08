@@ -29,10 +29,10 @@ const CATEGORIES = [
     // body/arms, not clothing. Leave it to the character/surgery system.
     { key: 'pants',      kind: 'comp', id: 4,  label: 'შარვალი',         base: 120, step: 6 },
     { key: 'shoes',      kind: 'comp', id: 6,  label: 'ფეხსაცმელი',      base: 90,  step: 5 },
-    { key: 'bag',        kind: 'comp', id: 5,  label: 'ჩანთა',           base: 70,  step: 4 },
+    { key: 'bag',        kind: 'comp', id: 5,  label: 'ჩანთა',           base: 70,  step: 4, vip: true, noShop: true }, // VIP-only (future GCOINS shop) — hidden from the normal store
     { key: 'mask',       kind: 'comp', id: 1,  label: 'ნიღაბი',          base: 100, step: 5 },
     { key: 'neck',       kind: 'comp', id: 7,  label: 'აქსესუარი',       base: 90,  step: 5 },
-    { key: 'decal',      kind: 'comp', id: 10, label: 'ემბლემა',         base: 60,  step: 2 },
+    { key: 'decal',      kind: 'comp', id: 10, label: 'ემბლემა',         base: 60,  step: 2, noShop: true }, // not sold in the clothing store
     { key: 'hat',        kind: 'prop', id: 0,  label: 'ქუდი',            base: 45,  step: 3 },
     { key: 'glasses',    kind: 'prop', id: 1,  label: 'სათვალე',         base: 80,  step: 4 },
     { key: 'ears',       kind: 'prop', id: 2,  label: 'საყურე',          base: 90,  step: 4 },
@@ -41,9 +41,78 @@ const CATEGORIES = [
 ];
 const CAT_BY_KEY = {};
 CATEGORIES.forEach(c => { CAT_BY_KEY[c.key] = c; });
+// Categories the normal clothing store shows/sells. `noShop` categories (bags → future GCOINS shop;
+// decals/emblems → not sold) stay in CATEGORIES so owned items can still be worn/labelled, but are
+// excluded from the store browse list + buy flow.
+const SHOP_CATEGORIES = CATEGORIES.filter(c => !c.noShop);
 // Shared with the inventory package so it can label/apply clothing items without duplicating this.
 global.clothingCategories = () => CATEGORIES;
 global.clothingCatByKey = (key) => CAT_BY_KEY[String(key)] || null;
+
+// ---- Admin-disabled shop colours (per gender + category + drawable + texture), backed by the DB ----
+// Source of truth is the `disabled_clothing` table (api/src/clothing); loaded here into an in-memory
+// Set on boot and kept in sync on every toggle. Effect: hidden from non-admins in the shop, blocked in
+// buyCart (server-authoritative), and force-removed from everyone (online now + each player on login).
+const disabledCloth = new Set();
+const disKey = (gender, cat, drawable, texture) => `${gender}|${cat}|${drawable}|${texture}`;
+// A colour is unavailable in the public store if: its exact entry is admin-disabled, the whole drawable
+// is admin-disabled (texture -1 sentinel), OR it's reserved as a gang uniform piece (packages/gangs).
+function isClothReserved(cat, drawable, texture) {
+    return typeof global.gangWardrobeHas === 'function' && global.gangWardrobeHas(cat, drawable, texture);
+}
+function isClothDisabled(gender, cat, drawable, texture) {
+    if (!gender) return false;
+    if (disabledCloth.has(disKey(gender, cat, drawable, -1)) || disabledCloth.has(disKey(gender, cat, drawable, texture))) return true;
+    return isClothReserved(cat, drawable, texture);
+}
+function disabledListFor(gender) {
+    const out = [];
+    if (!gender) return out;
+    disabledCloth.forEach(k => { const [g, cat, d, t] = k.split('|'); if (g === gender) out.push({ cat, d: Number(d), t: Number(t) }); });
+    return out;
+}
+// Gang-uniform pieces reserved out of the public store (gender-agnostic for now).
+function reservedList() {
+    return (typeof global.gangWardrobePieces === 'function') ? global.gangWardrobePieces() : [];
+}
+// What the shop UI needs per player: admin flag, the admin-toggleable DB list, and the set the CLIENT
+// must hide outright. Players hide DB-disabled + reserved; admins still see/toggle DB-disabled but
+// reserved uniform pieces are hidden from the store for everyone (managed in packages/gangs config).
+function disabledSetsFor(player) {
+    const gender = genderOf(player);
+    const isAdmin = !!(typeof global.isProtectedAdmin === 'function' && global.isProtectedAdmin(player));
+    const dbList = disabledListFor(gender);
+    const reserved = reservedList();
+    const hidden = isAdmin ? reserved.slice() : dbList.concat(reserved);
+    return { isAdmin, disabled: dbList, hidden };
+}
+// Load the disabled set from the DB. The game server often boots a few seconds before the API is
+// accepting connections, so a single attempt can hit ECONNREFUSED and leave the set empty (= nothing
+// disabled in the shop). Retry with backoff until the API answers.
+async function loadDisabledCloth(attempt = 1) {
+    if (!global.api || typeof global.api.loadDisabledClothing !== 'function') return;
+    try {
+        const rows = await global.api.loadDisabledClothing();
+        if (!Array.isArray(rows)) throw new Error('unexpected response');
+        disabledCloth.clear();
+        rows.forEach(r => disabledCloth.add(disKey(r.gender, r.cat, Number(r.drawable), Number(r.texture))));
+        console.log(`[clothing] loaded ${disabledCloth.size} disabled colour(s)` + (attempt > 1 ? ` (attempt ${attempt})` : ''));
+    } catch (e) {
+        if (attempt <= 20) { // ~ up to 60s of API-startup lag
+            if (attempt === 1) console.log('[clothing] disabled colours not ready yet (' + (e && e.message) + '); retrying…');
+            setTimeout(() => loadDisabledCloth(attempt + 1), 3000);
+            return;
+        }
+        console.log('[clothing] gave up loading disabled colours after ' + attempt + ' attempts: ' + (e && e.message));
+    }
+}
+loadDisabledCloth();
+// Force-remove every disabled colour for a gender from all matching online players.
+function scrubDisabled(gender) {
+    if (!gender || typeof global.invScrubCloth !== 'function') return;
+    const reject = (cat, d, t) => isClothDisabled(gender, cat, d, t);
+    mp.players.forEach(p => { if (genderOf(p) === gender) global.invScrubCloth(p, reject); });
+}
 
 // ---- Matching arms (component 3, "torso") for every top, so sleeves/arms don't clip ----
 // data/besttorso.json is generated by tools/gen-clothing-data.py from the game's shop metadata:
@@ -125,11 +194,40 @@ mp.events.add('clothing:requestState', (player) => {
         gender: genderOf(player),
         money: (typeof global.getMoney === 'function' ? global.getMoney(player) : 0),
         taxRate: rate,
-        categories: CATEGORIES,
+        categories: SHOP_CATEGORIES,
         worn: (typeof global.invWornClothing === 'function' ? global.invWornClothing(player) : {}),
         nude: (typeof global.invNudeLook === 'function' ? global.invNudeLook(player) : {}),
-        topArms: (typeof global.invTopArms === 'function' ? global.invTopArms(player) : { def: 0, nude: 15, map: {} })
+        topArms: (typeof global.invTopArms === 'function' ? global.invTopArms(player) : { def: 0, nude: 15, map: {} }),
+        ...disabledSetsFor(player)
     })]);
+});
+
+// Admin (protected only): disable/enable one colour of an item. Persists to the DB, updates the
+// in-memory set, force-removes it from everyone of this gender, and refreshes any open shops.
+mp.events.add('clothing:toggleDisabled', async (player, catKey, drawable, texture, disable) => {
+    if (typeof global.isProtectedAdmin !== 'function' || !global.isProtectedAdmin(player)) return;
+    const cat = CAT_BY_KEY[String(catKey)];
+    const gender = genderOf(player);
+    if (!cat || !gender) return;
+    const d = Math.max(0, Math.floor(Number(drawable) || 0));
+    let t = Math.floor(Number(texture)); if (!Number.isInteger(t) || t < -1) t = 0; // -1 = whole drawable
+    const on = !!disable;
+    try {
+        if (on) await global.api.disableClothing(gender, cat.key, d, t);
+        else await global.api.enableClothing(gender, cat.key, d, t);
+    } catch (e) { return tell(player, 'ბაზასთან კავშირი ვერ მოხერხდა — სცადეთ თავიდან.'); }
+    if (on) disabledCloth.add(disKey(gender, cat.key, d, t));
+    else disabledCloth.delete(disKey(gender, cat.key, d, t));
+    if (on) scrubDisabled(gender); // force-remove from everyone wearing/owning it now
+    // Refresh every open shop of this gender (admins re-render toggles, players re-hide). Per-player,
+    // since admins and players get different hidden sets.
+    mp.players.forEach(p => {
+        if (genderOf(p) === gender && clothingInSession(p)) {
+            try { p.call('clothing:disabledUpdate', [JSON.stringify(disabledSetsFor(p))]); } catch (e) {}
+        }
+    });
+    const what = t === -1 ? `${cat.label} #${d + 1} (მთლიანად)` : `${cat.label} #${d + 1}/${t + 1}`;
+    tell(player, `${on ? 'გათიშე' : 'ჩართე'}: ${what}`);
 });
 
 // The shop reports its per-slot drawable counts; we stamp growth with the pack's upload time and reply
@@ -179,16 +277,19 @@ mp.events.add('clothing:buyCart', (player, cartJson) => {
         || typeof global.invAddItem !== 'function' || typeof global.invCapacity !== 'function') {
         return tell(player, 'სისტემა ამჟამად მიუწვდომელია.');
     }
+    const gender = genderOf(player);
     const items = [];
-    let baseTotal = 0;
+    let baseTotal = 0, blocked = 0;
     cart.slice(0, 24).forEach(entry => {
         const cat = CAT_BY_KEY[String(entry && entry.cat)];
-        if (!cat) return;
+        if (!cat || cat.noShop) return; // bags/decals aren't buyable in the normal store
         const d = Math.max(0, Math.floor(Number(entry.d) || 0));
         const t = Math.max(0, Math.floor(Number(entry.t) || 0));
+        if (isClothDisabled(gender, cat.key, d, t)) { blocked++; return; } // admin-disabled — can't buy
         baseTotal += basePriceOf(cat, d);
         items.push({ cat, d, t });
     });
+    if (blocked) tell(player, `${blocked} ნივთი მიუწვდომელია (ადმინმა გათიშა) და არ შეძენილა.`);
     if (!items.length) return;
 
     const cost = priced(baseTotal);
@@ -212,6 +313,20 @@ mp.events.add('clothing:buyCart', (player, cartJson) => {
     tell(player, `შეიძინეთ ${added} ნივთი $${cost.total}-ად${cost.tax ? ` (მ.შ. $${cost.tax} გადასახადი)` : ''}. ჩასაცმელად გახსენით ინვენტარი (I). ბალანსი: $${global.getMoney(player)}.`);
     player.call('clothing:cartResult', [JSON.stringify({ ok: true, added, money: global.getMoney(player) })]);
 });
+
+// On login, force-remove any now-disabled clothing this character still wears or carries (covers
+// players who were offline when a colour was disabled). Delayed so the inventory has loaded from the DB.
+if (typeof global.onCharacterLoad === 'function') {
+    global.onCharacterLoad((player) => {
+        setTimeout(() => {
+            if (!mp.players.exists(player)) return;
+            const gender = genderOf(player);
+            if (gender && typeof global.invScrubCloth === 'function') {
+                global.invScrubCloth(player, (cat, d, t) => isClothDisabled(gender, cat, d, t));
+            }
+        }, 6000);
+    });
+}
 
 // /armsfit <torsoDrawable> [torsoTexture] — admin: fix the arms for the top you're wearing (for tops
 // the dump has no data for, or gets wrong). Saved per model; applies to everyone wearing that top.

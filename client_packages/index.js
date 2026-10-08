@@ -1236,16 +1236,34 @@ function closeGangPanel() {
     try { mp.events.callRemote('gangs:close'); } catch (e) {}
 }
 // Duty wardrobe menu (curated uniforms). The server validates proximity/membership and pushes the list.
-let gangWardrobeBrowser = null, gangWardrobePayload = null;
+// Which body zone to frame the preview camera on, per clothing category (so you see what you equip).
+const GANG_WARDROBE_ZONE = { top: 'upper', undershirt: 'upper', pants: 'lower', shoes: 'shoes', mask: 'head', hat: 'head', glasses: 'head', neck: 'upper', ears: 'head', watch: 'lower', bracelet: 'lower' };
+// Clean, prop-free spot to stand in while using the wardrobe (paired with a private dimension server-side).
+const GANG_WARDROBE_SPOT = { x: 88.523, y: -1955.024, z: 20.817, heading: -36.9 };
+let gangWardrobeBrowser = null, gangWardrobePayload = null, gangWardrobeReturn = null;
 mp.events.add('gangs:wardrobe:open', (json) => {
     gangWardrobePayload = json;
     if (gangWardrobeBrowser) { gangWardrobeBrowser.execute(`window.setWardrobe(${json})`); return; }
+    const me = mp.players.local;
+    let heading = 0; try { heading = me.getHeading(); } catch (e) {}
+    gangWardrobeReturn = { x: me.position.x, y: me.position.y, z: me.position.z, heading };
+    try { me.position = new mp.Vector3(GANG_WARDROBE_SPOT.x, GANG_WARDROBE_SPOT.y, GANG_WARDROBE_SPOT.z); } catch (e) {}
+    try { me.setHeading(GANG_WARDROBE_SPOT.heading); } catch (e) {}
     gangWardrobeBrowser = mp.browsers.new('package://ui/gangwardrobe/index.html');
+    startPedPreview(); // anchors the camera at the (now clean) wardrobe spot
     mp.gui.cursor.show(true, true);
 });
 function closeGangWardrobe() {
     if (!gangWardrobeBrowser) return;
     gangWardrobeBrowser.destroy(); gangWardrobeBrowser = null;
+    stopPedPreview();
+    if (gangWardrobeReturn) { // teleport back to where the player opened it
+        const me = mp.players.local;
+        try { me.position = new mp.Vector3(gangWardrobeReturn.x, gangWardrobeReturn.y, gangWardrobeReturn.z); } catch (e) {}
+        try { me.setHeading(gangWardrobeReturn.heading); } catch (e) {}
+        gangWardrobeReturn = null;
+    }
+    mp.events.callRemote('gangs:wardrobe:leave'); // restore dimension 0 (leave the private instance)
     mp.gui.cursor.show(false, false);
 }
 mp.events.add('gangs:wardrobe:ready', () => { if (gangWardrobeBrowser && gangWardrobePayload) gangWardrobeBrowser.execute(`window.setWardrobe(${gangWardrobePayload})`); }); // CEF loaded
@@ -1254,6 +1272,8 @@ mp.events.add('gangs:wardrobe:pick', (cat, index) => mp.events.callRemote('gangs
 mp.events.add('gangs:wardrobe:clear', (cat) => mp.events.callRemote('gangs:duty:clear', String(cat)));
 mp.events.add('gangs:wardrobe:off', () => mp.events.callRemote('gangs:duty:off'));
 mp.events.add('gangs:wardrobe:close', closeGangWardrobe);
+mp.events.add('gangs:wardrobe:zone', (cat) => applyPedCamZone(GANG_WARDROBE_ZONE[String(cat)] || 'full')); // tab switch -> reframe
+mp.events.add('gangs:wardrobe:rotate', (deltaPixels) => rotatePedPreview(Number(deltaPixels) * 0.5)); // drag the ped to spin it
 
 mp.events.add('gangs:open', openGangPanel);          // server opened the panel (E at base validated)
 mp.events.add('gangs:forceClose', closeGangPanel);   // server kicked/disbanded — shut the UI
@@ -1489,6 +1509,19 @@ let clothingValid = {};     // { key: [drawable, ...] } — drawables that exist
 let clothingTexCache = {};  // { 'key:drawable': [texture, ...] } — valid textures per drawable
 let clothingNewInfo = null; // { now, newDays, ranges:{key:[{from,to,pack,at}]} } — recently uploaded drawables
 let clothingGender = 'm';   // 'm' | 'f' — picks the GTA Online name table in the shop page
+let clothingIsAdmin = false;   // protected admin -> sees the Disable/Enable toggles in the shop
+let clothingDisabled = [];     // [{cat,d,t}] DB admin-disabled (t:-1 = whole drawable). Drives the admin toggles.
+let clothingHidden = [];       // [{cat,d,t}] colours to hide from THIS client (players: disabled+reserved uniforms; admins: reserved)
+// DB-disabled state (admin toggle button labels).
+function clothingDbItemOff(cat, drawable) { return clothingDisabled.some(x => x.cat === cat && x.d === drawable && x.t === -1); }
+function clothingDbColourOff(cat, drawable, texture) {
+    return clothingDbItemOff(cat, drawable) || clothingDisabled.some(x => x.cat === cat && x.d === drawable && x.t === texture);
+}
+// Hidden-from-me (navigation + swatch filtering + buy block). t:-1 = whole drawable hidden.
+function clothingHiddenItem(cat, drawable) { return clothingHidden.some(x => x.cat === cat && x.d === drawable && x.t === -1); }
+function clothingHiddenOff(cat, drawable, texture) {
+    return clothingHiddenItem(cat, drawable) || clothingHidden.some(x => x.cat === cat && x.d === drawable && x.t === texture);
+}
 // A clean, prop-free spot to stand in while dressing, so store objects never hide the character.
 const DRESSING_SPOT = { x: -1447.805, y: -242.122, z: 49.80, heading: -15.6 };
 // Which body zone to frame the camera on for each category, so the change is clearly visible.
@@ -1575,6 +1608,8 @@ function buildValidDrawables(cat, current) {
     for (let d = 0; d < count; d++) if (cat.kind !== 'comp' || componentValid(cat.id, d, 0)) list.push(d);
     // Validity native missing/misbehaving -> don't lock the shop; offer every counted drawable.
     if (list.length === none.length) { list = none.slice(); for (let d = 0; d < count; d++) list.push(d); }
+    // Drop whole-drawables hidden from this client (players: disabled+reserved; admins: reserved uniforms).
+    list = list.filter(d => d < 0 || !clothingHiddenItem(cat.key, d));
     if (list.indexOf(current) < 0) { list.push(current); list.sort((a, b) => a - b); }
     return list;
 }
@@ -1658,7 +1693,7 @@ function pushClothingData() {
     const categories = clothingOrder.map(buildCat);
     clothingBrowser.execute('window.setClothingData(' + JSON.stringify({
         money: clothingMoney, taxRate: clothingTaxRate, selected: clothingSelected, order: clothingOrder, categories,
-        gender: clothingGender
+        gender: clothingGender, isAdmin: clothingIsAdmin, disabled: clothingDisabled, hidden: clothingHidden
     }) + ')');
 }
 function pushCategory(key) {
@@ -1674,6 +1709,9 @@ mp.events.add('clothing:state', (json) => {
     clothingNude = data.nude || {};
     clothingTopArms = data.topArms || { def: 0, nude: 15, map: {} };
     clothingGender = data.gender === 'f' ? 'f' : 'm';
+    clothingIsAdmin = !!data.isAdmin;
+    clothingDisabled = data.disabled || [];
+    clothingHidden = data.hidden || [];
     clothingTexCache = {}; clothingValid = {};
     clothingCats = {}; clothingOrder = [];
     (data.categories || []).forEach(cat => { clothingCats[cat.key] = cat; clothingOrder.push(cat.key); });
@@ -1697,6 +1735,30 @@ mp.events.add('clothing:state', (json) => {
 mp.events.add('clothing:newInfo', (json) => {
     try { clothingNewInfo = JSON.parse(json); } catch (e) { return; }
     pushClothingData();
+});
+// Server pushed updated disabled/hidden sets (an admin toggled one). Re-render the shop.
+mp.events.add('clothing:disabledUpdate', (json) => {
+    let d; try { d = JSON.parse(json) || {}; } catch (e) { return; }
+    clothingIsAdmin = !!d.isAdmin;
+    clothingDisabled = d.disabled || [];
+    clothingHidden = d.hidden || [];
+    pushClothingData();
+});
+// Admin clicked Disable/Enable on the currently-previewed colour (DB-backed toggle).
+mp.events.add('clothing:ui:toggleDisabled', (key) => {
+    if (!clothingIsAdmin || !clothingCats || !clothingCats[key]) return;
+    const sel = clothingPreview[key];
+    if (!sel || sel.drawable < 0) return;
+    const disable = !clothingDbColourOff(key, sel.drawable, sel.texture);
+    mp.events.callRemote('clothing:toggleDisabled', key, sel.drawable, sel.texture, disable);
+});
+// Admin clicked Disable/Enable on the WHOLE item (all colours of this drawable) — texture -1 sentinel.
+mp.events.add('clothing:ui:toggleItem', (key) => {
+    if (!clothingIsAdmin || !clothingCats || !clothingCats[key]) return;
+    const sel = clothingPreview[key];
+    if (!sel || sel.drawable < 0) return;
+    const disable = !clothingDbItemOff(key, sel.drawable);
+    mp.events.callRemote('clothing:toggleDisabled', key, sel.drawable, -1, disable);
 });
 mp.events.add('clothing:ui:select', (key) => {
     if (!clothingCats || !clothingCats[key]) return;
@@ -1730,6 +1792,7 @@ mp.events.add('clothing:ui:add', (key) => {
     const cat = clothingCats[key];
     const sel = clothingPreview[key];
     if (sel.drawable < 0) return; // "none" isn't a buyable item
+    if (clothingHiddenOff(key, sel.drawable, sel.texture)) return; // disabled or reserved — not buyable here
     const price = catPrice(cat, sel.drawable).total;
     const label = cat.label + ' #' + (sel.drawable + 1) + (sel.texture ? '/' + (sel.texture + 1) : '');
     clothingCart.push({ cat: key, d: sel.drawable, t: sel.texture, label, price });

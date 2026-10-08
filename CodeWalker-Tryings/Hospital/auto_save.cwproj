@@ -1,0 +1,20 @@
+<CodeWalkerProject>
+  <Name>CMS</Name>
+  <Version value="1" />
+  <YmapFilenames>
+    <Item>rc12b_default.ymap</Item>
+  </YmapFilenames>
+  <YtypFilenames>
+    <Item>v_int_40.ytyp</Item>
+  </YtypFilenames>
+  <YbnFilenames />
+  <YndFilenames />
+  <YnvFilenames />
+  <TrainsFilenames />
+  <ScenarioFilenames />
+  <AudioRelFilenames />
+  <YdrFilenames />
+  <YddFilenames />
+  <YftFilenames />
+  <YtdFilenames />
+</CodeWalkerProject>

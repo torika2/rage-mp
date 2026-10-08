@@ -31,8 +31,8 @@ const REQUEST_IPLS = [
     'hei_sm_16_interior_v_bahama_milo_', 'CS3_07_MPGates', 'cs5_4_trains', 'v_lesters',
     'v_trevors', 'v_michael', 'v_comedy', 'v_cinema',
     'V_Sweat', 'V_35_Fireman', 'redCarpet', 'triathlon2_VBprops',
-    'jetstenativeurnel', 'Jetsteal_ipl_grp1', 'v_hospital',
-    'RC12B_HospitalInterior', 'canyonriver01', 'canyonriver01_lod', 'cs3_05_water_grp1',
+    'jetstenativeurnel', 'Jetsteal_ipl_grp1',
+    'canyonriver01', 'canyonriver01_lod', 'cs3_05_water_grp1',
     'cs3_05_water_grp1_lod', 'trv1_trail_start', 'CanyonRvrShallow', 'vw_casino_penthouse',
     'vw_casino_main', 'vw_casino_carpark', 'vw_dlc_casino_door', 'vw_casino_door',
     'hei_dlc_windows_casino', 'hei_dlc_casino_door', 'hei_dlc_casino_aircon', 'vw_casino_garage',
@@ -46,12 +46,12 @@ const REMOVE_IPLS = [
     'id2_14_during2', 'id2_14_on_fire', 'id2_14_post_no_int', 'id2_14_pre_no_int',
     'Coroner_Int_off', 'bh1_16_refurb', 'jewel2fake', 'bh1_16_doors_shut',
     'ch1_02_closed', 'scafstartimap', 'DT1_05_HC_REMOVE', 'DT1_03_Shutter',
-    'DT1_03_Gr_Closed', 'RC12B_Default', 'RC12B_Fixed',
+    'DT1_03_Gr_Closed',
 ];
 
 // --- Map blips at interior entrances: { name, sprite, x, y, z } ---
 const INTERIOR_BLIPS = [
-    { name: 'Hospital', sprite: 61, x: 305.0, y: -583.0, z: 43.0 }, // Central LS Medical Center (v_hospital) — same Pillbox site as the custom Pill Box Hospital
+    { name: 'Hospital', sprite: 61, x: 305.0, y: -583.0, z: 43.0 }, // Central LS Medical Center (v_hospital)
     { name: 'Mankanebis Maghazia', sprite: 225, color: 3, x: -47.162, y: -1115.333, z: 26.5 },
     { name: 'Trevor\'s Trailer', sprite: 40, x: 1985.481, y: 3828.768, z: 32.5 },
     { name: 'Jewel Store', sprite: 439, x: -637.202, y: -239.162, z: 38.1 },

@@ -18,6 +18,20 @@ python3 tools/rpf/pack_dlc.py <packname> <srcdir> client_packages/game_resources
 - After building, add a `dlc_registry.json` entry (see any existing pack) and deploy:
   `sudo systemctl restart rageserv`, then reconnect the client.
 
+## Pack a custom MAP (`.ymap`) into a streaming level pack
+
+```bash
+python3 tools/rpf/build_map_dlc.py <packname> <ymap_rsc7> \
+  client_packages/game_resources/dlcpacks/<packname>/dlc.rpf [_manifest.ymf]
+```
+
+- Builds a **level pack** (`EXTRACONTENT_LEVEL_PACK`, map-streaming changeset,
+  `custom_maps.rpf` with `CONTENTS_DLC_MAP_DATA`) — the wiring a `.ymap` needs to actually
+  stream, unlike `pack_dlc.py`'s plain mount.
+- The optional 4th arg packs a `_manifest.ymf` beside the ymap. **A map DLC will not render
+  without that manifest, and it can only be generated in CodeWalker** (big-endian PSO resource).
+- Full worked example and the start-to-finish recipe: [`docs/17-pillbox-hospital-interior.md`](../../docs/17-pillbox-hospital-interior.md).
+
 ## Inspect any archive
 
 ```bash

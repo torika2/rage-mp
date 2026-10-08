@@ -1,0 +1,23 @@
+<CodeWalkerProject>
+  <Name>New CodeWalker Project</Name>
+  <Version value="1" />
+  <YmapFilenames>
+    <Item>rc12b_fixed.ymap</Item>
+    <Item>rc12b_default.ymap</Item>
+    <Item>dt1_06_strm_0.ymap</Item>
+  </YmapFilenames>
+  <YtypFilenames>
+    <Item>v_int_31.ytyp</Item>
+    <Item>v_int_40.ytyp</Item>
+  </YtypFilenames>
+  <YbnFilenames />
+  <YndFilenames />
+  <YnvFilenames />
+  <TrainsFilenames />
+  <ScenarioFilenames />
+  <AudioRelFilenames />
+  <YdrFilenames />
+  <YddFilenames />
+  <YftFilenames />
+  <YtdFilenames />
+</CodeWalkerProject>

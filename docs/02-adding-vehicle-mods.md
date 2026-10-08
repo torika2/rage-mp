@@ -6,10 +6,18 @@ Follow every step — most "it spawns a default car" problems are a skipped step
 ## TL;DR
 
 ```
-client_packages/game_resources/dlcpacks/<INTERNAL_NAME>/dlc.rpf
+client_packages/game_resources/dlcpacks/<name>/dlc.rpf
 ```
 
-- `<INTERNAL_NAME>` **must** match the mod's own DLC name.
+> ⚠️ **The "free-form / prefix convention" below is UNVERIFIED and broke every mod on this server.**
+> A mass `car_`/`cloth_`/`map_`/`sound_` prefix rename stopped all add-ons loading (even after a full
+> relaunch); the known-good state is **unprefixed folder names matching each pack's internal
+> `nameHash`**. See **[16-dlcpack-folder-naming.md](16-dlcpack-folder-naming.md)**. Until the prefix
+> convention is actually proven in-game, name a new folder to match its `nameHash` and don't rename
+> existing ones.
+
+- Name the folder to match the pack's internal `nameHash` (see doc 16). The model itself resolves by
+  the spawn name in `vehicles.meta`, not the folder (golden rule #5) — see Step 3.
 - Restart server → **fully relaunch** GTA client → reconnect → `/car <spawnname>`.
 
 ---
@@ -52,10 +60,12 @@ cp /tmp/out/.../dlc.rpf \
    /opt/ragemp-srv/client_packages/game_resources/dlcpacks/<INTERNAL_NAME>/dlc.rpf
 ```
 
-**The folder name matters.** RAGE:MP mounts the DLC under that folder name; if it doesn't
-match the add-on's internal name, the model won't resolve and you get a default car.
-Example: the BMW pack's internal name is `g82adro`, so the folder must be `g82adro`
-(naming it `bmwm5` breaks it).
+**Folder naming:** use `<INTERNAL_NAME>` = the pack's internal `nameHash` (unprefixed). The *model*
+resolves by the `<modelName>` baked in `vehicles.meta`, **not** the folder (golden rule #5) — that's
+why a folder can spawn a differently-named model. But do **not** rely on that to rename working
+folders: a mass category-prefix rename (`car_`/`cloth_`/`map_`/`sound_`) broke **every** add-on on
+this server and reverting to unprefixed names fixed it. The prefix convention is **UNVERIFIED** — see
+**[16-dlcpack-folder-naming.md](16-dlcpack-folder-naming.md)**.
 
 ## Step 4 — Restart the server
 
