@@ -5,12 +5,10 @@ const fs = require('fs');
 const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'government.json');
-const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+const data = global.kv.load('government', DATA_FILE, {});
 
 function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    fs.writeFileSync(temporaryFile, JSON.stringify(data, null, 2));
-    fs.renameSync(temporaryFile, DATA_FILE);
+    global.kv.save('government', data, DATA_FILE);
 }
 
 function accountKey(player) {

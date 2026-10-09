@@ -14,6 +14,7 @@ import { CarKeysModule } from './car-keys/car-keys.module';
 import { CarTuningModule } from './car-tuning/car-tuning.module';
 import { GangsModule } from './gangs/gangs.module';
 import { ClothingModule } from './clothing/clothing.module';
+import { KvModule } from './kv/kv.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ClothingModule } from './clothing/clothing.module';
     CarTuningModule,
     GangsModule,
     ClothingModule,
+    KvModule,
   ],
   providers: [
     // Protect every endpoint with the shared API key by default.

@@ -11,10 +11,9 @@ const SAVE_INTERVAL_MS = 20 * 1000; // autosave live position/fuel
 const FUEL_MAX = 100;
 
 let store = {};
-try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
+store = global.kv.load('vehicles', DATA_FILE, {});
 function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
+    global.kv.save('vehicles', store, DATA_FILE);
 }
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
 // Tag a vehicle with its owner (Social Club key) so only the owner — or a driver they gave a key to —

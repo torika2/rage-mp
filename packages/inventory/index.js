@@ -172,7 +172,9 @@ const VEST_COMPONENT = 9;
 const VEST_LOOK = { drawable: 1, texture: 0 };
 function setVestLook(player, on) {
     try {
-        if (on) player.setClothes(VEST_COMPONENT, VEST_LOOK.drawable, VEST_LOOK.texture, 0);
+        // player.vestSkin = optional {d,t} override set by a uniform locker (packages/police) — "armour skin".
+        const skin = player.vestSkin;
+        if (on) player.setClothes(VEST_COMPONENT, skin ? skin.d : VEST_LOOK.drawable, skin ? skin.t : VEST_LOOK.texture, 0);
         else player.setClothes(VEST_COMPONENT, 0, 0, 0);
     } catch (e) {}
 }

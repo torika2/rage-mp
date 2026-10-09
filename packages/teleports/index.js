@@ -6,13 +6,10 @@ const fs = require('fs');
 const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'points.json');
-let points = {};
-try { points = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { points = {}; }
+let points = global.kv.load('teleports', DATA_FILE, {});
 
 function save() {
-    const tmp = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(tmp, JSON.stringify(points, null, 2)); fs.renameSync(tmp, DATA_FILE); }
-    catch (e) { console.log('[teleports] save failed: ' + (e && e.message)); }
+    global.kv.save('teleports', points, DATA_FILE);
 }
 
 function tell(player, msg) { player.outputChatBox('!{#7ec8ff}[ტელეპორტი] !{#ffffff}' + msg); }

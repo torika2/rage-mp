@@ -215,6 +215,73 @@ global.api = {
         apiRequest('POST', '/clothing/disabled/enable', { gender, cat, drawable, texture }),
 };
 
+// ===================== World/shared state in SQL (kv_store) =====================
+// Packages that used to keep one JSON file (houses.json, police.json, ...) store the same document
+// in the API's kv_store table instead:
+//   const data = global.kv.load('police', path.join(__dirname, 'police.json'), defaultValue);
+//   global.kv.save('police', data);   // after every change (coalesced; never blocks the tick)
+// load() is synchronous (startup only): it asks the API through curl. If the API has no row yet, the
+// legacy JSON file is imported into SQL once; if the API is unreachable the JSON file is the fallback.
+// save() also mirrors to the JSON file (atomic) so a down API never loses data.
+const kvFs = require('fs');
+const kvChild = require('child_process');
+const kvInFlight = {};
+const kvDirty = {};
+
+function kvReadFile(file, fallback) {
+    if (!file) return fallback;
+    try { return JSON.parse(kvFs.readFileSync(file, 'utf8')); } catch (e) { return fallback; }
+}
+function kvWriteFile(file, value) {
+    if (!file) return;
+    try {
+        const tmp = file + '.tmp';
+        kvFs.writeFileSync(tmp, JSON.stringify(value));
+        kvFs.renameSync(tmp, file);
+    } catch (e) { /* mirror is best-effort */ }
+}
+function kvPush(name) {
+    if (kvInFlight[name]) { kvDirty[name] = true; return; }
+    const entry = kvStore[name];
+    if (!entry) return;
+    kvInFlight[name] = true;
+    kvDirty[name] = false;
+    apiRequest('PUT', '/kv/' + encodeURIComponent(name), { value: entry.get() })
+        .catch((e) => { console.log('[kv] save failed for ' + name + ': ' + (e && e.message)); })
+        .then(() => { kvInFlight[name] = false; if (kvDirty[name]) kvPush(name); });
+}
+const kvStore = {};
+
+global.kv = {
+    load: (name, file, fallback) => {
+        let remote = null;
+        try {
+            const out = kvChild.execFileSync('curl', [
+                '-s', '-m', '5', '-f',
+                '-H', 'Authorization: Bearer ' + apiConfig.apiKey,
+                apiConfig.baseUrl + '/kv/' + encodeURIComponent(name),
+            ], { maxBuffer: 256 * 1024 * 1024 });
+            remote = JSON.parse(out.toString('utf8'));
+        } catch (e) {
+            console.log('[kv] API unreachable for ' + name + ' — using ' + (file ? require('path').basename(file) : 'defaults'));
+            return kvReadFile(file, fallback);
+        }
+        if (remote && remote.exists) return remote.value;
+        // First run on SQL: import the legacy JSON document (or the default) so nothing is lost.
+        const imported = kvReadFile(file, fallback);
+        apiRequest('PUT', '/kv/' + encodeURIComponent(name), { value: imported })
+            .then(() => console.log('[kv] imported ' + name + ' into SQL'))
+            .catch((e) => console.log('[kv] import failed for ' + name + ': ' + (e && e.message)));
+        return imported;
+    },
+    // `value` may be the live object (re-read on each push) — pass the same reference you loaded.
+    save: (name, value, file) => {
+        kvStore[name] = { get: () => value };
+        kvWriteFile(file, value);
+        kvPush(name);
+    },
+};
+
 // ===================== Character persistence (DB is the source of truth) =====================
 // Packages keep their per-player state in memory (keyed by Social Club) and register here:
 //   global.onCharacterLoad((player, character, firstTime) => ...)  — hydrate memory from the DB

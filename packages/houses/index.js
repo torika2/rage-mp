@@ -62,7 +62,7 @@ const SEED_BUILDINGS = [
 ];
 
 let data = { next: 1, houses: {}, interiors: {}, buildings: {} };
-try { data = Object.assign(data, JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))); } catch (e) {}
+data = Object.assign(data, global.kv.load('houses', DATA_FILE, {}));
 // Houses from before interiors existed were all real-door (walk-in) houses.
 Object.values(data.houses).forEach(house => { if (house.interior === undefined) house.interior = 'walkin'; });
 if (!data.buildings) data.buildings = {};
@@ -113,8 +113,7 @@ if (data.worldImport !== 2) {
 function unitsOf(key) { return Object.values(data.houses).filter(h => h.building === key).sort((a, b) => a.id - b.id); }
 function buildingName(house) { return house.building && data.buildings[house.building] ? data.buildings[house.building].name : null; }
 function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(data, null, 2)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
+    global.kv.save('houses', data, DATA_FILE);
 }
 
 function keyOf(player) { return String(player.socialClub || '').trim().toLowerCase(); }

@@ -1,10 +1,13 @@
 import { NestFactory, Reflector } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger, ClassSerializerInterceptor } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { DbErrorFilter } from './common/db-error.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Whole-document KV saves (houses, parking, ...) can exceed express's 100kb default body limit.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useBodyParser('json', { limit: '25mb' });
 
   // Reject unknown/invalid fields in request bodies.
   app.useGlobalPipes(

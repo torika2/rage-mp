@@ -7,10 +7,9 @@ const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'phone.json');
 let store = {};
-try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
+store = global.kv.load('phone', DATA_FILE, {});
 function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
+    global.kv.save('phone', store, DATA_FILE);
 }
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }
 function genNumber() { return String(Math.floor(1000000 + Math.random() * 9000000)); }

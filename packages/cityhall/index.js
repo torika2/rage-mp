@@ -44,12 +44,12 @@ const ID_FEE = 200;        // first ID card or replacement, paid into the treasu
 const ID_MIN_AGE = 16, ID_MAX_AGE = 100;
 const SHOW_RANGE = 3.0;    // metres: who sees the card when you show it
 
+// Stored in SQL (kv_store); the JSON files are only the first-run import source / API-down fallback.
 function readJson(file, fallback) {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return fallback; }
+    return global.kv.load(path.basename(file, '.json') === 'cityhall' ? 'cityhall' : 'cityhall_ids', file, fallback);
 }
 function writeJson(file, value) {
-    const temporaryFile = file + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(value, null, 2)); fs.renameSync(temporaryFile, file); } catch (e) {}
+    global.kv.save(path.basename(file, '.json') === 'cityhall' ? 'cityhall' : 'cityhall_ids', value, file);
 }
 
 let points = Object.assign({}, DEFAULT_POINTS, readJson(POINTS_FILE, {}));

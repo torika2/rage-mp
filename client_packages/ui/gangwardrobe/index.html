@@ -68,7 +68,7 @@
   const trigger = (n, ...a) => { if (RAGE) mp.trigger(n, ...a); };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 
-  const CAT_LABELS = { top:'ზედა', undershirt:'მაისური', pants:'შარვალი', shoes:'ფეხსაცმელი', mask:'ნიღაბი', hat:'ქუდი', glasses:'სათვალე', bag:'ჩანთა', neck:'აქსესუარი', decal:'ემბლემა', ears:'საყურე', watch:'საათი', bracelet:'სამაჯური' };
+  const CAT_LABELS = { top:'ზედა', undershirt:'მაისური', pants:'შარვალი', shoes:'ფეხსაცმელი', mask:'ნიღაბი', hat:'ქუდი', glasses:'სათვალე', bag:'ჩანთა', neck:'აქსესუარი', decal:'ემბლემა', ears:'საყურე', watch:'საათი', bracelet:'სამაჯური', vest:'ჟილეტი' };
   let state = null, tab = null;
 
   window.setWardrobe = (data) => {

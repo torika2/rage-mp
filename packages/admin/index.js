@@ -8,13 +8,12 @@ const FLY_ADMINS = new Set(['sephigr', 'torika2']);
 // Dynamic admins granted via the panel, persisted by Social Club (lowercase) in admins.json.
 const ADMINS_FILE = path.join(__dirname, 'admins.json');
 let grantedAdmins = new Set();
-try {
-    const d = JSON.parse(fs.readFileSync(ADMINS_FILE, 'utf8'));
+{
+    const d = global.kv.load('admin_admins', ADMINS_FILE, { admins: [] });
     if (d && Array.isArray(d.admins)) grantedAdmins = new Set(d.admins.map(s => String(s).trim().toLowerCase()).filter(Boolean));
-} catch (e) { grantedAdmins = new Set(); }
+}
 function saveAdmins() {
-    const temporaryFile = ADMINS_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify({ admins: [...grantedAdmins] }, null, 2)); fs.renameSync(temporaryFile, ADMINS_FILE); } catch (e) {}
+    global.kv.save('admin_admins', { admins: [...grantedAdmins] }, ADMINS_FILE);
 }
 const MODERATION_FILE = path.join(__dirname, 'moderation.json');
 const MODERATION_DURATIONS = new Map([
@@ -26,7 +25,7 @@ const MODERATION_DURATIONS = new Map([
     [604800, '7 days'],
     [0, 'permanently']
 ]);
-const moderation = JSON.parse(fs.readFileSync(MODERATION_FILE, 'utf8'));
+const moderation = global.kv.load('admin_moderation', MODERATION_FILE, { version: 1, mutes: {}, bans: {} });
 if (!moderation || moderation.version !== 1 ||
     !moderation.mutes || typeof moderation.mutes !== 'object' || Array.isArray(moderation.mutes) ||
     !moderation.bans || typeof moderation.bans !== 'object' || Array.isArray(moderation.bans)) {
@@ -49,9 +48,7 @@ moderation.mutes = Object.assign(Object.create(null), moderation.mutes);
 moderation.bans = Object.assign(Object.create(null), moderation.bans);
 
 function saveModeration() {
-    const temporaryFile = MODERATION_FILE + '.tmp';
-    fs.writeFileSync(temporaryFile, JSON.stringify(moderation, null, 2));
-    fs.renameSync(temporaryFile, MODERATION_FILE);
+    global.kv.save('admin_moderation', moderation, MODERATION_FILE);
 }
 
 function accountKey(player) {

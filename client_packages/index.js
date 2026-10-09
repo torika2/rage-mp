@@ -939,7 +939,7 @@ function toggleVehicleLock(fromVehicleMenu = false, targetVehicle = null) {
 
 // ---------- CEF shop menu (Ammu-Nation / 24-7 market) ----------
 let shopBrowser = null;
-let shopMode = null; // 'weapons' | 'market'
+let shopMode = null; // 'weapons' | 'market' | 'armoury' (LSPD craft)
 function openShopUI(mode) {
     if (shopBrowser || chatting || adminBrowser || fuelUIOpen || vehicleMenuBrowser) return;
     shopMode = mode;
@@ -959,7 +959,7 @@ function closeShopUI() {
 }
 function requestShopData() {
     if (!shopBrowser || !shopMode) return;
-    mp.events.callRemote(shopMode === 'weapons' ? 'shop:requestData' : 'market:requestData');
+    mp.events.callRemote(shopMode === 'weapons' ? 'shop:requestData' : shopMode === 'armoury' ? 'police:armoury:data' : shopMode === 'garage' ? 'police:garage:data' : 'market:requestData');
 }
 mp.events.add('shop:uiReady', requestShopData);                       // UI loaded -> pull catalog
 mp.events.add('shop:setData', (json) => { if (shopBrowser) shopBrowser.execute(`window.setShopData(${json})`); });
@@ -967,10 +967,49 @@ mp.events.add('shop:purchase', (key, qty) => {                        // Buy cli
     if (!shopMode) return;
     const amount = Math.max(1, Math.min(99, parseInt(qty) || 1));
     if (shopMode === 'weapons') mp.events.callRemote(String(key) === 'armor' ? 'shop:buyArmor' : 'shop:buyWeapon', String(key), amount); // amount = ammo boxes
+    else if (shopMode === 'armoury') mp.events.callRemote('police:armoury:craft', String(key), amount);
+    else if (shopMode === 'garage') mp.events.callRemote('police:garage:spawn', String(key));
     else mp.events.callRemote('market:buy', String(key), amount);
     setTimeout(requestShopData, 200);                                // refresh balance after purchase
 });
 mp.events.add('shop:close', closeShopUI);
+
+// ---------- LSPD armoury craft station (packages/police) ----------
+// Mission Row, inside the station. Ground ring + "E" prompt for on-duty officers; the server re-checks
+// duty/rank/distance on open and on every craft, so this is only presentation.
+const POLICE_ARMOURY = { x: 452.471, y: -980.151, z: 30.689 };
+try { mp.markers.new(27, new mp.Vector3(POLICE_ARMOURY.x, POLICE_ARMOURY.y, POLICE_ARMOURY.z - 0.95), 0.9, { color: [75, 156, 224, 150], visible: true }); } catch (e) {}
+function policeArmouryNear() {
+    const me = mp.players.local;
+    if (me.vehicle || Number(me.dimension) !== 0 || me.getVariable('police:roster') !== true) return false; // roster only; the server says "go on duty" if needed
+    const p = me.position, dx = p.x - POLICE_ARMOURY.x, dy = p.y - POLICE_ARMOURY.y, dz = p.z - POLICE_ARMOURY.z;
+    return dx * dx + dy * dy + dz * dz <= 4.84; // 2.2 m (server gate is 2.5)
+}
+const POLICE_LOCKER_SPOT = { x: 451.769, y: -991.502, z: 30.689, heading: -93.6 }; // where the outfit preview stands while the locker UI is open
+const POLICE_LOCKER = { x: 456.519, y: -989.062, z: 30.689 };
+try { mp.markers.new(27, new mp.Vector3(POLICE_LOCKER.x, POLICE_LOCKER.y, POLICE_LOCKER.z - 0.95), 0.9, { color: [75, 156, 224, 150], visible: true }); } catch (e) {}
+function policeLockerNear() {
+    const me = mp.players.local;
+    if (me.vehicle || Number(me.dimension) !== 0) return false;
+    const p = me.position, dx = p.x - POLICE_LOCKER.x, dy = p.y - POLICE_LOCKER.y, dz = p.z - POLICE_LOCKER.z;
+    return dx * dx + dy * dy + dz * dz <= 4.84; // 2.2 m (server gate is 2.5)
+}
+const POLICE_GARAGE = { x: 457.487, y: -1008.553, z: 28.301 };
+try { mp.markers.new(27, new mp.Vector3(POLICE_GARAGE.x, POLICE_GARAGE.y, POLICE_GARAGE.z - 0.95), 1.2, { color: [75, 156, 224, 150], visible: true }); } catch (e) {}
+function policeGarageNear() {
+    const me = mp.players.local;
+    if (me.vehicle || Number(me.dimension) !== 0 || me.getVariable('police:roster') !== true) return false;
+    const p = me.position, dx = p.x - POLICE_GARAGE.x, dy = p.y - POLICE_GARAGE.y, dz = p.z - POLICE_GARAGE.z;
+    return dx * dx + dy * dy + dz * dz <= 4.84; // 2.2 m (server gate is 2.5)
+}
+mp.events.add('police:garage:ui', () => openShopUI('garage'));
+mp.events.add('police:armoury:ui', () => openShopUI('armoury'));
+mp.events.add('render', () => {
+    if (anyModalOpen()) return;
+    if (policeArmouryNear()) setInteract('LSPD Armoury');
+    else if (policeGarageNear()) setInteract('LSPD Garage');
+    else if (policeLockerNear() && mp.players.local.getVariable('police:roster') === true) setInteract('LSPD Locker');
+});
 
 // ---------- Car shop (dealership) ----------
 // Server opens it with 'carshop:open' (after /buycar near the dealership). The CEF pulls the
@@ -1237,22 +1276,28 @@ function closeGangPanel() {
 }
 // Duty wardrobe menu (curated uniforms). The server validates proximity/membership and pushes the list.
 // Which body zone to frame the preview camera on, per clothing category (so you see what you equip).
-const GANG_WARDROBE_ZONE = { top: 'upper', undershirt: 'upper', pants: 'lower', shoes: 'shoes', mask: 'head', hat: 'head', glasses: 'head', neck: 'upper', ears: 'head', watch: 'lower', bracelet: 'lower' };
+const GANG_WARDROBE_ZONE = { top: 'upper', undershirt: 'upper', pants: 'lower', shoes: 'shoes', mask: 'head', hat: 'head', glasses: 'head', neck: 'upper', ears: 'head', watch: 'lower', bracelet: 'lower', vest: 'upper' };
 // Clean, prop-free spot to stand in while using the wardrobe (paired with a private dimension server-side).
 const GANG_WARDROBE_SPOT = { x: 88.523, y: -1955.024, z: 20.817, heading: -36.9 };
 let gangWardrobeBrowser = null, gangWardrobePayload = null, gangWardrobeReturn = null;
-mp.events.add('gangs:wardrobe:open', (json) => {
+let wardrobeOwner = 'gangs'; // which server package drives the open wardrobe UI: 'gangs' | 'police' (LSPD locker)
+const wardrobeRemote = (name) => (wardrobeOwner === 'police' ? 'police:' : 'gangs:') + name;
+function openWardrobeFrom(owner, json) {
+    if (!gangWardrobeBrowser) wardrobeOwner = owner;
     gangWardrobePayload = json;
     if (gangWardrobeBrowser) { gangWardrobeBrowser.execute(`window.setWardrobe(${json})`); return; }
     const me = mp.players.local;
     let heading = 0; try { heading = me.getHeading(); } catch (e) {}
     gangWardrobeReturn = { x: me.position.x, y: me.position.y, z: me.position.z, heading };
-    try { me.position = new mp.Vector3(GANG_WARDROBE_SPOT.x, GANG_WARDROBE_SPOT.y, GANG_WARDROBE_SPOT.z); } catch (e) {}
-    try { me.setHeading(GANG_WARDROBE_SPOT.heading); } catch (e) {}
+    const spot = wardrobeOwner === 'police' ? POLICE_LOCKER_SPOT : GANG_WARDROBE_SPOT; // LSPD: preview spot inside the locker room (private dimension)
+    try { me.position = new mp.Vector3(spot.x, spot.y, spot.z); } catch (e) {}
+    try { me.setHeading(spot.heading); } catch (e) {}
     gangWardrobeBrowser = mp.browsers.new('package://ui/gangwardrobe/index.html');
     startPedPreview(); // anchors the camera at the (now clean) wardrobe spot
     mp.gui.cursor.show(true, true);
-});
+}
+mp.events.add('gangs:wardrobe:open', (json) => openWardrobeFrom('gangs', json));
+mp.events.add('police:wardrobe:open', (json) => openWardrobeFrom('police', json));
 function closeGangWardrobe() {
     if (!gangWardrobeBrowser) return;
     gangWardrobeBrowser.destroy(); gangWardrobeBrowser = null;
@@ -1263,14 +1308,14 @@ function closeGangWardrobe() {
         try { me.setHeading(gangWardrobeReturn.heading); } catch (e) {}
         gangWardrobeReturn = null;
     }
-    mp.events.callRemote('gangs:wardrobe:leave'); // restore dimension 0 (leave the private instance)
+    mp.events.callRemote(wardrobeRemote('wardrobe:leave')); // restore dimension 0 (leave the private instance)
     mp.gui.cursor.show(false, false);
 }
 mp.events.add('gangs:wardrobe:ready', () => { if (gangWardrobeBrowser && gangWardrobePayload) gangWardrobeBrowser.execute(`window.setWardrobe(${gangWardrobePayload})`); }); // CEF loaded
 // Equip a piece / clear a slot — the server re-sends the wardrobe so the UI stays open and updates live.
-mp.events.add('gangs:wardrobe:pick', (cat, index) => mp.events.callRemote('gangs:duty:pick', String(cat), String(index)));
-mp.events.add('gangs:wardrobe:clear', (cat) => mp.events.callRemote('gangs:duty:clear', String(cat)));
-mp.events.add('gangs:wardrobe:off', () => mp.events.callRemote('gangs:duty:off'));
+mp.events.add('gangs:wardrobe:pick', (cat, index) => mp.events.callRemote(wardrobeRemote('duty:pick'), String(cat), String(index)));
+mp.events.add('gangs:wardrobe:clear', (cat) => mp.events.callRemote(wardrobeRemote('duty:clear'), String(cat)));
+mp.events.add('gangs:wardrobe:off', () => mp.events.callRemote(wardrobeRemote('duty:off')));
 mp.events.add('gangs:wardrobe:close', closeGangWardrobe);
 mp.events.add('gangs:wardrobe:zone', (cat) => applyPedCamZone(GANG_WARDROBE_ZONE[String(cat)] || 'full')); // tab switch -> reframe
 mp.events.add('gangs:wardrobe:rotate', (deltaPixels) => rotatePedPreview(Number(deltaPixels) * 0.5)); // drag the ped to spin it
@@ -3463,6 +3508,9 @@ bindKey(0x45, false, () => { // E — refuel (in vehicle), pick up a dropped ite
         mp.events.callRemote('gangs:openPanel');
         return;
     } }
+    if (policeGarageNear()) { mp.events.callRemote('police:garage:open'); return; } // LSPD car spawner
+    if (policeLockerNear()) { mp.events.callRemote('police:wardrobe'); return; } // LSPD uniform locker
+    if (policeArmouryNear()) { notify('LSPD Armoury...'); mp.events.callRemote('police:armoury:open'); return; } // LSPD armoury craft
     if (eligibleToRefuel(mp.players.local.vehicle)) { openFuelUI(); return; }
     const drop = findNearDrop();
     if (drop) { mp.events.callRemote('inventory:pickup', drop.id); return; }

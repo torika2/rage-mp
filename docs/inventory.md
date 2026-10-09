@@ -105,6 +105,14 @@ geometry in the model (e.g. chrome Audi rings), wheel centre caps, tyre sidewall
 (`git checkout -- client_packages/game_resources/dlcpacks/<pack>/dlc.rpf` restores one). The `dlc.rpf` files are
 patched in place, so re-downloading a pack from its source brings the logos back.
 
+### LSPD pack (11john11, v3.1) — added 2026-10-09
+
+Folder `11john11_lspd_pack` (unprefixed, = internal `nameHash`, per doc 16). Single `dlc.rpf` (67,386,368 bytes), OPEN.
+Spawn names: `swatstalker`, `polsadlerk9`, `polalamoold`, `lspdb`, `polriot`, `police42OLD`, `pscout`, `pscoutnew`,
+`polspeedo`, `poleveron`, `policeold`, `policeslick`. Liveries: carvariations present (35 true flags; per-model livery/extra
+selection via `/livery`). Not installed: readme's vanilla `police/police2/3/4` vehicles.meta replacement, `LSPDFR configs/*.xml`,
+`improved handling lines (optional).txt` (singleplayer/LSPDFR only).
+
 ## Map / interiors (no spawn — go to the location)
 
 | Mod | Folder | Notes | Status |

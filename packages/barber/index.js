@@ -40,10 +40,9 @@ const DEFAULT_BLEND = { m: [0, 0, 0, 0, 0, 0, 0.5, 0.5, 0], f: [21, 21, 0, 21, 2
 
 const DATA_FILE = path.join(__dirname, 'barber.json');
 let store = {};
-try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { store = {}; }
+store = global.kv.load('barber', DATA_FILE, {});
 function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
+    global.kv.save('barber', store, DATA_FILE);
 }
 
 function keyOf(player) { return String(player.socialClub || player.name || ('id' + player.id)); }

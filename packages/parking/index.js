@@ -25,10 +25,10 @@ const LOTS = [];
 // ---- Persistence ----
 // spots: spotId -> rental { owner, ownerName, expiresAt }; customSpots: admin-placed spot definitions.
 let store = { spots: {}, customSpots: [] };
-try {
-    const loaded = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+{
+    const loaded = global.kv.load('parking', DATA_FILE, null);
     if (loaded && typeof loaded === 'object') store = { spots: loaded.spots || {}, customSpots: loaded.customSpots || [] };
-} catch (e) { store = { spots: {}, customSpots: [] }; }
+}
 // Storage was removed: drop any legacy stored-car blobs / slot capacities left on rentals. The cars
 // still exist as DB rows (parking only ever despawned them), so they stay respawnable for free.
 Object.keys(store.spots).forEach(id => {
@@ -36,8 +36,7 @@ Object.keys(store.spots).forEach(id => {
     delete r.cars; delete r.car; delete r.slots;
 });
 function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(store)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
+    global.kv.save('parking', store, DATA_FILE);
 }
 
 // ---- Helpers ----

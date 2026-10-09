@@ -127,10 +127,9 @@ const OVERRIDE_FILE = path.join(__dirname, 'data', 'torso_overrides.json');
 let TORSO = { m: {}, f: {} };
 try { TORSO = Object.assign(TORSO, JSON.parse(fs.readFileSync(TORSO_FILE, 'utf8'))); } catch (e) { console.log('[clothing] besttorso.json missing — run tools/gen-clothing-data.py'); }
 let torsoOverrides = { m: {}, f: {} };
-try { torsoOverrides = Object.assign(torsoOverrides, JSON.parse(fs.readFileSync(OVERRIDE_FILE, 'utf8'))); } catch (e) {}
+torsoOverrides = Object.assign(torsoOverrides, global.kv.load('clothing_torso_overrides', OVERRIDE_FILE, {}));
 function saveOverrides() {
-    const temporaryFile = OVERRIDE_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(torsoOverrides)); fs.renameSync(temporaryFile, OVERRIDE_FILE); } catch (e) {}
+    global.kv.save('clothing_torso_overrides', torsoOverrides, OVERRIDE_FILE);
 }
 const FREEMODE_MALE = mp.joaat('mp_m_freemode_01');
 const FREEMODE_FEMALE = mp.joaat('mp_f_freemode_01');

@@ -23,6 +23,8 @@ Operational docs for this RAGE:MP (GTA V multiplayer) server.
 | [16-dlcpack-folder-naming.md](16-dlcpack-folder-naming.md) | **dlcpack folder naming: prefix rename broke all mods; keep folder = internal `nameHash`** |
 | [17-pillbox-hospital-interior.md](17-pillbox-hospital-interior.md) | **Pillbox custom interior: what we tried (MLO can't be spawned server-side; DLC needs a CodeWalker `_manifest.ymf`)** |
 | [18-stfiacre-hospital.md](18-stfiacre-hospital.md) | **St. Fiacre Hospital Interior: props-only map DLC (no manifest), built on Linux, + `/hospital` teleport** |
+| [19-kv-store.md](19-kv-store.md) | **SQL kv_store: `global.kv.load/save`, namespaces per package, API/JSON fallback, ops** |
+| [20-lspd-armoury-locker.md](20-lspd-armoury-locker.md) | **LSPD armoury (craft gear for a fee), uniform locker (free visual uniforms), armour skin (`player.vestSkin`)** |
 | [inventory.md](inventory.md) | What mods are installed and their spawn names |
 
 ## Golden rules (read these first)

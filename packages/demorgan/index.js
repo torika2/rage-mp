@@ -44,7 +44,7 @@ const DIG_OFFSETS = [[4, 3], [4, -3], [-4, 3], [-4, -3], [6, 0], [-6, 0], [0, 5]
 const ALLOWED_COMMANDS = ['pos', 'money', 'bank', 'needs', 'laws', 'inv'];
 
 let data = { spot: DEFAULT_SPOT, jailed: {} };
-try { data = Object.assign(data, JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))); } catch (e) {}
+data = Object.assign(data, global.kv.load('demorgan', DATA_FILE, {}));
 if (!data.jailed) data.jailed = {};
 // One-time move (spotVersion 2): Demorgan used to be the open prison yard (default or a /sjail set spot
 // out there), where the rest of the map is visible — move it into the enclosed interior.
@@ -54,8 +54,7 @@ if (!data.spot || data.spotVersion !== 2) {
     save();
 }
 function save() {
-    const temporaryFile = DATA_FILE + '.tmp';
-    try { fs.writeFileSync(temporaryFile, JSON.stringify(data, null, 2)); fs.renameSync(temporaryFile, DATA_FILE); } catch (e) {}
+    global.kv.save('demorgan', data, DATA_FILE);
 }
 
 function keyOf(player) { return String(player.socialClub || '').trim().toLowerCase(); }

@@ -118,13 +118,13 @@
     pistol: 'revolver', combatpistol: 'revolver', appistol: 'revolver',
     microsmg: 'uzi', smg: 'mp5', pumpshotgun: 'shotgun',
     assaultrifle: 'ak47', carbinerifle: 'ak47',
-    knife: 'knife', bat: 'bat', armor: 'vest'
+    knife: 'knife', bat: 'bat', nightstick: 'bat', armor: 'vest'
   };
   const EMOJI = { water:'💧', soda:'🥤', energy:'⚡', chips:'🍟', sandwich:'🥪', burger:'🍔', medkit:'🩹' };
   function iconFor(k) {
     if (WEAPON_IMG[k]) return '<img class="wicon" src="icons/' + WEAPON_IMG[k] + '.svg" alt="">';
     if (String(k).startsWith('ammo_')) return '<img class="wicon" src="icons/ammo.svg" alt="">';
-    return EMOJI[k] || '📦';
+    return EMOJI[k] || data.icon || '📦';
   }
 
   window.setShopData = function (d) { data = d || data; render(); };
@@ -140,10 +140,10 @@
     } else cap.style.display = 'none';
 
     const term = search.trim().toLowerCase();
-    $('tabs').hidden = isMarket;
+    $('tabs').hidden = isMarket || !!data.noTabs;
     const isAmmo = (it) => String(it.key).startsWith('ammo_');
     const items = (data.items || []).filter(it =>
-      (isMarket || (tab === 'ammo') === isAmmo(it)) &&
+      (isMarket || data.noTabs || (tab === 'ammo') === isAmmo(it)) &&
       (!term || (it.label || '').toLowerCase().includes(term) || (it.key || '').toLowerCase().includes(term)));
 
     const grid = $('grid');
@@ -162,9 +162,9 @@
         '<div class="icon">' + iconFor(it.key) + '</div>' +
         '<div class="name">' + it.label + '</div>' +
         '<div class="detail">' + (it.detail || '') + '</div>' +
-        '<div class="price">$' + it.price + (hasQty && qty > 1 ? ' ×' + qty + ' = $' + total : '') + '</div>' +
+        '<div class="price">' + (it.price === 0 ? 'Free' : '$' + it.price) + (hasQty && qty > 1 ? ' ×' + qty + ' = $' + total : '') + '</div>' +
         (hasQty ? '<div class="qty"><button class="step minus">−</button><span class="q">' + qty + '</span><button class="step plus">+</button></div>' : '') +
-        '<button class="buy"' + (affordable ? '' : ' disabled') + '>ყიდვა</button>';
+        '<button class="buy"' + (affordable ? '' : ' disabled') + '>' + (data.buyLabel || 'ყიდვა') + '</button>';
       if (hasQty) {
         card.querySelector('.minus').onclick = () => { qtys[it.key] = Math.max(1, qty - 1); render(); };
         card.querySelector('.plus').onclick = () => { qtys[it.key] = Math.min(isMarket ? 99 : 20, qty + 1); render(); };
