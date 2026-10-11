@@ -890,8 +890,7 @@ function toggleVehicleDoors(fromVehicleMenu = false, targetVehicle = null) {
         for (let i = 0; i < 4; i++) veh.setDoorShut(i, false);
         notify('კარები დაიკეტა');
     } else {
-        veh.setDoorOpen(0, false, false);
-        veh.setDoorOpen(1, false, false);
+        for (let i = 0; i < 4; i++) veh.setDoorOpen(i, false, false);
         notify('კარები გაიღო');
     }
     if (vehicleMenuBrowser) sendVehicleMenuState();

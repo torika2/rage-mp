@@ -43,7 +43,9 @@ const CAR_NAMES = {
     // --- Allmods batch 2 (added Oct 2026) ---
     'contgt':       'contgt13',   // Bentley Continental GT 2013 (buyable)
     'evo10':        'evo10',      // Mitsubishi Lancer Evo X (buyable)
-    'domgtx':       'poldomgtx'   // Vapid Dominator GTX (police)
+    'domgtx':       'poldomgtx',  // Vapid Dominator GTX (police)
+    // --- added Oct 2026 ---
+    'e55':          'benze55'     // Mercedes-Benz E55 AMG v4.2 (Legacy)
 };
 // Friendly labels for add-on cars that aren't in the buyable carshop catalog (police / service),
 // so they read nicely in the admin Cars tab. Anything without an entry falls back to its /car alias.
@@ -234,7 +236,7 @@ mp.events.addCommand('drift', (player) => {
 mp.events.addCommand('cars', (player) => {
     global.chatSend(player, {
         ch: 'system',
-        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, gclass, demon, m8, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado, reventon, amggtr, s1000rr, cbr, rx7, golfr, supra4, rrst, skyline, wrx, supra, g63 (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
+        text: '!{#ffb42e}დამატებული მანქანები: !{#ffffff}bmwm4, audirs7, audirs7abt, audirs7sport, f44, gclass, demon, m8, m5e39, cls, r8, f90, sclass, charger69, z28, lx570, swatvan, d5, rs6, lc300, m4f82, fenomeno, yumi, colorado, reventon, amggtr, s1000rr, cbr, rx7, golfr, supra4, rrst, skyline, wrx, supra, g63, e55 (LHP: alamolhp/bufsxlhp/dnscoutlhp)',
         ts: Date.now()
     });
     global.chatSend(player, {
